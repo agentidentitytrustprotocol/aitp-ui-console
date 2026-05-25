@@ -1,0 +1,47 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #080b12;
+  color: #c8d3e8;
+  font-family: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0f1420; }
+::-webkit-scrollbar-thumb { background: #1e2744; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #253050; }
+
+@keyframes pulse-dot { 0%, 100% { opacity: 1 } 50% { opacity: 0.4 } }
+@keyframes slide-in { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+@keyframes ticker-in { from { opacity: 0; transform: translateX(-8px) } to { opacity: 1; transform: none } }
+@keyframes spin { to { transform: rotate(360deg) } }
+
+.anim-in { animation: slide-in 0.2s ease; }
+.ticker-in { animation: ticker-in 0.15s ease; }
+.spin { animation: spin 1s linear infinite; }
+.pulse { animation: pulse-dot 2s ease-in-out infinite; }
+
+button { font-family: inherit; }
+input, select, textarea { font-family: inherit; }
+
+a { color: inherit; text-decoration: none; }
+
+/* Recharts tooltips inherit dark theme */
+.recharts-default-tooltip {
+  background: #151d2e !important;
+  border: 1px solid #1e2744 !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+}

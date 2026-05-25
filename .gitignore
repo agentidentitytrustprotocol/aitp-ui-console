@@ -1,0 +1,16 @@
+node_modules
+.next
+out
+.env
+.env.local
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts
+
+# Local-only configuration
+.envrc
+.env
+
+plans/
+temp/
+CLAUDE.md

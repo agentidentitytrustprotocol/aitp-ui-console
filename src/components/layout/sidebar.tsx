@@ -8,8 +8,10 @@ import {
   Layers,
   List,
   Radio,
+  ScrollText,
   Settings,
   Shield,
+  ShieldCheck,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { C } from '@/lib/colors';
@@ -28,6 +30,8 @@ const NAV: NavItem[] = [
   { href: '/runs', label: 'Runs', icon: List, showBadge: true },
   { href: '/monitor', label: 'Monitor', icon: Radio },
   { href: '/registry', label: 'Registry', icon: Layers },
+  { href: '/trust', label: 'Trust', icon: ShieldCheck },
+  { href: '/audit', label: 'Audit', icon: ScrollText },
   { href: '/config', label: 'Config', icon: Settings },
 ];
 

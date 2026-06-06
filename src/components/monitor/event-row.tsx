@@ -2,11 +2,11 @@
 
 import { ArrowRight } from 'lucide-react';
 import { C, eventColor } from '@/lib/colors';
-import type { AuditEvent } from '@/lib/types/cp';
+import type { CpEvent } from '@/lib/types/cp';
 import { shortId } from '@/lib/utils';
 
 interface Props {
-  event: AuditEvent;
+  event: CpEvent;
   selected?: boolean;
   onClick?: () => void;
 }

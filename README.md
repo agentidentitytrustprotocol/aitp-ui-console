@@ -12,11 +12,13 @@ API keys off the browser.
 | Section | Path | Backend(s) |
 | --- | --- | --- |
 | Dashboard | `/dashboard` | CP — KPIs, time-series, top capabilities |
-| Scenarios | `/scenarios` | Playground — pack tree, scenario detail, run trigger |
-| Runs | `/runs`, `/runs/[id]` | Playground — run history + live SSE timeline |
-| Monitor | `/monitor`, `/monitor/sessions/[id]` | CP — live event ticker, session trace |
-| Registry | `/registry`, `/registry/[aid]` | CP — agent table + manifest viewer |
-| Config | `/config` | Both — health, CP identity, webhooks |
+| Scenarios | `/scenarios` | Playground — pack tree, scenario detail, run trigger (templates + variants + fault injection) |
+| Runs | `/runs`, `/runs/[id]` | Playground — timeline + narration + per-run CP audit/sessions/deliveries |
+| Monitor | `/monitor`, `/monitor/sessions/[id]` | CP — live event ticker, delegation tree, observed TCTs |
+| Registry | `/registry`, `/registry/[aid]` | CP — agent table, manifest viewer, enrollment-token modal, deregister |
+| Trust | `/trust` | CP — trust anchors, pinned SPKI keys, revocation entries |
+| Audit | `/audit` | CP — filterable admin audit trail |
+| Config | `/config` | Both — health/readiness, SDK capabilities, playground processes, metrics, CP identity, webhooks (with circuit breaker) |
 
 ## Commands
 

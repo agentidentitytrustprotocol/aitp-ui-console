@@ -7,14 +7,14 @@ import { EventRow } from './event-row';
 import { EmptyState } from '@/components/shared/empty-state';
 import { useCpEvents } from '@/hooks/use-cp-events';
 import { C, eventColor } from '@/lib/colors';
-import type { AuditEvent } from '@/lib/types/cp';
+import type { CpEvent } from '@/lib/types/cp';
 import { ActiveSessions } from './session-list';
 
 export function EventTicker() {
   const [filter, setFilter] = useState('');
-  const [selected, setSelected] = useState<AuditEvent | null>(null);
+  const [selected, setSelected] = useState<CpEvent | null>(null);
 
-  const { events, connected } = useCpEvents({ maxBuffer: 200 });
+  const { events, connected, state } = useCpEvents({ maxBuffer: 200 });
 
   const filtered = events.filter((e) => {
     if (!filter) return true;
@@ -67,11 +67,22 @@ export function EventTicker() {
                 width: 6,
                 height: 6,
                 borderRadius: '50%',
-                background: connected ? C.green : C.red,
+                background:
+                  state === 'connected'
+                    ? C.green
+                    : state === 'at-capacity'
+                    ? C.amber
+                    : C.red,
               }}
-              className={connected ? 'pulse' : ''}
+              className={state === 'connected' ? 'pulse' : ''}
             />
-            {connected ? 'connected' : 'disconnected'}
+            {state === 'connected'
+              ? 'connected'
+              : state === 'at-capacity'
+              ? 'CP at capacity'
+              : state === 'reconnecting'
+              ? 'reconnecting…'
+              : 'disconnected'}
           </div>
         </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>

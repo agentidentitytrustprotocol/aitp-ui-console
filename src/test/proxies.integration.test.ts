@@ -57,11 +57,62 @@ describeIntegration('proxy contracts — playground', () => {
   });
 });
 
+describeIntegration('proxy contracts — playground v0.2 additions', () => {
+  it('GET /api/playground/capabilities returns SDK feature flags', async () => {
+    const { status, body } = await jsonGET(`${consoleUrl()}/api/playground/capabilities`);
+    expect(status).toBe(200);
+    expect(body).toHaveProperty('features');
+  });
+
+  it('GET /api/playground/agents returns running playground processes', async () => {
+    const { status, body } = await jsonGET(`${consoleUrl()}/api/playground/agents`);
+    expect(status).toBe(200);
+    expect(body).toHaveProperty('agents');
+  });
+
+  it('GET /api/playground/metrics returns Prometheus text', async () => {
+    const res = await fetch(`${consoleUrl()}/api/playground/metrics`);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toMatch(/# (HELP|TYPE) /);
+  });
+});
+
 describeIntegration('proxy contracts — cp', () => {
   it('GET /api/cp/health is healthy', async () => {
     const { status, body } = await jsonGET(`${consoleUrl()}/api/cp/health`);
     expect(status).toBe(200);
     // CP returns { status: 'ok' } shape per its README
+    expect(body).toBeTruthy();
+  });
+
+  it('GET /api/cp/readyz reports readiness + drain state', async () => {
+    const { status, body } = await jsonGET(`${consoleUrl()}/api/cp/readyz`);
+    expect([200, 503]).toContain(status);
+    expect(body).toHaveProperty('ready');
+  });
+
+  it('GET /api/cp/tcts returns an observed-TCT list', async () => {
+    const { status, body } = await jsonGET(`${consoleUrl()}/api/cp/tcts`);
+    expect(status).toBe(200);
+    expect(body).toBeTruthy();
+  });
+
+  it('GET /api/cp/delegations returns a delegation list', async () => {
+    const { status, body } = await jsonGET(`${consoleUrl()}/api/cp/delegations`);
+    expect(status).toBe(200);
+    expect(body).toBeTruthy();
+  });
+
+  it('GET /api/cp/trust-anchors returns trust anchors', async () => {
+    const { status, body } = await jsonGET(`${consoleUrl()}/api/cp/trust-anchors`);
+    expect(status).toBe(200);
+    expect(body).toBeTruthy();
+  });
+
+  it('GET /api/cp/pinned-keys returns pinned keys', async () => {
+    const { status, body } = await jsonGET(`${consoleUrl()}/api/cp/pinned-keys`);
+    expect(status).toBe(200);
     expect(body).toBeTruthy();
   });
 

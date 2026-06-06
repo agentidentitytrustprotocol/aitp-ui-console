@@ -112,6 +112,58 @@ WebSocket library:
 - SSE is HTTP, so the same BFF proxy approach works (`proxySse` simply
   forwards `Response.body` with `Content-Type: text/event-stream`).
 
+### Backpressure (CP `MAX_SSE_CONNECTIONS`)
+
+The control plane caps live SSE listeners. When it's at capacity it
+returns a 503 on the stream endpoint instead of opening the connection.
+Browsers don't expose the EventSource handshake status, so `useSse` takes
+an optional `capacityProbePath` that does a one-shot `fetch()` before
+opening the EventSource. A 503 surfaces as the `at-capacity` state with a
+longer backoff (5s → 30s) so the UI can render a distinct banner
+("CP at capacity") rather than a generic "reconnecting" spinner. The CP
+event ticker opts into this; the per-run playground stream does not need
+it (the playground does not enforce a connection cap).
+
+## Per-run CP correlation
+
+Three playground routes correlate CP state back to a specific run:
+
+| Tab in `/runs/[id]` | Backend route | Notes |
+| --- | --- | --- |
+| CP audit | `/runs/:id/cp-audit` | CP audit entries with this `runId` |
+| CP sessions | `/runs/:id/cp-sessions` | handshake sessions started for this run |
+| Deliveries | `/runs/:id/deliveries` | webhook deliveries triggered by run events |
+
+When the playground has no `CP_BASE_URL` configured it returns
+`cp_enabled: false` with empty arrays; the console renders an explicit
+"CP not wired up" empty state rather than a generic error.
+
+## Trust posture
+
+A dedicated `/trust` route surfaces three CP collections that together
+describe the system's trust posture:
+
+- **Trust anchors** (`/api/cp/trust-anchors`) — OIDC issuers accepted
+  for AITP identity proofs, scoped by namespace.
+- **Pinned keys** (`/api/cp/pinned-keys`) — static SPKI pins per
+  `(namespace, aid)` for environments that bypass discovery.
+- **Revocation entries** (`/api/cp/revocation/entries`) — the
+  authoritative revocation list. POSTing a jti cascades to every
+  delegation whose chain contains it (`/api/cp/delegations` recomputes
+  on next read).
+
+Revocation is a two-step confirm in the UI because cascading and
+admin-audit logging make it materially destructive.
+
+## Fault injection flow
+
+`POST /api/playground/runs` accepts an optional
+`fault_injection: { manifest_404?: string[]; peer_offline?: string[] }`
+keyed by agent id. The `RunInputForm` surfaces these behind an
+"Advanced" disclosure. Runs that were started with non-empty fault
+injection render a `fault-injected` chip on the run-detail header for
+visual triage.
+
 ## Data fetching
 
 Every read goes through TanStack Query (`@tanstack/react-query`). Each

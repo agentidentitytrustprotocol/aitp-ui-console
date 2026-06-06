@@ -7,12 +7,6 @@ import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { useRunNarrate } from '@/hooks/use-run-extras';
 import { C } from '@/lib/colors';
 
-function formatOffset(ms: number): string {
-  if (ms < 1_000) return `+${ms}ms`;
-  if (ms < 60_000) return `+${(ms / 1_000).toFixed(1)}s`;
-  return `+${(ms / 60_000).toFixed(1)}m`;
-}
-
 export function RunNarrate({ runId }: { runId: string }) {
   const { data, isLoading, error } = useRunNarrate(runId);
 
@@ -27,13 +21,13 @@ export function RunNarrate({ runId }: { runId: string }) {
       </Card>
     );
   }
-  const entries = data?.entries ?? [];
-  if (entries.length === 0) {
+  const text = (data ?? '').trim();
+  if (!text) {
     return (
       <Card style={{ padding: 20 }}>
         <EmptyState
           title="No narration yet"
-          description="Narration entries appear after the run produces its first events."
+          description="Narration is produced after the run emits its first events."
         />
       </Card>
     );
@@ -46,7 +40,7 @@ export function RunNarrate({ runId }: { runId: string }) {
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          marginBottom: 16,
+          marginBottom: 14,
           color: C.text,
           fontSize: 13,
           fontWeight: 600,
@@ -54,43 +48,23 @@ export function RunNarrate({ runId }: { runId: string }) {
       >
         <BookOpen size={14} color={C.teal} /> Narrated trace
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {entries.map((e, i) => (
-          <div
-            key={`${e.at}-${i}`}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '60px 1fr',
-              gap: 10,
-              padding: '10px 0',
-              borderBottom: i === entries.length - 1 ? 'none' : `1px solid ${C.border}30`,
-            }}
-          >
-            <div
-              className="mono"
-              style={{ fontSize: 10, color: C.textMuted, paddingTop: 3, whiteSpace: 'nowrap' }}
-            >
-              {formatOffset(e.at)}
-            </div>
-            <div>
-              <div style={{ fontSize: 13, color: C.text, marginBottom: 4, lineHeight: 1.45 }}>
-                {e.headline}
-              </div>
-              {e.detail && (
-                <div style={{ fontSize: 12, color: C.textDim, lineHeight: 1.55 }}>{e.detail}</div>
-              )}
-              {e.refs?.step_id && (
-                <div
-                  className="mono"
-                  style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}
-                >
-                  step: {e.refs.step_id}
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+      <pre
+        className="mono"
+        style={{
+          fontSize: 12,
+          lineHeight: 1.65,
+          color: C.textDim,
+          background: C.bg3,
+          padding: 14,
+          borderRadius: 6,
+          overflowX: 'auto',
+          margin: 0,
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+        }}
+      >
+        {text}
+      </pre>
     </Card>
   );
 }

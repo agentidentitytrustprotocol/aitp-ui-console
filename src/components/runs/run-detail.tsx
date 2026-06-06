@@ -74,22 +74,6 @@ export function RunDetail({ runId }: { runId: string }) {
             {run.data.scenario_ref}
           </span>
         )}
-        {run.data?.fault_injection && hasFaults(run.data.fault_injection) && (
-          <span
-            className="mono"
-            style={{
-              fontSize: 10,
-              color: C.amber,
-              background: C.amber + '15',
-              border: `1px solid ${C.amber}40`,
-              padding: '2px 6px',
-              borderRadius: 4,
-            }}
-            title={JSON.stringify(run.data.fault_injection)}
-          >
-            fault-injected
-          </span>
-        )}
         {active && (
           <button
             onClick={() => cancel.mutate()}
@@ -163,6 +147,3 @@ export function RunDetail({ runId }: { runId: string }) {
   );
 }
 
-function hasFaults(fi: { manifest_404?: string[]; peer_offline?: string[] }): boolean {
-  return (fi.manifest_404?.length ?? 0) > 0 || (fi.peer_offline?.length ?? 0) > 0;
-}

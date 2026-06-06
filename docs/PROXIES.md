@@ -31,7 +31,7 @@ on connection failure we synthesize a 502 with shape
 | GET | `/api/playground/runs/[id]/narrate` **(new)** | `/runs/:id/narrate` |
 | GET | `/api/playground/runs/[id]/cp-audit` **(new)** | `/runs/:id/cp-audit` |
 | GET | `/api/playground/runs/[id]/cp-sessions` **(new)** | `/runs/:id/cp-sessions` |
-| GET | `/api/playground/runs/[id]/deliveries` **(new)** | `/runs/:id/deliveries` |
+| GET | `/api/playground/runs/[id]/deliveries` **(new)** | `/runs/:id/cp-deliveries` |
 | **SSE** | `/api/playground/runs/[id]/events` | `/runs/:id/events` |
 
 ## Control Plane (`CP_URL`, default `http://localhost:4000`)
@@ -55,9 +55,12 @@ on connection failure we synthesize a 502 with shape
 | GET | `/api/cp/metrics` | `/api/metrics` |
 | GET | `/api/cp/tcts` **(new)** | `/api/tcts` |
 | GET | `/api/cp/delegations` **(new)** | `/api/delegations` |
-| GET, POST | `/api/cp/revocation/entries` **(new)** | `/api/revocation/entries` |
+| POST | `/api/cp/revocation/entries` **(new)** | `/api/revocation/entries` (POST-only — list comes from `.well-known/aitp-revocation-list`) |
 | GET, POST | `/api/cp/trust-anchors` **(new)** | `/api/trust-anchors` |
-| GET, POST | `/api/cp/pinned-keys` **(new)** | `/api/pinned-keys` |
+| GET, PATCH, DELETE | `/api/cp/trust-anchors/[id]` **(new)** | `/api/trust-anchors/:id` |
+| GET, POST, DELETE | `/api/cp/pinned-keys` **(new)** | `/api/pinned-keys` (DELETE takes `?namespace=&aid=`) |
+| GET | `/api/cp/sessions/[id]/replay` **(new)** | `/api/sessions/:id/replay` |
+| GET | `/api/cp/sessions/[id]/export` **(new)** | `/api/sessions/:id/export` |
 | GET, POST | `/api/cp/webhooks` | `/api/webhooks` |
 | PUT, DELETE | `/api/cp/webhooks/[id]` | `/api/webhooks/:id` |
 | GET, POST | `/api/cp/webhooks/[id]/circuit-breaker` **(new)** | `/api/webhooks/:id/circuit-breaker` |

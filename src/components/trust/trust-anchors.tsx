@@ -1,39 +1,50 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { Card } from '@/components/shared/card';
-import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
+import { LoadingSkeleton, InlineSpinner } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { TimeAgo } from '@/components/shared/time-ago';
-import { InlineSpinner } from '@/components/shared/loading-skeleton';
-import { useCreateTrustAnchor, useTrustAnchors } from '@/hooks/use-trust';
+import {
+  useCreateTrustAnchor,
+  useDeleteTrustAnchor,
+  useTrustAnchors,
+} from '@/hooks/use-trust';
 import { C } from '@/lib/colors';
 
 export function TrustAnchorsView() {
   const { data, isLoading, error } = useTrustAnchors();
   const create = useCreateTrustAnchor();
+  const remove = useDeleteTrustAnchor();
   const [showForm, setShowForm] = useState(false);
   const [namespace, setNamespace] = useState('');
   const [issuerUrl, setIssuerUrl] = useState('');
-  const [displayName, setDisplayName] = useState('');
+  const [jwksUrl, setJwksUrl] = useState('');
+  const [label, setLabel] = useState('');
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     create.mutate(
-      { namespace, issuerUrl, displayName: displayName || undefined },
+      {
+        namespace: namespace || undefined,
+        issuerUrl,
+        jwksUrl: jwksUrl || undefined,
+        label: label || undefined,
+      },
       {
         onSuccess: () => {
           setNamespace('');
           setIssuerUrl('');
-          setDisplayName('');
+          setJwksUrl('');
+          setLabel('');
           setShowForm(false);
         },
       },
     );
   }
 
-  const anchors = data?.anchors ?? [];
+  const anchors = data?.trustAnchors ?? [];
 
   return (
     <Card style={{ padding: 0 }}>
@@ -88,8 +99,7 @@ export function TrustAnchorsView() {
             <input
               value={namespace}
               onChange={(e) => setNamespace(e.target.value)}
-              required
-              placeholder="acme-corp"
+              placeholder="default"
               style={inputStyle}
             />
           </Field>
@@ -103,10 +113,10 @@ export function TrustAnchorsView() {
               style={inputStyle}
             />
           </Field>
-          <Field label="Display name">
+          <Field label="Label">
             <input
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
               placeholder="optional"
               style={inputStyle}
             />
@@ -130,6 +140,32 @@ export function TrustAnchorsView() {
             {create.isPending && <InlineSpinner color="#fff" />}
             Add
           </button>
+          <div style={{ gridColumn: '1 / span 4' }}>
+            <Field label="JWKS URL (optional — pins the JWKS endpoint)">
+              <input
+                type="url"
+                value={jwksUrl}
+                onChange={(e) => setJwksUrl(e.target.value)}
+                placeholder="https://idp.example.com/.well-known/jwks.json"
+                style={inputStyle}
+              />
+            </Field>
+          </div>
+          {create.error && (
+            <div
+              style={{
+                gridColumn: '1 / span 4',
+                background: C.red + '15',
+                border: `1px solid ${C.red}40`,
+                color: C.red,
+                padding: 8,
+                borderRadius: 4,
+                fontSize: 11,
+              }}
+            >
+              {String(create.error)}
+            </div>
+          )}
         </form>
       )}
 
@@ -142,13 +178,13 @@ export function TrustAnchorsView() {
       ) : anchors.length === 0 ? (
         <EmptyState
           title="No trust anchors registered"
-          description="OIDC issuers add here become valid identity sources for AITP enrollment."
+          description="OIDC issuers added here become valid identity sources for AITP enrollment."
         />
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-              {['Namespace', 'Issuer', 'Display name', 'JWKS cached', 'Added'].map((h) => (
+              {['Namespace', 'Issuer', 'Label', 'JWKS cached', 'Added', ''].map((h) => (
                 <th
                   key={h}
                   style={{
@@ -176,13 +212,31 @@ export function TrustAnchorsView() {
                   {a.issuerUrl.replace(/^https?:\/\//, '')}
                 </td>
                 <td style={{ padding: '10px 14px', fontSize: 11, color: C.text }}>
-                  {a.displayName ?? '—'}
+                  {a.label ?? '—'}
                 </td>
                 <td style={{ padding: '10px 14px', fontSize: 11, color: C.textDim }}>
                   {a.jwksCachedAt ? <TimeAgo ts={a.jwksCachedAt} /> : 'never'}
                 </td>
                 <td style={{ padding: '10px 14px', fontSize: 11, color: C.textDim }}>
                   <TimeAgo ts={a.createdAt} />
+                </td>
+                <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                  <button
+                    onClick={() => {
+                      if (confirm(`Delete trust anchor "${a.label ?? a.issuerUrl}"?`)) {
+                        remove.mutate(a.id);
+                      }
+                    }}
+                    title="Delete"
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: C.textMuted,
+                    }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
                 </td>
               </tr>
             ))}

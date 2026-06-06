@@ -3,13 +3,20 @@
 import { useQuery } from '@tanstack/react-query';
 import { getJSON } from '@/lib/api/client';
 import type { AuditEvent, HandshakeSession } from '@/lib/types/cp';
-import type { NarrateResponse, RunDeliveriesResponse } from '@/lib/types/playground';
+import type { RunDeliveriesResponse } from '@/lib/types/playground';
 
+/** `/runs/:id/narrate` returns PlainTextResponse — read as text. */
 export function useRunNarrate(runId: string | null) {
   return useQuery({
     queryKey: ['run-narrate', runId],
-    queryFn: () =>
-      getJSON<NarrateResponse>(`/api/playground/runs/${encodeURIComponent(runId!)}/narrate`),
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/playground/runs/${encodeURIComponent(runId!)}/narrate`,
+        { cache: 'no-store' },
+      );
+      if (!res.ok) throw new Error(`narrate ${res.status}`);
+      return res.text();
+    },
     enabled: !!runId,
   });
 }

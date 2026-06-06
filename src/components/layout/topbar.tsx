@@ -40,7 +40,7 @@ export function Topbar() {
           label="CP ready"
           path="/api/cp/readyz"
           isHealthy={(status, body) =>
-            status === 200 && (body as { ready?: boolean; draining?: boolean } | null)?.ready === true
+            status === 200 && (body as { ready?: boolean } | null)?.ready === true
           }
           onClick={() => router.push('/config')}
         />

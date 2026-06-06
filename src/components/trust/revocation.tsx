@@ -6,11 +6,11 @@ import { Card } from '@/components/shared/card';
 import { EmptyState } from '@/components/shared/empty-state';
 import { LoadingSkeleton, InlineSpinner } from '@/components/shared/loading-skeleton';
 import { TimeAgo } from '@/components/shared/time-ago';
-import { useCreateRevocation, useRevocationEntries } from '@/hooks/use-trust';
+import { useCreateRevocation, useRevocationList } from '@/hooks/use-trust';
 import { C } from '@/lib/colors';
 
 export function RevocationView() {
-  const { data, isLoading, error } = useRevocationEntries();
+  const { data, isLoading, error } = useRevocationList();
   const create = useCreateRevocation();
   const [jti, setJti] = useState('');
   const [reason, setReason] = useState('');
@@ -52,7 +52,7 @@ export function RevocationView() {
           gap: 8,
         }}
       >
-        <Ban size={14} color={C.red} /> Revocation entries
+        <Ban size={14} color={C.red} /> Revocation list
         <span className="mono" style={{ fontSize: 11, color: C.textMuted, marginLeft: 'auto' }}>
           {entries.length}
         </span>
@@ -75,11 +75,11 @@ export function RevocationView() {
             value={jti}
             onChange={(e) => setJti(e.target.value)}
             required
-            placeholder="jti from a TCT or delegation"
+            placeholder="UUID of a TCT or delegation"
             style={{ ...inputStyle, fontFamily: 'JetBrains Mono' }}
           />
         </Field>
-        <Field label="Reason (optional)">
+        <Field label="Reason (optional, ≤500 chars)">
           <input
             value={reason}
             onChange={(e) => setReason(e.target.value)}
@@ -120,9 +120,9 @@ export function RevocationView() {
             Confirm revocation
           </div>
           <div style={{ fontSize: 11, color: C.textDim, marginBottom: 10, lineHeight: 1.6 }}>
-            Revoking <span className="mono" style={{ color: C.red }}>{jti}</span> cascades to every
-            delegation whose chain contains this jti. This operation is logged in the admin audit
-            trail and cannot be reversed.
+            Revoking <span className="mono" style={{ color: C.red }}>{jti}</span> propagates to any
+            downstream delegation that includes this jti. The operation is logged in the admin
+            audit trail and cannot be reversed.
           </div>
           {create.error && (
             <div
@@ -193,7 +193,7 @@ export function RevocationView() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-              {['JTI', 'Reason', 'Cascaded from', 'Revoked at'].map((h) => (
+              {['JTI', 'Reason', 'Revoked at'].map((h) => (
                 <th
                   key={h}
                   style={{
@@ -219,15 +219,6 @@ export function RevocationView() {
                 </td>
                 <td style={{ padding: '10px 14px', fontSize: 11, color: C.textDim }}>
                   {e.reason ?? '—'}
-                </td>
-                <td style={{ padding: '10px 14px' }}>
-                  {e.cascadedFrom ? (
-                    <span className="mono" style={{ fontSize: 10, color: C.amber }}>
-                      {e.cascadedFrom}
-                    </span>
-                  ) : (
-                    <span style={{ fontSize: 10, color: C.textMuted }}>—</span>
-                  )}
                 </td>
                 <td style={{ padding: '10px 14px', fontSize: 11, color: C.textDim }}>
                   <TimeAgo ts={e.revokedAt} />

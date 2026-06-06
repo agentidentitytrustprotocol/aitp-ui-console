@@ -105,6 +105,31 @@ export async function proxyPut(
   }
 }
 
+export async function proxyPatch(
+  service: Service,
+  path: string,
+  req: NextRequest,
+): Promise<Response> {
+  const body = await req.text();
+  const target = `${serviceBase(service)}${path}`;
+  try {
+    const res = await fetch(target, {
+      method: 'PATCH',
+      headers: serviceHeaders(service),
+      body,
+      signal: req.signal,
+      cache: 'no-store',
+    });
+    const data = await res.text();
+    return new Response(emptyBodyStatus(res.status) ? null : data, {
+      status: res.status,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (err) {
+    return makeError(502, `Upstream unreachable: ${String(err)}`, target);
+  }
+}
+
 export async function proxyDelete(
   service: Service,
   path: string,

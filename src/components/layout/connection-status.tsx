@@ -26,11 +26,19 @@ export function ConnectionStatus({ label, path, isHealthy, onClick }: Props) {
     retry: false,
   });
 
-  const ok = !isError && data
-    ? isHealthy
-      ? isHealthy(data.status, data.body)
-      : data.ok
-    : false;
+  let ok = false;
+  if (!isError && data) {
+    if (isHealthy) {
+      try {
+        ok = isHealthy(data.status, data.body);
+      } catch {
+        // A buggy predicate shouldn't poison the indicator.
+        ok = false;
+      }
+    } else {
+      ok = data.ok;
+    }
+  }
 
   return (
     <button

@@ -82,6 +82,8 @@ export interface ScenarioVersion {
   };
 }
 
+/** Optional fault-injection knobs the run-create form can send. The
+ *  playground may or may not act on them depending on SDK build. */
 export interface FaultInjection {
   manifest_404?: string[];
   peer_offline?: string[];
@@ -143,9 +145,6 @@ export interface RunResponse {
   events: RunEvent[];
   error: string | null;
   created_at: number | null;
-  fault_injection?: FaultInjection;
-  template?: string;
-  variant?: string;
 }
 
 export interface RunStatus {
@@ -153,56 +152,39 @@ export interface RunStatus {
   status: string;
 }
 
-export interface NarrateEntry {
-  at: number;
-  headline: string;
-  detail?: string;
-  refs?: {
-    event_ids?: string[];
-    step_id?: string;
-  };
-}
-
-export interface NarrateResponse {
-  run_id: string;
-  entries: NarrateEntry[];
-}
-
+/** `GET /capabilities` returns:
+ *    { sdk_available: bool; version: string|null; features: {...} } */
 export interface PlaygroundCapabilities {
-  sdk_version: string;
+  sdk_available: boolean;
+  version: string | null;
   features: Record<string, boolean>;
 }
 
+/** `GET /agents` returns the supervisor's RunningAgent list. */
 export interface PlaygroundAgentProcess {
-  id: string;
-  aid: string | null;
-  org?: string | null;
-  port?: number | null;
-  pid?: number | null;
-  started_at?: number | null;
-  scenario_ref?: string | null;
-  run_id?: string | null;
+  run_id: string;
+  agent_id: string;
+  port: number;
+  pid: number | null;
+  aid: string;
+  manifest_url: string;
+  status: string;
+  exit_code: number | null;
 }
 
 export interface PlaygroundAgentsResponse {
   agents: PlaygroundAgentProcess[];
 }
 
-export interface WebhookDelivery {
-  id: string;
-  webhookId: string;
-  url: string;
-  eventType: string;
-  status: 'pending' | 'success' | 'failed';
-  attempts: number;
-  signature?: string;
-  createdAt: string;
-  deliveredAt: string | null;
-  responseStatus?: number | null;
-  error?: string | null;
-}
-
+/** `GET /runs/{id}/cp-deliveries` shape. Each delivery is the raw
+ *  `cp.webhook.delivered` event dict — render generically. */
 export interface RunDeliveriesResponse {
   run_id: string;
-  deliveries: WebhookDelivery[];
+  subscribed: boolean;
+  webhook?: Record<string, unknown> | null;
+  deliveries: Array<Record<string, unknown>>;
+  count: number;
 }
+
+/** `GET /runs/{id}/narrate` returns plain text (PlainTextResponse on
+ *  the backend), not structured JSON. */

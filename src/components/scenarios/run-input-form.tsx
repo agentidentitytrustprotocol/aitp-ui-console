@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, Play, AlertTriangle } from 'lucide-react';
 import { C } from '@/lib/colors';
 import { InlineSpinner } from '@/components/shared/loading-skeleton';
@@ -30,13 +30,21 @@ export function RunInputForm({ schema, templates, agents, loading, onSubmit }: P
   const props = schema.properties ?? {};
   const required = new Set(schema.required ?? []);
 
-  const initial: Record<string, unknown> = {};
-  for (const [key, def] of Object.entries(props)) {
-    if (def.default !== undefined) initial[key] = def.default;
-    else if (def.type === 'boolean') initial[key] = false;
-    else if (def.type === 'number' || def.type === 'integer') initial[key] = 0;
-    else initial[key] = '';
-  }
+  // Derive initial values from the schema. Recompute when `schema`
+  // changes so that switching scenarios resets the form.
+  const initial = useMemo(() => {
+    const next: Record<string, unknown> = {};
+    for (const [key, def] of Object.entries(props)) {
+      if (def.default !== undefined) next[key] = def.default;
+      else if (def.type === 'boolean') next[key] = false;
+      else if (def.type === 'number' || def.type === 'integer') next[key] = 0;
+      else next[key] = '';
+    }
+    return next;
+    // The schema reference is the parent's responsibility; depending on
+    // it directly is intentional.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schema]);
 
   const [values, setValues] = useState<Record<string, unknown>>(initial);
   const [templateId, setTemplateId] = useState<string>('');
@@ -44,6 +52,16 @@ export function RunInputForm({ schema, templates, agents, loading, onSubmit }: P
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [manifest404, setManifest404] = useState<string[]>([]);
   const [peerOffline, setPeerOffline] = useState<string[]>([]);
+
+  // Reset stateful fields when the underlying schema reference changes
+  // (i.e. the parent switched scenarios).
+  useEffect(() => {
+    setValues(initial);
+    setTemplateId('');
+    setVariantId('');
+    setManifest404([]);
+    setPeerOffline([]);
+  }, [initial]);
 
   const variants = useMemo(() => {
     if (!templateId || !templates) return [];
@@ -54,8 +72,11 @@ export function RunInputForm({ schema, templates, agents, loading, onSubmit }: P
     setValues((v) => ({ ...v, [key]: val }));
   }
 
-  function toggleAgentIn(set: string[], aid: string, setter: (s: string[]) => void) {
-    setter(set.includes(aid) ? set.filter((a) => a !== aid) : [...set, aid]);
+  function toggleAgentIn(
+    aid: string,
+    setter: React.Dispatch<React.SetStateAction<string[]>>,
+  ) {
+    setter((prev) => (prev.includes(aid) ? prev.filter((a) => a !== aid) : [...prev, aid]));
   }
 
   function submit(e: React.FormEvent) {
@@ -251,14 +272,14 @@ export function RunInputForm({ schema, templates, agents, loading, onSubmit }: P
                 description="Force a 404 when fetching this agent's AITP manifest."
                 agents={agents}
                 selected={manifest404}
-                onToggle={(aid) => toggleAgentIn(manifest404, aid, setManifest404)}
+                onToggle={(aid) => toggleAgentIn(aid, setManifest404)}
               />
               <FaultGroup
                 label="peer_offline"
                 description="Refuse all handshake attempts from this agent."
                 agents={agents}
                 selected={peerOffline}
-                onToggle={(aid) => toggleAgentIn(peerOffline, aid, setPeerOffline)}
+                onToggle={(aid) => toggleAgentIn(aid, setPeerOffline)}
               />
             </div>
           )}

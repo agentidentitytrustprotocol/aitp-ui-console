@@ -6,6 +6,7 @@ import type {
   PlaygroundAgentsResponse,
   PlaygroundCapabilities,
 } from '@/lib/types/playground';
+import type { CpReadyz } from '@/lib/types/cp';
 
 export function usePlaygroundCapabilities() {
   return useQuery({
@@ -43,12 +44,6 @@ export function useCpMetrics() {
     },
     refetchInterval: 15_000,
   });
-}
-
-interface CpReadyz {
-  ready: boolean;
-  draining: boolean;
-  checks?: Record<string, 'ok' | 'fail'>;
 }
 
 export function useCpReadyz() {

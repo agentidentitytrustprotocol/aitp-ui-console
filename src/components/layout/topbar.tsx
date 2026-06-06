@@ -35,7 +35,15 @@ export function Topbar() {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         <ConnectionStatus label="Playground" path="/api/playground/health" onClick={() => router.push('/config')} />
-        <ConnectionStatus label="Control Plane" path="/api/cp/health" onClick={() => router.push('/config')} />
+        <ConnectionStatus label="CP" path="/api/cp/health" onClick={() => router.push('/config')} />
+        <ConnectionStatus
+          label="CP ready"
+          path="/api/cp/readyz"
+          isHealthy={(status, body) =>
+            status === 200 && (body as { ready?: boolean; draining?: boolean } | null)?.ready === true
+          }
+          onClick={() => router.push('/config')}
+        />
         <div style={{ width: 1, height: 20, background: C.border }} />
         <button
           onClick={() => qc.invalidateQueries()}

@@ -54,6 +54,21 @@ export interface WorkflowStep {
   input_from?: string;
 }
 
+export interface ScenarioVariant {
+  id: string;
+  name?: string;
+  description?: string;
+  workflow?: { steps: WorkflowStep[] };
+  inputs?: Record<string, unknown>;
+}
+
+export interface ScenarioTemplate {
+  id: string;
+  name?: string;
+  description?: string;
+  variants?: ScenarioVariant[];
+}
+
 export interface ScenarioVersion {
   apiVersion: string;
   kind: string;
@@ -63,7 +78,21 @@ export interface ScenarioVersion {
     agents: AgentSpec[];
     trust: TrustSpec;
     workflow: { steps: WorkflowStep[] };
+    templates?: ScenarioTemplate[];
   };
+}
+
+export interface FaultInjection {
+  manifest_404?: string[];
+  peer_offline?: string[];
+}
+
+export interface RunCreateInput {
+  scenario_ref: string;
+  inputs: Record<string, unknown>;
+  template?: string;
+  variant?: string;
+  fault_injection?: FaultInjection;
 }
 
 export interface RunCreated {
@@ -114,9 +143,66 @@ export interface RunResponse {
   events: RunEvent[];
   error: string | null;
   created_at: number | null;
+  fault_injection?: FaultInjection;
+  template?: string;
+  variant?: string;
 }
 
 export interface RunStatus {
   run_id: string;
   status: string;
+}
+
+export interface NarrateEntry {
+  at: number;
+  headline: string;
+  detail?: string;
+  refs?: {
+    event_ids?: string[];
+    step_id?: string;
+  };
+}
+
+export interface NarrateResponse {
+  run_id: string;
+  entries: NarrateEntry[];
+}
+
+export interface PlaygroundCapabilities {
+  sdk_version: string;
+  features: Record<string, boolean>;
+}
+
+export interface PlaygroundAgentProcess {
+  id: string;
+  aid: string | null;
+  org?: string | null;
+  port?: number | null;
+  pid?: number | null;
+  started_at?: number | null;
+  scenario_ref?: string | null;
+  run_id?: string | null;
+}
+
+export interface PlaygroundAgentsResponse {
+  agents: PlaygroundAgentProcess[];
+}
+
+export interface WebhookDelivery {
+  id: string;
+  webhookId: string;
+  url: string;
+  eventType: string;
+  status: 'pending' | 'success' | 'failed';
+  attempts: number;
+  signature?: string;
+  createdAt: string;
+  deliveredAt: string | null;
+  responseStatus?: number | null;
+  error?: string | null;
+}
+
+export interface RunDeliveriesResponse {
+  run_id: string;
+  deliveries: WebhookDelivery[];
 }

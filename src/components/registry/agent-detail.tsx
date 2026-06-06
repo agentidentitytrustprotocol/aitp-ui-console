@@ -1,7 +1,8 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Trash2 } from 'lucide-react';
 import { Card } from '@/components/shared/card';
 import { AidCell } from '@/components/shared/aid-cell';
 import { BoundaryBadge } from '@/components/shared/boundary-badge';
@@ -12,17 +13,35 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { ManifestViewer } from './manifest-viewer';
 import { useAgent } from '@/hooks/use-registry';
+import { useDeregisterAgent } from '@/hooks/use-enrollment';
 import { useSessions } from '@/hooks/use-sessions';
 import { C } from '@/lib/colors';
 import { shortId } from '@/lib/utils';
 
 export function AgentDetail({ aid }: { aid: string }) {
+  const router = useRouter();
   const { data: agent, isLoading, error } = useAgent(aid);
   const sessions = useSessions({ aid, limit: 10 });
+  const deregister = useDeregisterAgent();
+
+  function handleDeregister() {
+    if (!confirm(`Deregister ${aid}? Active sessions will not be affected.`)) return;
+    deregister.mutate(aid, {
+      onSuccess: () => router.push('/registry'),
+    });
+  }
 
   return (
     <div className="anim-in">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          marginBottom: 20,
+          justifyContent: 'space-between',
+        }}
+      >
         <Link
           href="/registry"
           style={{
@@ -38,6 +57,26 @@ export function AgentDetail({ aid }: { aid: string }) {
         >
           <ArrowLeft size={14} /> Registry
         </Link>
+        {agent && agent.status !== 'deregistered' && (
+          <button
+            onClick={handleDeregister}
+            disabled={deregister.isPending}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '5px 10px',
+              borderRadius: 6,
+              background: C.red + '15',
+              border: `1px solid ${C.red}40`,
+              color: C.red,
+              fontSize: 12,
+              cursor: 'pointer',
+            }}
+          >
+            <Trash2 size={12} /> Deregister
+          </button>
+        )}
       </div>
 
       {isLoading ? (

@@ -2,11 +2,22 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+export type SseState = 'connecting' | 'connected' | 'reconnecting' | 'at-capacity' | 'closed';
+
 interface UseSseOptions<T> {
   url: string | null;
   onMessage: (data: T) => void;
   onError?: (err: Event) => void;
   maxReconnectDelayMs?: number;
+  /** When set, probed before opening the EventSource. A 503 on this path
+   *  flips state to `at-capacity` and applies a longer backoff before
+   *  retrying. Used for CP SSE where the upstream caps connection count. */
+  capacityProbePath?: string;
+}
+
+interface UseSseResult {
+  connected: boolean;
+  state: SseState;
 }
 
 export function useSse<T>({
@@ -14,13 +25,13 @@ export function useSse<T>({
   onMessage,
   onError,
   maxReconnectDelayMs = 30_000,
-}: UseSseOptions<T>) {
-  const [connected, setConnected] = useState(false);
+  capacityProbePath,
+}: UseSseOptions<T>): UseSseResult {
+  const [state, setState] = useState<SseState>('connecting');
   const reconnectDelay = useRef(1_000);
   const esRef = useRef<EventSource | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Keep the latest callbacks in refs so the effect doesn't re-run when they change.
   const onMessageRef = useRef(onMessage);
   const onErrorRef = useRef(onError);
   onMessageRef.current = onMessage;
@@ -28,25 +39,26 @@ export function useSse<T>({
 
   useEffect(() => {
     if (!url) {
-      setConnected(false);
+      setState('closed');
       return;
     }
 
     let active = true;
 
-    function connect() {
+    function openEventSource() {
       if (!active) return;
       if (esRef.current) {
         try {
           esRef.current.close();
         } catch {}
       }
+      setState((s) => (s === 'connected' ? s : 'connecting'));
       const es = new EventSource(url!);
       esRef.current = es;
 
       es.onopen = () => {
         if (!active) return;
-        setConnected(true);
+        setState('connected');
         reconnectDelay.current = 1_000;
       };
 
@@ -62,7 +74,7 @@ export function useSse<T>({
 
       es.onerror = (err) => {
         if (!active) return;
-        setConnected(false);
+        setState('reconnecting');
         onErrorRef.current?.(err);
         try {
           es.close();
@@ -74,6 +86,41 @@ export function useSse<T>({
       };
     }
 
+    async function connect() {
+      if (!active) return;
+
+      if (!capacityProbePath) {
+        openEventSource();
+        return;
+      }
+
+      try {
+        const res = await fetch(capacityProbePath, {
+          method: 'GET',
+          headers: { Accept: 'text/event-stream' },
+          cache: 'no-store',
+        });
+        try {
+          await res.body?.cancel();
+        } catch {}
+        if (!active) return;
+        if (res.status === 503) {
+          setState('at-capacity');
+          timerRef.current = setTimeout(() => {
+            reconnectDelay.current = Math.min(
+              Math.max(reconnectDelay.current, 5_000) * 2,
+              maxReconnectDelayMs,
+            );
+            connect();
+          }, Math.max(reconnectDelay.current, 5_000));
+          return;
+        }
+      } catch {
+        // Probe failed — try the EventSource anyway.
+      }
+      openEventSource();
+    }
+
     connect();
 
     const onVisibilityChange = () => {
@@ -81,7 +128,7 @@ export function useSse<T>({
         try {
           esRef.current?.close();
         } catch {}
-        setConnected(false);
+        setState('closed');
       } else {
         reconnectDelay.current = 1_000;
         connect();
@@ -97,7 +144,7 @@ export function useSse<T>({
       } catch {}
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [url, maxReconnectDelayMs]);
+  }, [url, maxReconnectDelayMs, capacityProbePath]);
 
-  return { connected };
+  return { connected: state === 'connected', state };
 }

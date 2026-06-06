@@ -14,17 +14,17 @@ import { TrustExplainer } from './trust-explainer';
 import { useScenario } from '@/hooks/use-scenarios';
 import { postJSON } from '@/lib/api/client';
 import { C } from '@/lib/colors';
-import type { RunCreated } from '@/lib/types/playground';
+import type { RunCreated, RunCreateInput } from '@/lib/types/playground';
 
 export function ScenarioDetail({ ref: scenarioRef }: { ref: string }) {
   const router = useRouter();
   const { data, isLoading, error } = useScenario(scenarioRef);
 
   const trigger = useMutation({
-    mutationFn: (inputs: Record<string, unknown>) =>
+    mutationFn: (body: Omit<RunCreateInput, 'scenario_ref'>) =>
       postJSON<RunCreated>('/api/playground/runs', {
         scenario_ref: scenarioRef,
-        inputs,
+        ...body,
       }),
     onSuccess: (run) => router.push(`/runs/${encodeURIComponent(run.run_id)}`),
   });
@@ -151,8 +151,10 @@ export function ScenarioDetail({ ref: scenarioRef }: { ref: string }) {
               )}
               <RunInputForm
                 schema={data.spec.inputs.schema}
+                templates={data.spec.templates}
+                agents={data.spec.agents}
                 loading={trigger.isPending}
-                onSubmit={(values) => trigger.mutate(values)}
+                onSubmit={(submission) => trigger.mutate(submission)}
               />
             </Card>
 

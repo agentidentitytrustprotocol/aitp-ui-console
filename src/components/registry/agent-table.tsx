@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Layers, Search } from 'lucide-react';
+import { KeyRound, Layers, Search } from 'lucide-react';
 import { Card, SectionTitle } from '@/components/shared/card';
+import { EnrollmentModal } from './enrollment-modal';
 import { AidCell } from '@/components/shared/aid-cell';
 import { BoundaryBadge } from '@/components/shared/boundary-badge';
 import { CapabilityBadge } from '@/components/shared/capability-badge';
@@ -26,6 +27,7 @@ export function AgentTable() {
   const { data, isLoading, error } = useRegistry();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<StatusFilter>('all');
+  const [showEnroll, setShowEnroll] = useState(false);
 
   const agents = (data?.agents ?? []) as AgentRow[];
   const filtered = agents.filter((a) => {
@@ -53,6 +55,25 @@ export function AgentTable() {
         sub={`${activeCount} active agent${activeCount === 1 ? '' : 's'}`}
         right={
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <button
+              onClick={() => setShowEnroll(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                borderRadius: 6,
+                background: C.teal,
+                border: 'none',
+                color: '#fff',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              <KeyRound size={13} />
+              New enrollment
+            </button>
             <div
               style={{
                 display: 'flex',
@@ -181,6 +202,7 @@ export function AgentTable() {
           </table>
         )}
       </Card>
+      {showEnroll && <EnrollmentModal onClose={() => setShowEnroll(false)} />}
     </div>
   );
 }

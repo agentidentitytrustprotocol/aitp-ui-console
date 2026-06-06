@@ -1,18 +1,39 @@
 'use client';
 
 import { useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { RefreshCw, Trash2 } from 'lucide-react';
 import { Card } from '@/components/shared/card';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { WebhookForm } from './webhook-form';
 import { useDeleteWebhook, useUpdateWebhook, useWebhooks } from '@/hooks/use-webhooks';
+import { useResetCircuitBreaker } from '@/hooks/use-circuit-breaker';
 import { C } from '@/lib/colors';
+import type { CircuitBreakerState } from '@/lib/types/cp';
+
+function breakerColor(state?: CircuitBreakerState): string {
+  switch (state) {
+    case 'open':
+      return C.red;
+    case 'half_open':
+      return C.amber;
+    case 'closed':
+    default:
+      return C.green;
+  }
+}
+
+function breakerLabel(state?: CircuitBreakerState): string {
+  if (state === 'open') return 'breaker open';
+  if (state === 'half_open') return 'breaker half-open';
+  return 'breaker closed';
+}
 
 export function WebhookList() {
   const { data, isLoading, error } = useWebhooks();
   const update = useUpdateWebhook();
   const remove = useDeleteWebhook();
+  const reset = useResetCircuitBreaker();
   const [showForm, setShowForm] = useState(false);
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
 
@@ -20,9 +41,7 @@ export function WebhookList() {
 
   return (
     <Card style={{ padding: 20 }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 16 }}>
-        Webhooks
-      </div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 16 }}>Webhooks</div>
 
       {createdSecret && (
         <div
@@ -71,82 +90,127 @@ export function WebhookList() {
         <EmptyState title="No webhooks yet" description="Forward CP events to external services." />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {webhooks.map((w) => (
-            <div
-              key={w.id}
-              style={{
-                padding: 14,
-                background: C.bg3,
-                borderRadius: 6,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 12,
-              }}
-            >
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: C.text,
-                    marginBottom: 5,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {w.url}
-                </div>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {w.events.map((t) => (
+          {webhooks.map((w) => {
+            const breakerState = w.circuitBreaker?.state;
+            return (
+              <div
+                key={w.id}
+                style={{
+                  padding: 14,
+                  background: C.bg3,
+                  borderRadius: 6,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                }}
+              >
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: C.text,
+                      marginBottom: 5,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {w.url}
+                  </div>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {w.events.map((t) => (
+                      <span
+                        key={t}
+                        className="mono"
+                        style={{
+                          fontSize: 9,
+                          padding: '1px 5px',
+                          borderRadius: 3,
+                          background: C.bg2,
+                          color: C.textDim,
+                          border: `1px solid ${C.border}`,
+                        }}
+                      >
+                        {t}
+                      </span>
+                    ))}
                     <span
-                      key={t}
                       className="mono"
                       style={{
                         fontSize: 9,
-                        padding: '1px 5px',
+                        padding: '1px 6px',
                         borderRadius: 3,
-                        background: C.bg2,
-                        color: C.textDim,
-                        border: `1px solid ${C.border}`,
+                        marginLeft: 4,
+                        background: breakerColor(breakerState) + '20',
+                        color: breakerColor(breakerState),
+                        border: `1px solid ${breakerColor(breakerState)}40`,
                       }}
+                      title={
+                        w.circuitBreaker
+                          ? `failures: ${w.circuitBreaker.failureCount}${
+                              w.circuitBreaker.lastError ? `\n${w.circuitBreaker.lastError}` : ''
+                            }`
+                          : breakerLabel(breakerState)
+                      }
                     >
-                      {t}
+                      {breakerLabel(breakerState)}
                     </span>
-                  ))}
+                    {breakerState && breakerState !== 'closed' && (
+                      <button
+                        onClick={() => reset.mutate(w.id)}
+                        disabled={reset.isPending}
+                        title="Reset circuit breaker"
+                        style={{
+                          background: 'none',
+                          border: `1px solid ${C.border}`,
+                          borderRadius: 3,
+                          padding: '1px 6px',
+                          fontSize: 10,
+                          color: C.textDim,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 3,
+                        }}
+                      >
+                        <RefreshCw size={9} />
+                        reset
+                      </button>
+                    )}
+                  </div>
                 </div>
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontSize: 11,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={w.active}
+                    onChange={(e) => update.mutate({ id: w.id, active: e.target.checked })}
+                    style={{ accentColor: C.teal }}
+                  />
+                  <span style={{ color: w.active ? C.green : C.textMuted }}>
+                    {w.active ? 'active' : 'paused'}
+                  </span>
+                </label>
+                <button
+                  onClick={() => {
+                    if (confirm(`Delete webhook for ${w.url}?`)) remove.mutate(w.id);
+                  }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted }}
+                  title="Delete"
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
-              <label
-                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer' }}
-              >
-                <input
-                  type="checkbox"
-                  checked={w.active}
-                  onChange={(e) =>
-                    update.mutate({ id: w.id, active: e.target.checked })
-                  }
-                  style={{ accentColor: C.teal }}
-                />
-                <span style={{ color: w.active ? C.green : C.textMuted }}>
-                  {w.active ? 'active' : 'paused'}
-                </span>
-              </label>
-              <button
-                onClick={() => {
-                  if (confirm(`Delete webhook for ${w.url}?`)) remove.mutate(w.id);
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: C.textMuted,
-                }}
-                title="Delete"
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

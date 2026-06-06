@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, X } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -8,9 +8,14 @@ import { Card } from '@/components/shared/card';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
+import { TabBar } from '@/components/shared/tab-bar';
 import { AgentStatusGrid } from './agent-status-grid';
 import { RunTimeline } from './run-timeline';
 import { RunSummary } from './run-summary';
+import { RunNarrate } from './run-narrate';
+import { RunCpAudit } from './run-cp-audit';
+import { RunCpSessions } from './run-cp-sessions';
+import { RunDeliveries } from './run-deliveries';
 import { useRun } from '@/hooks/use-run';
 import { useRunEvents } from '@/hooks/use-run-events';
 import { postJSON } from '@/lib/api/client';
@@ -19,16 +24,16 @@ import type { RunEvent } from '@/lib/types/playground';
 
 const TERMINAL = new Set(['success', 'failed', 'cancelled', 'complete']);
 
+type RunTab = 'timeline' | 'narrate' | 'cp-audit' | 'cp-sessions' | 'deliveries';
+
 export function RunDetail({ runId }: { runId: string }) {
   const qc = useQueryClient();
   const run = useRun(runId, { refetchInterval: 5_000 });
+  const [tab, setTab] = useState<RunTab>('timeline');
 
   const active = run.data ? !TERMINAL.has(run.data.status) : true;
   const live = useRunEvents(active ? runId : null);
 
-  // Combine persisted events from /runs/:id with live SSE events. SSE is the
-  // source of truth while the run is active; once terminal, we trust the
-  // canonical event list returned by GET /runs/:id.
   const events: RunEvent[] = useMemo(() => {
     if (!active && run.data?.events) return run.data.events;
     if (live.events.length > 0) return live.events;
@@ -56,13 +61,7 @@ export function RunDetail({ runId }: { runId: string }) {
       >
         <Link
           href="/runs"
-          style={{
-            color: C.textDim,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            fontSize: 13,
-          }}
+          style={{ color: C.textDim, display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}
         >
           <ArrowLeft size={14} /> All runs
         </Link>
@@ -73,6 +72,22 @@ export function RunDetail({ runId }: { runId: string }) {
         {run.data?.scenario_ref && (
           <span style={{ fontSize: 12, color: C.textDim }} className="mono">
             {run.data.scenario_ref}
+          </span>
+        )}
+        {run.data?.fault_injection && hasFaults(run.data.fault_injection) && (
+          <span
+            className="mono"
+            style={{
+              fontSize: 10,
+              color: C.amber,
+              background: C.amber + '15',
+              border: `1px solid ${C.amber}40`,
+              padding: '2px 6px',
+              borderRadius: 4,
+            }}
+            title={JSON.stringify(run.data.fault_injection)}
+          >
+            fault-injected
           </span>
         )}
         {active && (
@@ -111,18 +126,43 @@ export function RunDetail({ runId }: { runId: string }) {
             <RunSummary run={run.data} events={events} />
             {run.data.error && (
               <Card style={{ padding: 14, borderLeft: `3px solid ${C.red}` }}>
-                <div style={{ fontSize: 11, color: C.red, fontWeight: 600, marginBottom: 6 }}>ERROR</div>
+                <div style={{ fontSize: 11, color: C.red, fontWeight: 600, marginBottom: 6 }}>
+                  ERROR
+                </div>
                 <div style={{ fontSize: 11, color: C.textDim, wordBreak: 'break-word' }}>
                   {run.data.error}
                 </div>
               </Card>
             )}
           </div>
-          <Card style={{ padding: 20, display: 'flex', flexDirection: 'column', minHeight: 320 }}>
-            <RunTimeline events={events} active={active} connected={live.connected} />
-          </Card>
+          <div>
+            <TabBar<RunTab>
+              tabs={[
+                { id: 'timeline', label: 'Timeline', count: events.length || null },
+                { id: 'narrate', label: 'Narrate' },
+                { id: 'cp-audit', label: 'CP audit' },
+                { id: 'cp-sessions', label: 'CP sessions' },
+                { id: 'deliveries', label: 'Deliveries' },
+              ]}
+              current={tab}
+              onChange={setTab}
+            />
+            {tab === 'timeline' && (
+              <Card style={{ padding: 20, display: 'flex', flexDirection: 'column', minHeight: 320 }}>
+                <RunTimeline events={events} active={active} connected={live.connected} />
+              </Card>
+            )}
+            {tab === 'narrate' && <RunNarrate runId={runId} />}
+            {tab === 'cp-audit' && <RunCpAudit runId={runId} />}
+            {tab === 'cp-sessions' && <RunCpSessions runId={runId} />}
+            {tab === 'deliveries' && <RunDeliveries runId={runId} />}
+          </div>
         </div>
       )}
     </div>
   );
+}
+
+function hasFaults(fi: { manifest_404?: string[]; peer_offline?: string[] }): boolean {
+  return (fi.manifest_404?.length ?? 0) > 0 || (fi.peer_offline?.length ?? 0) > 0;
 }

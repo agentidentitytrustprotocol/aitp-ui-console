@@ -67,7 +67,7 @@ function ServiceRow({ label, path, readyPath, icon: Icon, displayUrl }: ServiceC
     queryKey: ['ready', readyPath],
     queryFn: async () => {
       const res = await fetch(readyPath!, { cache: 'no-store' });
-      let body: { ready?: boolean; draining?: boolean } | null = null;
+      let body: { ready?: boolean; reason?: string; error?: string } | null = null;
       try {
         body = await res.json();
       } catch {}
@@ -80,7 +80,8 @@ function ServiceRow({ label, path, readyPath, icon: Icon, displayUrl }: ServiceC
 
   const ok = !isError && data?.ok === true;
   const ready = readyQuery.data?.status === 200 && readyQuery.data?.body?.ready === true;
-  const draining = readyQuery.data?.body?.draining === true;
+  const notReadyReason =
+    readyQuery.data?.body?.reason ?? readyQuery.data?.body?.error ?? null;
 
   return (
     <div
@@ -111,9 +112,16 @@ function ServiceRow({ label, path, readyPath, icon: Icon, displayUrl }: ServiceC
           {readyPath && (
             <>
               <span style={{ color: C.border }}>·</span>
-              <Activity size={11} color={ready ? C.green : draining ? C.amber : C.red} />
-              <span style={{ color: ready ? C.green : draining ? C.amber : C.red }}>
-                {ready ? 'ready' : draining ? 'draining' : 'not ready'}
+              <Activity size={11} color={ready ? C.green : C.amber} />
+              <span
+                style={{ color: ready ? C.green : C.amber }}
+                title={notReadyReason ?? undefined}
+              >
+                {ready
+                  ? 'ready'
+                  : notReadyReason
+                  ? `not ready (${notReadyReason})`
+                  : 'not ready'}
               </span>
             </>
           )}

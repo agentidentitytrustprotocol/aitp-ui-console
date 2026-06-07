@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { AidCell } from '@/components/shared/aid-cell';
 import { CapabilityBadge } from '@/components/shared/capability-badge';
@@ -40,9 +40,8 @@ export function AuditTable({ events }: Props) {
           {events.map((e) => {
             const expanded = open === e.id;
             return (
-              <>
+              <Fragment key={e.id}>
                 <tr
-                  key={e.id}
                   style={{
                     borderBottom: `1px solid ${C.border}20`,
                     cursor: 'pointer',
@@ -98,7 +97,7 @@ export function AuditTable({ events }: Props) {
                   </td>
                 </tr>
                 {expanded && (
-                  <tr key={`${e.id}-detail`}>
+                  <tr>
                     <td colSpan={6} style={{ padding: '0 14px 14px' }}>
                       <pre
                         className="mono"
@@ -119,7 +118,7 @@ export function AuditTable({ events }: Props) {
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             );
           })}
         </tbody>

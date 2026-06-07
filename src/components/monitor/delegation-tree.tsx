@@ -12,18 +12,50 @@ import { C } from '@/lib/colors';
 import { shortId } from '@/lib/utils';
 import type { Delegation, DelegationNode } from '@/lib/types/cp';
 
-function buildTree(rows: Delegation[]): DelegationNode[] {
+interface TreeBuild {
+  roots: DelegationNode[];
+  orphans: DelegationNode[];
+}
+
+/** Build the delegation tree from a flat list.
+ *
+ *  Two safety properties beyond the obvious parent-child wiring:
+ *  - Orphans: rows whose `parentJti` points to a row not in the
+ *    result window are bucketed separately rather than silently
+ *    promoted to roots.
+ *  - Cycle guard: each child is attached at most once via a visited
+ *    set, so a malformed dataset can't cause infinite recursion. */
+function buildTree(rows: Delegation[]): TreeBuild {
   const byJti = new Map<string, DelegationNode>();
   for (const d of rows) byJti.set(d.jti, { ...d, children: [] });
+
+  const visited = new Set<string>();
   const roots: DelegationNode[] = [];
+  const orphans: DelegationNode[] = [];
+
   for (const node of byJti.values()) {
-    if (node.parentJti && byJti.has(node.parentJti)) {
-      byJti.get(node.parentJti)!.children!.push(node);
-    } else {
-      roots.push(node);
+    if (visited.has(node.jti)) {
+      node.cycle = true;
+      continue;
     }
+    if (!node.parentJti) {
+      roots.push(node);
+      visited.add(node.jti);
+      continue;
+    }
+    const parent = byJti.get(node.parentJti);
+    if (!parent) {
+      node.orphan = true;
+      orphans.push(node);
+      visited.add(node.jti);
+      continue;
+    }
+    if (visited.has(node.jti)) continue;
+    parent.children!.push(node);
+    visited.add(node.jti);
   }
-  return roots;
+
+  return { roots, orphans };
 }
 
 export function DelegationTree() {
@@ -32,7 +64,10 @@ export function DelegationTree() {
   const revoke = useCreateRevocation();
   const [confirming, setConfirming] = useState(false);
 
-  const roots = useMemo(() => buildTree(data?.delegations ?? []), [data?.delegations]);
+  const { roots, orphans } = useMemo(
+    () => buildTree(data?.delegations ?? []),
+    [data?.delegations],
+  );
 
   if (isLoading) return <LoadingSkeleton rows={6} />;
   if (error) {
@@ -42,7 +77,7 @@ export function DelegationTree() {
       </Card>
     );
   }
-  if (roots.length === 0) {
+  if (roots.length === 0 && orphans.length === 0) {
     return (
       <Card style={{ padding: 20 }}>
         <EmptyState
@@ -65,6 +100,31 @@ export function DelegationTree() {
             onSelect={setSelected}
           />
         ))}
+        {orphans.length > 0 && (
+          <div style={{ marginTop: 14, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+            <div
+              style={{
+                fontSize: 10,
+                color: C.amber,
+                fontWeight: 600,
+                letterSpacing: '0.06em',
+                marginBottom: 8,
+                textTransform: 'uppercase',
+              }}
+            >
+              Orphaned · {orphans.length} (parent outside result window)
+            </div>
+            {orphans.map((o) => (
+              <TreeNode
+                key={o.jti}
+                node={o}
+                depth={0}
+                selectedJti={selected?.jti ?? null}
+                onSelect={setSelected}
+              />
+            ))}
+          </div>
+        )}
       </Card>
       <Card style={{ padding: 16, height: 'fit-content' }}>
         {selected ? (
@@ -82,19 +142,37 @@ export function DelegationTree() {
                 <span className="mono" style={{ fontSize: 11, color: C.textDim, wordBreak: 'break-all' }}>
                   {selected.parentJti}
                 </span>
+                {selected.orphan && (
+                  <span
+                    className="mono"
+                    style={{
+                      fontSize: 9,
+                      color: C.amber,
+                      background: C.amber + '15',
+                      padding: '1px 5px',
+                      borderRadius: 3,
+                      marginLeft: 6,
+                    }}
+                  >
+                    not in result window
+                  </span>
+                )}
               </Detail>
             )}
-            <Detail label="Subject">
-              <AidCell aid={selected.subject} />
+            <Detail label="Delegator">
+              <AidCell aid={selected.delegator} />
             </Detail>
-            <Detail label="Audience">
-              <AidCell aid={selected.audience} />
+            <Detail label="Delegatee">
+              <AidCell aid={selected.delegatee} />
             </Detail>
-            <Detail label="Grants">
+            <Detail label="Scope">
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                {(selected.grants ?? []).map((g) => (
-                  <CapabilityBadge key={g} cap={g} />
+                {(selected.scope ?? []).map((s) => (
+                  <CapabilityBadge key={s} cap={s} />
                 ))}
+                {(selected.scope ?? []).length === 0 && (
+                  <span style={{ fontSize: 11, color: C.textMuted }}>none</span>
+                )}
               </div>
             </Detail>
             <Detail label="Status">
@@ -112,7 +190,7 @@ export function DelegationTree() {
               (confirming ? (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ fontSize: 11, color: C.red, marginBottom: 6 }}>
-                    Revoking this jti cascades to its children.
+                    Revoking this jti propagates to its descendants.
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button
@@ -231,7 +309,22 @@ function TreeNode({
           {shortId(node.jti, 14)}
         </span>
         <span style={{ color: C.textMuted }}>→</span>
-        <span style={{ color: C.textDim, fontSize: 11 }}>{shortId(node.audience, 16)}</span>
+        <span style={{ color: C.textDim, fontSize: 11 }}>{shortId(node.delegatee, 16)}</span>
+        {node.orphan && (
+          <span
+            className="mono"
+            style={{
+              fontSize: 9,
+              color: C.amber,
+              background: C.amber + '15',
+              padding: '0 5px',
+              borderRadius: 3,
+              marginLeft: 'auto',
+            }}
+          >
+            orphan
+          </span>
+        )}
         {node.revoked && (
           <span
             className="mono"
@@ -241,7 +334,7 @@ function TreeNode({
               background: C.red + '20',
               padding: '0 5px',
               borderRadius: 3,
-              marginLeft: 'auto',
+              marginLeft: node.orphan ? 6 : 'auto',
             }}
           >
             revoked

@@ -98,22 +98,23 @@ describeIntegration('proxy contracts — cp', () => {
     expect(body).toBeTruthy();
   });
 
-  it('GET /api/cp/delegations returns a delegation list', async () => {
+  it('GET /api/cp/delegations returns a delegation list with delegator/delegatee/scope', async () => {
     const { status, body } = await jsonGET(`${consoleUrl()}/api/cp/delegations`);
     expect(status).toBe(200);
-    expect(body).toBeTruthy();
+    const payload = body as { delegations?: unknown[] };
+    expect(Array.isArray(payload.delegations)).toBe(true);
   });
 
-  it('GET /api/cp/trust-anchors returns trust anchors', async () => {
+  it('GET /api/cp/trust-anchors returns { trustAnchors }', async () => {
     const { status, body } = await jsonGET(`${consoleUrl()}/api/cp/trust-anchors`);
     expect(status).toBe(200);
-    expect(body).toBeTruthy();
+    expect(body).toHaveProperty('trustAnchors');
   });
 
-  it('GET /api/cp/pinned-keys returns pinned keys', async () => {
+  it('GET /api/cp/pinned-keys returns { pinnedKeys }', async () => {
     const { status, body } = await jsonGET(`${consoleUrl()}/api/cp/pinned-keys`);
     expect(status).toBe(200);
-    expect(body).toBeTruthy();
+    expect(body).toHaveProperty('pinnedKeys');
   });
 
   it('GET /api/cp/registry/agents returns an agents list', async () => {

@@ -40,7 +40,7 @@ export function ProcessList() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-              {['ID', 'AID', 'Port', 'PID', 'Org', 'Run'].map((h) => (
+              {['Agent', 'Run', 'AID', 'Port', 'PID', 'Status', 'Exit'].map((h) => (
                 <th
                   key={h}
                   style={{
@@ -58,18 +58,23 @@ export function ProcessList() {
           </thead>
           <tbody>
             {agents.map((a) => (
-              <tr key={a.id} style={{ borderBottom: `1px solid ${C.border}20` }}>
+              <tr key={`${a.run_id}:${a.agent_id}`} style={{ borderBottom: `1px solid ${C.border}20` }}>
                 <td style={{ padding: '7px 10px' }}>
                   <span className="mono" style={{ fontSize: 11, color: C.text }}>
-                    {a.id}
+                    {a.agent_id}
                   </span>
                 </td>
                 <td style={{ padding: '7px 10px' }}>
-                  <AidCell aid={a.aid} />
+                  <span className="mono" style={{ fontSize: 11, color: C.teal }}>
+                    {a.run_id.slice(0, 10)}
+                  </span>
+                </td>
+                <td style={{ padding: '7px 10px' }}>
+                  <AidCell aid={a.aid || null} />
                 </td>
                 <td style={{ padding: '7px 10px' }}>
                   <span className="mono" style={{ fontSize: 11, color: C.textDim }}>
-                    {a.port ?? '—'}
+                    {a.port}
                   </span>
                 </td>
                 <td style={{ padding: '7px 10px' }}>
@@ -78,11 +83,11 @@ export function ProcessList() {
                   </span>
                 </td>
                 <td style={{ padding: '7px 10px', fontSize: 11, color: C.textDim }}>
-                  {a.org ?? '—'}
+                  {a.status}
                 </td>
                 <td style={{ padding: '7px 10px' }}>
-                  <span className="mono" style={{ fontSize: 11, color: C.teal }}>
-                    {a.run_id ?? '—'}
+                  <span className="mono" style={{ fontSize: 11, color: C.textMuted }}>
+                    {a.exit_code ?? '—'}
                   </span>
                 </td>
               </tr>

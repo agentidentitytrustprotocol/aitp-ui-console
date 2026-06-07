@@ -77,17 +77,19 @@ export interface AgentMetrics {
 
 export type CircuitBreakerState = 'closed' | 'open' | 'half_open';
 
+/** Per-webhook circuit breaker snapshot, returned by
+ *  `GET /api/cp/webhooks/[id]/circuit-breaker`. Timestamps are millis
+ *  since epoch (Date.now()) on the upstream — not ISO strings. */
 export interface WebhookCircuitBreaker {
-  webhookId: string;
   state: CircuitBreakerState;
-  failureCount: number;
-  openedAt: string | null;
-  halfOpenAt: string | null;
-  lastError: string | null;
-  threshold?: number;
-  cooldownMs?: number;
+  failures: number;
+  consecutiveSuccesses: number;
+  openedAt: number | null;
+  nextProbeAt: number | null;
 }
 
+/** The webhook list endpoint does NOT embed the circuit breaker — it
+ *  has to be fetched per-id. */
 export interface Webhook {
   id: string;
   url: string;
@@ -96,7 +98,6 @@ export interface Webhook {
   active: boolean;
   createdAt: string;
   updatedAt: string;
-  circuitBreaker?: WebhookCircuitBreaker;
 }
 
 export interface ManifestEnvelope {
@@ -121,10 +122,12 @@ export interface RevocationList {
   signedBy?: string;
 }
 
+/** `/api/readyz` returns just { ready } on success, or
+ *  { ready: false, reason } / { ready: false, error } on failure. */
 export interface CpReadyz {
   ready: boolean;
-  draining: boolean;
-  checks: Record<string, 'ok' | 'fail'>;
+  reason?: string;
+  error?: string;
 }
 
 export interface EnrollmentToken {
@@ -148,53 +151,58 @@ export interface Tct {
   payload?: Record<string, unknown>;
 }
 
+/** Backend uses delegator/delegatee/scope, not subject/audience/grants.
+ *  `scope` is always an array of capability strings. */
 export interface Delegation {
   jti: string;
   parentJti: string | null;
-  subject: string;
-  audience: string;
-  capability?: string;
-  grants?: string[];
+  delegator: string;
+  delegatee: string;
+  scope: string[];
   issuedAt: string;
-  expiresAt: string;
+  expiresAt: string | null;
   revoked: boolean;
+  revokedAt?: string | null;
   revokedReason?: string | null;
 }
 
 export interface DelegationNode extends Delegation {
   children?: DelegationNode[];
   depth?: number;
+  /** True when parentJti points to a row not present in the result
+   *  window (e.g. older than the query's time horizon). */
+  orphan?: boolean;
+  /** True when a cycle was detected while walking the chain. */
+  cycle?: boolean;
 }
 
 export interface TrustAnchor {
   id: string;
   namespace: string;
   issuerUrl: string;
-  displayName?: string | null;
-  jwksUri?: string | null;
-  jwksCachedAt?: string | null;
+  label: string | null;
+  jwksUrl: string | null;
+  jwksCachedAt: string | null;
+  addedBy?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
+/** Composite key is (namespace, aid) — no `id`. */
 export interface PinnedKey {
-  id: string;
   namespace: string;
   aid: string;
-  spkiFingerprint: string;
-  algorithm?: string;
-  publicKeyPem?: string;
-  notBefore?: string | null;
-  notAfter?: string | null;
+  /** 43-char base64url Ed25519 public key. */
+  pubkey: string;
+  label: string | null;
+  expiresAt: string | null;
+  addedBy?: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
-export interface RevocationEntry {
-  jti: string;
-  revokedAt: string;
-  reason?: string;
-  cascadedFrom?: string | null;
-}
+/** The CP `/api/revocation/entries` route is POST-only; the list is
+ *  served by `/.well-known/aitp-revocation-list` via `RevocationList`. */
 
 export type CpEventType =
   | 'agent.registered'

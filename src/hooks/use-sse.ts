@@ -44,6 +44,7 @@ export function useSse<T>({
     }
 
     let active = true;
+    const probeController = new AbortController();
 
     function openEventSource() {
       if (!active) return;
@@ -99,6 +100,7 @@ export function useSse<T>({
           method: 'GET',
           headers: { Accept: 'text/event-stream' },
           cache: 'no-store',
+          signal: probeController.signal,
         });
         try {
           await res.body?.cancel();
@@ -138,6 +140,9 @@ export function useSse<T>({
 
     return () => {
       active = false;
+      try {
+        probeController.abort();
+      } catch {}
       if (timerRef.current) clearTimeout(timerRef.current);
       try {
         esRef.current?.close();

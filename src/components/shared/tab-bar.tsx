@@ -9,7 +9,9 @@ export interface Tab<T extends string = string> {
 }
 
 interface Props<T extends string> {
-  tabs: Tab<T>[];
+  /** `id` must match the generic `T`, so a drift between the tabs
+   *  array and `current` is a type error at the consumer. */
+  tabs: ReadonlyArray<Tab<T>>;
   current: T;
   onChange: (id: T) => void;
 }

@@ -3,10 +3,16 @@
 import { Card } from '@/components/shared/card';
 import { EmptyState } from '@/components/shared/empty-state';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
-import { StatusBadge } from '@/components/shared/status-badge';
 import { useRunDeliveries } from '@/hooks/use-run-extras';
 import { C } from '@/lib/colors';
-import { shortId } from '@/lib/utils';
+
+function asString(v: unknown): string | null {
+  return typeof v === 'string' ? v : null;
+}
+
+function asNumber(v: unknown): number | null {
+  return typeof v === 'number' ? v : null;
+}
 
 export function RunDeliveries({ runId }: { runId: string }) {
   const { data, isLoading, error } = useRunDeliveries(runId);
@@ -17,18 +23,22 @@ export function RunDeliveries({ runId }: { runId: string }) {
       <Card style={{ padding: 20 }}>
         <EmptyState
           title="Deliveries unavailable"
-          description="The playground couldn't fetch webhook deliveries for this run."
+          description="The playground couldn't fetch CP webhook deliveries for this run."
         />
       </Card>
     );
   }
+
   const deliveries = data?.deliveries ?? [];
-  if (deliveries.length === 0) {
+  const subscribed = data?.subscribed === true;
+  const webhookUrl = asString(data?.webhook?.url);
+
+  if (!subscribed && deliveries.length === 0) {
     return (
       <Card style={{ padding: 20 }}>
         <EmptyState
-          title="No webhook deliveries"
-          description="No CP webhook deliveries were triggered by this run."
+          title="No CP webhook subscription"
+          description="This run is not subscribed to CP webhook deliveries."
         />
       </Card>
     );
@@ -43,85 +53,112 @@ export function RunDeliveries({ runId }: { runId: string }) {
           fontSize: 13,
           fontWeight: 600,
           color: C.text,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
         }}
       >
-        Webhook deliveries · {deliveries.length}
+        <span>CP deliveries · {deliveries.length}</span>
+        {webhookUrl && (
+          <span
+            className="mono"
+            style={{
+              fontSize: 11,
+              color: C.textDim,
+              marginLeft: 'auto',
+              maxWidth: 360,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+            title={webhookUrl}
+          >
+            → {webhookUrl}
+          </span>
+        )}
       </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-            {['Event', 'URL', 'Status', 'Attempts', 'Signature', 'Delivered'].map((h) => (
-              <th
-                key={h}
-                style={{
-                  padding: '8px 14px',
-                  fontSize: 10,
-                  color: C.textMuted,
-                  textAlign: 'left',
-                  fontWeight: 500,
-                }}
-              >
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {deliveries.map((d) => (
-            <tr key={d.id} style={{ borderBottom: `1px solid ${C.border}20` }}>
-              <td style={{ padding: '10px 14px' }}>
-                <span className="mono" style={{ fontSize: 11, color: C.amber }}>
-                  {d.eventType}
-                </span>
-              </td>
-              <td
-                style={{
-                  padding: '10px 14px',
-                  fontSize: 11,
-                  color: C.textDim,
-                  maxWidth: 360,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-                title={d.url}
-              >
-                {d.url}
-              </td>
-              <td style={{ padding: '10px 14px' }}>
-                <StatusBadge status={d.status} />
-                {d.responseStatus !== undefined && d.responseStatus !== null && (
-                  <span
-                    className="mono"
-                    style={{ fontSize: 10, color: C.textMuted, marginLeft: 6 }}
-                  >
-                    {d.responseStatus}
-                  </span>
-                )}
-              </td>
-              <td style={{ padding: '10px 14px', fontSize: 11, color: C.textDim }}>{d.attempts}</td>
-              <td style={{ padding: '10px 14px' }}>
-                {d.signature ? (
-                  <span className="mono" style={{ fontSize: 10, color: C.teal }} title={d.signature}>
-                    sha256={shortId(d.signature.replace(/^sha256=/, ''), 12)}
-                  </span>
-                ) : (
-                  <span style={{ fontSize: 10, color: C.textMuted }}>—</span>
-                )}
-              </td>
-              <td
-                style={{
-                  padding: '10px 14px',
-                  fontSize: 11,
-                  color: C.textDim,
-                }}
-              >
-                {d.deliveredAt ? new Date(d.deliveredAt).toLocaleTimeString() : '—'}
-              </td>
+      {deliveries.length === 0 ? (
+        <EmptyState
+          title="No deliveries yet"
+          description="CP fans audit events out via subscription; deliveries appear here as they arrive."
+        />
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+              {['When', 'Event type', 'JTI', 'Step', 'Detail'].map((h) => (
+                <th
+                  key={h}
+                  style={{
+                    padding: '8px 14px',
+                    fontSize: 10,
+                    color: C.textMuted,
+                    textAlign: 'left',
+                    fontWeight: 500,
+                  }}
+                >
+                  {h}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {deliveries.map((d, i) => {
+              const ts = asNumber(d.ts);
+              const eventType =
+                asString(d.event_type) ?? asString(d.type) ?? '—';
+              const jti = asString(d.jti);
+              const stepId = asString(d.step_id);
+              return (
+                <tr
+                  key={asString(d.id) ?? `${eventType}-${ts ?? i}`}
+                  style={{ borderBottom: `1px solid ${C.border}20` }}
+                >
+                  <td style={{ padding: '10px 14px' }}>
+                    <span className="mono" style={{ fontSize: 11, color: C.textMuted }}>
+                      {ts !== null ? `+${(ts / 1000).toFixed(1)}s` : '—'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '10px 14px' }}>
+                    <span className="mono" style={{ fontSize: 11, color: C.amber }}>
+                      {eventType}
+                    </span>
+                  </td>
+                  <td style={{ padding: '10px 14px' }}>
+                    {jti ? (
+                      <span className="mono" style={{ fontSize: 10, color: C.teal }} title={jti}>
+                        {jti.slice(0, 14)}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 10, color: C.textMuted }}>—</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '10px 14px', fontSize: 11, color: C.textDim }}>
+                    {stepId ?? '—'}
+                  </td>
+                  <td style={{ padding: '10px 14px' }}>
+                    <span
+                      className="mono"
+                      style={{
+                        fontSize: 10,
+                        color: C.textMuted,
+                        maxWidth: 360,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        display: 'inline-block',
+                      }}
+                      title={JSON.stringify(d)}
+                    >
+                      {JSON.stringify(d).slice(0, 60)}…
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
     </Card>
   );
 }

@@ -1,50 +1,59 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { Card } from '@/components/shared/card';
 import { EmptyState } from '@/components/shared/empty-state';
 import { LoadingSkeleton, InlineSpinner } from '@/components/shared/loading-skeleton';
 import { TimeAgo } from '@/components/shared/time-ago';
 import { AidCell } from '@/components/shared/aid-cell';
-import { useCreatePinnedKey, usePinnedKeys } from '@/hooks/use-trust';
+import { useCreatePinnedKey, useDeletePinnedKey, usePinnedKeys } from '@/hooks/use-trust';
 import { C } from '@/lib/colors';
 import { shortId } from '@/lib/utils';
+
+const ED25519_PUBKEY_B64URL = /^[A-Za-z0-9_-]{43}$/;
 
 export function PinnedKeysView() {
   const { data, isLoading, error } = usePinnedKeys();
   const create = useCreatePinnedKey();
+  const remove = useDeletePinnedKey();
   const [showForm, setShowForm] = useState(false);
   const [namespace, setNamespace] = useState('');
   const [aid, setAid] = useState('');
-  const [spki, setSpki] = useState('');
-  const [algorithm, setAlgorithm] = useState('');
-  const [pem, setPem] = useState('');
+  const [pubkey, setPubkey] = useState('');
+  const [label, setLabel] = useState('');
+  const [expiresAt, setExpiresAt] = useState('');
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    setValidationError(null);
+    if (!ED25519_PUBKEY_B64URL.test(pubkey)) {
+      setValidationError('pubkey must be a 43-char base64url Ed25519 public key');
+      return;
+    }
     create.mutate(
       {
-        namespace,
+        namespace: namespace || undefined,
         aid,
-        spkiFingerprint: spki,
-        algorithm: algorithm || undefined,
-        publicKeyPem: pem || undefined,
+        pubkey,
+        label: label || undefined,
+        expiresAt: expiresAt || undefined,
       },
       {
         onSuccess: () => {
           setNamespace('');
           setAid('');
-          setSpki('');
-          setAlgorithm('');
-          setPem('');
+          setPubkey('');
+          setLabel('');
+          setExpiresAt('');
           setShowForm(false);
         },
       },
     );
   }
 
-  const keys = data?.keys ?? [];
+  const keys = data?.pinnedKeys ?? [];
 
   return (
     <Card style={{ padding: 0 }}>
@@ -58,7 +67,7 @@ export function PinnedKeysView() {
         }}
       >
         <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
-          Pinned SPKI keys
+          Pinned Ed25519 keys
           <span className="mono" style={{ fontSize: 11, color: C.textMuted, marginLeft: 8 }}>
             {keys.length}
           </span>
@@ -99,7 +108,7 @@ export function PinnedKeysView() {
             <input
               value={namespace}
               onChange={(e) => setNamespace(e.target.value)}
-              required
+              placeholder="default"
               style={inputStyle}
             />
           </Field>
@@ -112,11 +121,11 @@ export function PinnedKeysView() {
               style={inputStyle}
             />
           </Field>
-          <Field label="Algorithm">
+          <Field label="Label">
             <input
-              value={algorithm}
-              onChange={(e) => setAlgorithm(e.target.value)}
-              placeholder="ed25519"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="optional"
               style={inputStyle}
             />
           </Field>
@@ -140,27 +149,42 @@ export function PinnedKeysView() {
             Pin
           </button>
           <div style={{ gridColumn: '1 / span 4' }}>
-            <Field label="SPKI fingerprint (sha256 hex)">
+            <Field label="Public key (43-char base64url Ed25519)">
               <input
-                value={spki}
-                onChange={(e) => setSpki(e.target.value)}
+                value={pubkey}
+                onChange={(e) => setPubkey(e.target.value)}
                 required
-                placeholder="a1b2c3..."
+                spellCheck={false}
+                placeholder="MCowBQYDK2VwAyEA…"
                 style={{ ...inputStyle, fontFamily: 'JetBrains Mono' }}
               />
             </Field>
           </div>
           <div style={{ gridColumn: '1 / span 4' }}>
-            <Field label="Public key PEM (optional)">
-              <textarea
-                value={pem}
-                onChange={(e) => setPem(e.target.value)}
-                rows={4}
-                spellCheck={false}
-                style={{ ...inputStyle, fontFamily: 'JetBrains Mono', resize: 'vertical' }}
+            <Field label="Expires at (optional ISO-8601)">
+              <input
+                value={expiresAt}
+                onChange={(e) => setExpiresAt(e.target.value)}
+                placeholder="2026-12-31T00:00:00Z"
+                style={inputStyle}
               />
             </Field>
           </div>
+          {(validationError || create.error) && (
+            <div
+              style={{
+                gridColumn: '1 / span 4',
+                background: C.red + '15',
+                border: `1px solid ${C.red}40`,
+                color: C.red,
+                padding: 8,
+                borderRadius: 4,
+                fontSize: 11,
+              }}
+            >
+              {validationError ?? String(create.error)}
+            </div>
+          )}
         </form>
       )}
 
@@ -173,13 +197,13 @@ export function PinnedKeysView() {
       ) : keys.length === 0 ? (
         <EmptyState
           title="No keys pinned"
-          description="Pinned keys lock specific SPKIs to AIDs, bypassing dynamic discovery."
+          description="Pinned keys lock specific Ed25519 public keys to AIDs, bypassing dynamic discovery."
         />
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-              {['Namespace', 'AID', 'Algorithm', 'SPKI', 'Pinned'].map((h) => (
+              {['Namespace', 'AID', 'Pubkey', 'Label', 'Expires', 'Pinned', ''].map((h) => (
                 <th
                   key={h}
                   style={{
@@ -197,7 +221,10 @@ export function PinnedKeysView() {
           </thead>
           <tbody>
             {keys.map((k) => (
-              <tr key={k.id} style={{ borderBottom: `1px solid ${C.border}20` }}>
+              <tr
+                key={`${k.namespace}:${k.aid}`}
+                style={{ borderBottom: `1px solid ${C.border}20` }}
+              >
                 <td style={{ padding: '10px 14px' }}>
                   <span className="mono" style={{ fontSize: 11, color: C.teal }}>
                     {k.namespace}
@@ -206,20 +233,45 @@ export function PinnedKeysView() {
                 <td style={{ padding: '10px 14px' }}>
                   <AidCell aid={k.aid} />
                 </td>
-                <td style={{ padding: '10px 14px', fontSize: 11, color: C.textDim }}>
-                  {k.algorithm ?? '—'}
-                </td>
                 <td style={{ padding: '10px 14px' }}>
                   <span
                     className="mono"
                     style={{ fontSize: 10, color: C.amber }}
-                    title={k.spkiFingerprint}
+                    title={k.pubkey}
                   >
-                    {shortId(k.spkiFingerprint, 20)}
+                    {shortId(k.pubkey, 16)}
                   </span>
                 </td>
                 <td style={{ padding: '10px 14px', fontSize: 11, color: C.textDim }}>
+                  {k.label ?? '—'}
+                </td>
+                <td style={{ padding: '10px 14px', fontSize: 11, color: C.textDim }}>
+                  {k.expiresAt ? <TimeAgo ts={k.expiresAt} /> : '—'}
+                </td>
+                <td style={{ padding: '10px 14px', fontSize: 11, color: C.textDim }}>
                   <TimeAgo ts={k.createdAt} />
+                </td>
+                <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                  <button
+                    onClick={() => {
+                      if (
+                        confirm(
+                          `Unpin ${k.aid} in namespace "${k.namespace}"?`,
+                        )
+                      ) {
+                        remove.mutate({ namespace: k.namespace, aid: k.aid });
+                      }
+                    }}
+                    title="Unpin"
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: C.textMuted,
+                    }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
                 </td>
               </tr>
             ))}

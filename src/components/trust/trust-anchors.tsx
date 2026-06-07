@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Card } from '@/components/shared/card';
 import { LoadingSkeleton, InlineSpinner } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -10,41 +10,74 @@ import {
   useCreateTrustAnchor,
   useDeleteTrustAnchor,
   useTrustAnchors,
+  useUpdateTrustAnchor,
 } from '@/hooks/use-trust';
 import { C } from '@/lib/colors';
+import type { TrustAnchor } from '@/lib/types/cp';
+
+type Mode = { kind: 'closed' } | { kind: 'create' } | { kind: 'edit'; id: string };
+
+function blank() {
+  return { namespace: '', issuerUrl: '', jwksUrl: '', label: '' };
+}
 
 export function TrustAnchorsView() {
   const { data, isLoading, error } = useTrustAnchors();
   const create = useCreateTrustAnchor();
+  const update = useUpdateTrustAnchor();
   const remove = useDeleteTrustAnchor();
-  const [showForm, setShowForm] = useState(false);
-  const [namespace, setNamespace] = useState('');
-  const [issuerUrl, setIssuerUrl] = useState('');
-  const [jwksUrl, setJwksUrl] = useState('');
-  const [label, setLabel] = useState('');
+  const [mode, setMode] = useState<Mode>({ kind: 'closed' });
+  const [form, setForm] = useState(blank);
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+
+  function startCreate() {
+    setForm(blank());
+    setMode({ kind: 'create' });
+  }
+  function startEdit(a: TrustAnchor) {
+    setForm({
+      namespace: a.namespace ?? '',
+      issuerUrl: a.issuerUrl,
+      jwksUrl: a.jwksUrl ?? '',
+      label: a.label ?? '',
+    });
+    setMode({ kind: 'edit', id: a.id });
+  }
+  function close() {
+    setMode({ kind: 'closed' });
+    setForm(blank());
+  }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (mode.kind === 'edit') {
+      update.mutate(
+        {
+          id: mode.id,
+          issuerUrl: form.issuerUrl || undefined,
+          jwksUrl: form.jwksUrl || null,
+          label: form.label || null,
+        },
+        { onSuccess: close },
+      );
+      return;
+    }
     create.mutate(
       {
-        namespace: namespace || undefined,
-        issuerUrl,
-        jwksUrl: jwksUrl || undefined,
-        label: label || undefined,
+        namespace: form.namespace || undefined,
+        issuerUrl: form.issuerUrl,
+        jwksUrl: form.jwksUrl || undefined,
+        label: form.label || undefined,
       },
-      {
-        onSuccess: () => {
-          setNamespace('');
-          setIssuerUrl('');
-          setJwksUrl('');
-          setLabel('');
-          setShowForm(false);
-        },
-      },
+      { onSuccess: close },
     );
   }
 
   const anchors = data?.trustAnchors ?? [];
+  const isEditing = mode.kind === 'edit';
+  const formOpen = mode.kind !== 'closed';
+  const pending = create.isPending || update.isPending;
+  const formError = create.error ?? update.error;
 
   return (
     <Card style={{ padding: 0 }}>
@@ -64,7 +97,7 @@ export function TrustAnchorsView() {
           </span>
         </div>
         <button
-          onClick={() => setShowForm((s) => !s)}
+          onClick={() => (formOpen ? close() : startCreate())}
           style={{
             background: C.teal,
             border: 'none',
@@ -78,11 +111,11 @@ export function TrustAnchorsView() {
             gap: 4,
           }}
         >
-          <Plus size={12} /> {showForm ? 'Cancel' : 'Add anchor'}
+          <Plus size={12} /> {formOpen ? 'Cancel' : 'Add anchor'}
         </button>
       </div>
 
-      {showForm && (
+      {formOpen && (
         <form
           onSubmit={submit}
           style={{
@@ -97,17 +130,19 @@ export function TrustAnchorsView() {
         >
           <Field label="Namespace">
             <input
-              value={namespace}
-              onChange={(e) => setNamespace(e.target.value)}
+              value={form.namespace}
+              onChange={(e) => setForm((f) => ({ ...f, namespace: e.target.value }))}
               placeholder="default"
-              style={inputStyle}
+              disabled={isEditing}
+              title={isEditing ? 'Namespace cannot be changed after creation.' : undefined}
+              style={{ ...inputStyle, opacity: isEditing ? 0.5 : 1 }}
             />
           </Field>
           <Field label="Issuer URL">
             <input
               type="url"
-              value={issuerUrl}
-              onChange={(e) => setIssuerUrl(e.target.value)}
+              value={form.issuerUrl}
+              onChange={(e) => setForm((f) => ({ ...f, issuerUrl: e.target.value }))}
               required
               placeholder="https://idp.example.com"
               style={inputStyle}
@@ -115,15 +150,15 @@ export function TrustAnchorsView() {
           </Field>
           <Field label="Label">
             <input
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
+              value={form.label}
+              onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
               placeholder="optional"
               style={inputStyle}
             />
           </Field>
           <button
             type="submit"
-            disabled={create.isPending}
+            disabled={pending}
             style={{
               background: C.teal,
               border: 'none',
@@ -137,21 +172,21 @@ export function TrustAnchorsView() {
               gap: 4,
             }}
           >
-            {create.isPending && <InlineSpinner color="#fff" />}
-            Add
+            {pending && <InlineSpinner color="#fff" />}
+            {isEditing ? 'Update' : 'Add'}
           </button>
           <div style={{ gridColumn: '1 / span 4' }}>
             <Field label="JWKS URL (optional — pins the JWKS endpoint)">
               <input
                 type="url"
-                value={jwksUrl}
-                onChange={(e) => setJwksUrl(e.target.value)}
+                value={form.jwksUrl}
+                onChange={(e) => setForm((f) => ({ ...f, jwksUrl: e.target.value }))}
                 placeholder="https://idp.example.com/.well-known/jwks.json"
                 style={inputStyle}
               />
             </Field>
           </div>
-          {create.error && (
+          {formError && (
             <div
               style={{
                 gridColumn: '1 / span 4',
@@ -163,7 +198,7 @@ export function TrustAnchorsView() {
                 fontSize: 11,
               }}
             >
-              {String(create.error)}
+              {String(formError)}
             </div>
           )}
         </form>
@@ -220,23 +255,55 @@ export function TrustAnchorsView() {
                 <td style={{ padding: '10px 14px', fontSize: 11, color: C.textDim }}>
                   <TimeAgo ts={a.createdAt} />
                 </td>
-                <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                  <button
-                    onClick={() => {
-                      if (confirm(`Delete trust anchor "${a.label ?? a.issuerUrl}"?`)) {
-                        remove.mutate(a.id);
-                      }
-                    }}
-                    title="Delete"
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      color: C.textMuted,
-                    }}
-                  >
-                    <Trash2 size={13} />
-                  </button>
+                <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  {confirmingDelete === a.id ? (
+                    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, color: C.red }}>Delete?</span>
+                      <button
+                        onClick={() => setConfirmingDelete(null)}
+                        aria-label="Cancel delete"
+                        style={iconButtonStyle}
+                      >
+                        <X size={13} />
+                      </button>
+                      <button
+                        onClick={() =>
+                          remove.mutate(a.id, { onSuccess: () => setConfirmingDelete(null) })
+                        }
+                        disabled={remove.isPending}
+                        style={{
+                          background: C.red,
+                          border: 'none',
+                          color: '#fff',
+                          fontSize: 11,
+                          padding: '3px 10px',
+                          borderRadius: 4,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Confirm
+                      </button>
+                    </span>
+                  ) : (
+                    <span style={{ display: 'inline-flex', gap: 4 }}>
+                      <button
+                        onClick={() => startEdit(a)}
+                        title="Edit"
+                        aria-label={`Edit trust anchor ${a.label ?? a.issuerUrl}`}
+                        style={iconButtonStyle}
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        onClick={() => setConfirmingDelete(a.id)}
+                        title="Delete"
+                        aria-label={`Delete trust anchor ${a.label ?? a.issuerUrl}`}
+                        style={iconButtonStyle}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </span>
+                  )}
                 </td>
               </tr>
             ))}
@@ -256,6 +323,17 @@ const inputStyle: React.CSSProperties = {
   color: C.text,
   fontSize: 12,
   outline: 'none',
+};
+
+const iconButtonStyle: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  cursor: 'pointer',
+  color: C.textMuted,
+  padding: 4,
+  borderRadius: 3,
+  display: 'inline-flex',
+  alignItems: 'center',
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

@@ -39,3 +39,16 @@ export function useSession(sessionId: string | null) {
     enabled: !!sessionId,
   });
 }
+
+/** Disabled by default; the consumer toggles `enabled` when the operator
+ *  triggers the replay action so the (potentially expensive) recompute
+ *  doesn't fire on page load. */
+export function useSessionReplay(sessionId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ['session-replay', sessionId],
+    queryFn: () =>
+      getJSON<unknown>(`/api/cp/sessions/${encodeURIComponent(sessionId!)}/replay`),
+    enabled: !!sessionId && enabled,
+    retry: false,
+  });
+}

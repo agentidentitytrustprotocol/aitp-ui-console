@@ -1,16 +1,16 @@
 'use client';
 
-import { ArrowLeft } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowLeft, Download, RotateCcw, X } from 'lucide-react';
 import Link from 'next/link';
 import { Card } from '@/components/shared/card';
-import { AidCell } from '@/components/shared/aid-cell';
 import { BoundaryBadge } from '@/components/shared/boundary-badge';
 import { CapabilityBadge } from '@/components/shared/capability-badge';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { EmptyState } from '@/components/shared/empty-state';
-import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
+import { LoadingSkeleton, InlineSpinner } from '@/components/shared/loading-skeleton';
 import { EventRow } from './event-row';
-import { useSession } from '@/hooks/use-sessions';
+import { useSession, useSessionReplay } from '@/hooks/use-sessions';
 import { C } from '@/lib/colors';
 import { shortId } from '@/lib/utils';
 
@@ -23,10 +23,22 @@ const HANDSHAKE_MESSAGES = [
 
 export function SessionTrace({ sessionId }: { sessionId: string }) {
   const { data, isLoading, error } = useSession(sessionId);
+  const [replayOpen, setReplayOpen] = useState(false);
+  const replay = useSessionReplay(sessionId, replayOpen);
+
+  const exportHref = `/api/cp/sessions/${encodeURIComponent(sessionId)}/export`;
 
   return (
     <div className="anim-in">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          marginBottom: 20,
+          flexWrap: 'wrap',
+        }}
+      >
         <Link
           href="/monitor"
           style={{
@@ -44,6 +56,27 @@ export function SessionTrace({ sessionId }: { sessionId: string }) {
         </span>
         {data?.session && <StatusBadge status={data.session.status} />}
         {data?.session && <BoundaryBadge boundary={data.session.boundary} />}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <button
+            onClick={() => setReplayOpen(true)}
+            disabled={replayOpen && replay.isFetching}
+            aria-label="Replay handshake"
+            title="Replay the handshake exchange"
+            style={headerButtonStyle}
+          >
+            {replayOpen && replay.isFetching ? <InlineSpinner /> : <RotateCcw size={12} />}
+            Replay
+          </button>
+          <a
+            href={exportHref}
+            download={`session-${shortId(sessionId, 12)}.json`}
+            aria-label="Download session bundle"
+            title="Download the full session bundle as JSON"
+            style={{ ...headerButtonStyle, textDecoration: 'none' }}
+          >
+            <Download size={12} /> Download
+          </a>
+        </div>
       </div>
 
       {isLoading ? (
@@ -123,6 +156,67 @@ export function SessionTrace({ sessionId }: { sessionId: string }) {
             )}
           </Card>
 
+          {replayOpen && (
+            <Card style={{ marginBottom: 16 }}>
+              <div
+                style={{
+                  padding: '14px 18px',
+                  borderBottom: `1px solid ${C.border}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: C.text,
+                }}
+              >
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <RotateCcw size={13} color={C.teal} /> Replay result
+                </span>
+                <button
+                  onClick={() => setReplayOpen(false)}
+                  aria-label="Close replay panel"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: C.textMuted,
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              <div style={{ padding: 16 }}>
+                {replay.isLoading || replay.isFetching ? (
+                  <LoadingSkeleton rows={4} />
+                ) : replay.error ? (
+                  <EmptyState
+                    title="Replay failed"
+                    description={String(replay.error)}
+                  />
+                ) : (
+                  <pre
+                    className="mono"
+                    style={{
+                      fontSize: 11,
+                      color: C.textDim,
+                      background: C.bg3,
+                      borderRadius: 6,
+                      padding: 12,
+                      margin: 0,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      maxHeight: 400,
+                      overflowY: 'auto',
+                    }}
+                  >
+                    {JSON.stringify(replay.data, null, 2)}
+                  </pre>
+                )}
+              </div>
+            </Card>
+          )}
+
           <Card>
             <div
               style={{
@@ -150,6 +244,19 @@ export function SessionTrace({ sessionId }: { sessionId: string }) {
     </div>
   );
 }
+
+const headerButtonStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  background: 'none',
+  border: `1px solid ${C.border}`,
+  borderRadius: 5,
+  padding: '4px 9px',
+  color: C.textDim,
+  fontSize: 11,
+  cursor: 'pointer',
+};
 
 function ActorColumn({ label, aid }: { label: string; aid: string | null }) {
   return (

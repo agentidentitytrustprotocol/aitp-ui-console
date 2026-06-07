@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { delJSON, getJSON, postJSON } from '@/lib/api/client';
+import { REFETCH } from '@/lib/query-options';
 import type {
   Delegation,
   PinnedKey,
@@ -36,7 +37,7 @@ export function useTcts(params?: { issuer?: string; subject?: string; capability
   return useQuery({
     queryKey: ['cp-tcts', qs],
     queryFn: () => getJSON<TctsResponse>(`/api/cp/tcts${qs}`),
-    refetchInterval: 30_000,
+    refetchInterval: REFETCH.slow,
   });
 }
 
@@ -44,7 +45,7 @@ export function useDelegations() {
   return useQuery({
     queryKey: ['cp-delegations'],
     queryFn: () => getJSON<DelegationsResponse>('/api/cp/delegations'),
-    refetchInterval: 30_000,
+    refetchInterval: REFETCH.slow,
   });
 }
 
@@ -138,7 +139,7 @@ export function useRevocationList() {
   return useQuery({
     queryKey: ['cp-revocation-list'],
     queryFn: () => getJSON<RevocationList>('/api/cp/well-known/aitp-revocation-list'),
-    refetchInterval: 60_000,
+    refetchInterval: REFETCH.veryslow,
   });
 }
 

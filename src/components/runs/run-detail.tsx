@@ -20,6 +20,7 @@ import { useRun } from '@/hooks/use-run';
 import { useRunEvents } from '@/hooks/use-run-events';
 import { postJSON } from '@/lib/api/client';
 import { C } from '@/lib/colors';
+import { REFETCH } from '@/lib/query-options';
 import type { RunEvent } from '@/lib/types/playground';
 
 const TERMINAL = new Set(['success', 'failed', 'cancelled', 'complete']);
@@ -28,7 +29,7 @@ type RunTab = 'timeline' | 'narrate' | 'cp-audit' | 'cp-sessions' | 'deliveries'
 
 export function RunDetail({ runId }: { runId: string }) {
   const qc = useQueryClient();
-  const run = useRun(runId, { refetchInterval: 5_000 });
+  const run = useRun(runId, { refetchInterval: REFETCH.realtime });
   const [tab, setTab] = useState<RunTab>('timeline');
 
   const active = run.data ? !TERMINAL.has(run.data.status) : true;

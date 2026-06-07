@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { getJSON } from '@/lib/api/client';
+import { REFETCH } from '@/lib/query-options';
 import type { Agent, ManifestEnvelope } from '@/lib/types/cp';
 
 interface AgentsResponse {
@@ -12,7 +13,7 @@ export function useRegistry() {
   return useQuery({
     queryKey: ['registry-agents'],
     queryFn: () => getJSON<AgentsResponse>('/api/cp/registry/agents'),
-    refetchInterval: 30_000,
+    refetchInterval: REFETCH.slow,
   });
 }
 

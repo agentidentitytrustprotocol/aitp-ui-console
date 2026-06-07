@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { C } from '@/lib/colors';
+import { REFETCH } from '@/lib/query-options';
 
 interface Props {
   label: string;
@@ -22,7 +23,7 @@ export function ConnectionStatus({ label, path, isHealthy, onClick }: Props) {
       } catch {}
       return { ok: res.ok, status: res.status, body };
     },
-    refetchInterval: 10_000,
+    refetchInterval: REFETCH.health,
     retry: false,
   });
 

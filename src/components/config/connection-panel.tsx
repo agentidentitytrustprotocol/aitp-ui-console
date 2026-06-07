@@ -6,6 +6,7 @@ import { Server, Terminal, Activity } from 'lucide-react';
 import { Card } from '@/components/shared/card';
 import { TimeAgo } from '@/components/shared/time-ago';
 import { C } from '@/lib/colors';
+import { REFETCH } from '@/lib/query-options';
 
 interface ServiceConfig {
   label: string;
@@ -59,7 +60,7 @@ function ServiceRow({ label, path, readyPath, icon: Icon, displayUrl }: ServiceC
       const res = await fetch(path, { cache: 'no-store' });
       return { ok: res.ok, status: res.status };
     },
-    refetchInterval: 10_000,
+    refetchInterval: REFETCH.health,
     retry: false,
   });
 
@@ -73,7 +74,7 @@ function ServiceRow({ label, path, readyPath, icon: Icon, displayUrl }: ServiceC
       } catch {}
       return { status: res.status, body };
     },
-    refetchInterval: 10_000,
+    refetchInterval: REFETCH.health,
     retry: false,
     enabled: !!readyPath,
   });

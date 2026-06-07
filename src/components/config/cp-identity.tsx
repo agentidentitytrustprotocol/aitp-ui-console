@@ -7,6 +7,7 @@ import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { getJSON } from '@/lib/api/client';
 import { C } from '@/lib/colors';
+import { REFETCH } from '@/lib/query-options';
 import type { ManifestEnvelope, RevocationList } from '@/lib/types/cp';
 
 function expiresIn(expiresAt: number | string | undefined): string {
@@ -24,13 +25,13 @@ export function CpIdentityCard() {
   const manifest = useQuery({
     queryKey: ['cp-manifest'],
     queryFn: () => getJSON<ManifestEnvelope>('/api/cp/well-known/aitp-manifest'),
-    refetchInterval: 60_000,
+    refetchInterval: REFETCH.veryslow,
   });
 
   const revocation = useQuery({
     queryKey: ['cp-revocation'],
     queryFn: () => getJSON<RevocationList>('/api/cp/well-known/aitp-revocation-list'),
-    refetchInterval: 60_000,
+    refetchInterval: REFETCH.veryslow,
   });
 
   return (

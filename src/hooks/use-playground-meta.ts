@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { getJSON } from '@/lib/api/client';
+import { REFETCH } from '@/lib/query-options';
 import type {
   PlaygroundAgentsResponse,
   PlaygroundCapabilities,
@@ -12,7 +13,7 @@ export function usePlaygroundCapabilities() {
   return useQuery({
     queryKey: ['playground-capabilities'],
     queryFn: () => getJSON<PlaygroundCapabilities>('/api/playground/capabilities'),
-    refetchInterval: 30_000,
+    refetchInterval: REFETCH.slow,
   });
 }
 
@@ -20,7 +21,7 @@ export function usePlaygroundAgents() {
   return useQuery({
     queryKey: ['playground-agents'],
     queryFn: () => getJSON<PlaygroundAgentsResponse>('/api/playground/agents'),
-    refetchInterval: 5_000,
+    refetchInterval: REFETCH.realtime,
   });
 }
 
@@ -31,7 +32,7 @@ export function usePlaygroundMetrics() {
       const res = await fetch('/api/playground/metrics', { cache: 'no-store' });
       return res.text();
     },
-    refetchInterval: 15_000,
+    refetchInterval: REFETCH.list,
   });
 }
 
@@ -42,7 +43,7 @@ export function useCpMetrics() {
       const res = await fetch('/api/cp/metrics', { cache: 'no-store' });
       return res.text();
     },
-    refetchInterval: 15_000,
+    refetchInterval: REFETCH.list,
   });
 }
 
@@ -50,7 +51,7 @@ export function useCpReadyz() {
   return useQuery({
     queryKey: ['cp-readyz'],
     queryFn: () => getJSON<CpReadyz>('/api/cp/readyz'),
-    refetchInterval: 10_000,
+    refetchInterval: REFETCH.health,
     retry: false,
   });
 }

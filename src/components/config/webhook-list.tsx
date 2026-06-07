@@ -11,6 +11,7 @@ import { useDeleteWebhook, useUpdateWebhook, useWebhooks } from '@/hooks/use-web
 import { useResetCircuitBreaker } from '@/hooks/use-circuit-breaker';
 import { getJSON } from '@/lib/api/client';
 import { C } from '@/lib/colors';
+import { REFETCH } from '@/lib/query-options';
 import type { CircuitBreakerState, WebhookCircuitBreaker } from '@/lib/types/cp';
 
 function breakerColor(state?: CircuitBreakerState): string {
@@ -44,7 +45,7 @@ function BreakerPill({ id }: { id: string }) {
         `/api/cp/webhooks/${encodeURIComponent(id)}/circuit-breaker`,
       ),
     enabled: open,
-    refetchInterval: open ? 5_000 : false,
+    refetchInterval: open ? REFETCH.realtime : false,
   });
   const state = q.data?.state;
   const color = breakerColor(state);

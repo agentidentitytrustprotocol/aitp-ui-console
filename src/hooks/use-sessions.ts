@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { getJSON } from '@/lib/api/client';
+import { REFETCH } from '@/lib/query-options';
 import type { AuditEvent, HandshakeSession } from '@/lib/types/cp';
 
 interface SessionsResponse {
@@ -26,7 +27,7 @@ export function useSessions(filters?: { status?: string; aid?: string; limit?: n
   return useQuery({
     queryKey: ['sessions', filters],
     queryFn: () => getJSON<SessionsResponse>(buildPath(filters)),
-    refetchInterval: 5_000,
+    refetchInterval: REFETCH.realtime,
   });
 }
 

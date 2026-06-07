@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { getJSON } from '@/lib/api/client';
+import { REFETCH } from '@/lib/query-options';
 import type { RunList, RunSummary } from '@/lib/types/playground';
 
 export function useRuns() {
@@ -11,7 +12,7 @@ export function useRuns() {
     refetchInterval: (q) => {
       const runs = q.state.data?.runs ?? [];
       const active = runs.some((r: RunSummary) => r.status === 'pending' || r.status === 'running');
-      return active ? 3_000 : 15_000;
+      return active ? REFETCH.runActive : REFETCH.list;
     },
   });
   return query;
@@ -21,7 +22,7 @@ export function useRunCount(): number {
   const { data } = useQuery({
     queryKey: ['runs'],
     queryFn: () => getJSON<RunList>('/api/playground/runs'),
-    refetchInterval: 10_000,
+    refetchInterval: REFETCH.health,
     enabled: typeof window !== 'undefined',
   });
   const runs = data?.runs ?? [];

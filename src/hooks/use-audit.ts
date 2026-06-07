@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { getJSON } from '@/lib/api/client';
+import { REFETCH } from '@/lib/query-options';
 import type { AuditEvent } from '@/lib/types/cp';
 
 interface AuditResponse {
@@ -28,6 +29,6 @@ export function useAudit(opts: UseAuditOptions = {}) {
   return useQuery({
     queryKey: ['cp-audit', qs],
     queryFn: () => getJSON<AuditResponse>(`/api/cp/audit${qs}`),
-    refetchInterval: 15_000,
+    refetchInterval: REFETCH.list,
   });
 }

@@ -109,8 +109,9 @@ export function RunInputForm({ schema, templates, agents, loading, onSubmit }: P
     <form onSubmit={submit}>
       {templates && templates.length > 0 && (
         <div style={{ marginBottom: 14 }}>
-          <Label>Template</Label>
+          <Label htmlFor="run-input-template">Template</Label>
           <select
+            id="run-input-template"
             value={templateId}
             onChange={(e) => {
               setTemplateId(e.target.value);
@@ -130,8 +131,13 @@ export function RunInputForm({ schema, templates, agents, loading, onSubmit }: P
 
       {variants.length > 0 && (
         <div style={{ marginBottom: 14 }}>
-          <Label>Variant</Label>
-          <select value={variantId} onChange={(e) => setVariantId(e.target.value)} style={baseInput}>
+          <Label htmlFor="run-input-variant">Variant</Label>
+          <select
+            id="run-input-variant"
+            value={variantId}
+            onChange={(e) => setVariantId(e.target.value)}
+            style={baseInput}
+          >
             <option value="">— pick a variant —</option>
             {variants.map((v) => (
               <option key={v.id} value={v.id}>
@@ -149,10 +155,12 @@ export function RunInputForm({ schema, templates, agents, loading, onSubmit }: P
       )}
 
       {Object.entries(props).map(([key, def]) => {
+        const fieldId = `run-input-${key}`;
         let control: React.ReactNode;
         if (def.enum && def.enum.length > 0) {
           control = (
             <select
+              id={fieldId}
               value={String(values[key] ?? '')}
               onChange={(e) => update(key, e.target.value)}
               style={baseInput}
@@ -167,6 +175,7 @@ export function RunInputForm({ schema, templates, agents, loading, onSubmit }: P
         } else if (def.type === 'boolean') {
           control = (
             <input
+              id={fieldId}
               type="checkbox"
               checked={Boolean(values[key])}
               onChange={(e) => update(key, e.target.checked)}
@@ -176,6 +185,7 @@ export function RunInputForm({ schema, templates, agents, loading, onSubmit }: P
         } else if (def.type === 'number' || def.type === 'integer') {
           control = (
             <input
+              id={fieldId}
               type="number"
               value={String(values[key] ?? '')}
               onChange={(e) =>
@@ -190,6 +200,7 @@ export function RunInputForm({ schema, templates, agents, loading, onSubmit }: P
         } else {
           control = (
             <input
+              id={fieldId}
               type="text"
               value={String(values[key] ?? '')}
               onChange={(e) => update(key, e.target.value)}
@@ -201,7 +212,7 @@ export function RunInputForm({ schema, templates, agents, loading, onSubmit }: P
 
         return (
           <div key={key} style={{ marginBottom: 14 }}>
-            <Label>{key} {required.has(key) ? '*' : ''}</Label>
+            <Label htmlFor={fieldId}>{key} {required.has(key) ? '*' : ''}</Label>
             {control}
             {def.description && (
               <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>{def.description}</div>
@@ -291,9 +302,10 @@ export function RunInputForm({ schema, templates, agents, loading, onSubmit }: P
   );
 }
 
-function Label({ children }: { children: React.ReactNode }) {
+function Label({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) {
   return (
     <label
+      htmlFor={htmlFor}
       style={{
         fontSize: 11,
         color: C.textDim,

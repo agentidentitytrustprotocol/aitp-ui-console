@@ -196,6 +196,7 @@ export function RevocationView() {
               {['JTI', 'Reason', 'Revoked at'].map((h) => (
                 <th
                   key={h}
+                  scope="col"
                   style={{
                     padding: '8px 14px',
                     fontSize: 10,
@@ -245,9 +246,11 @@ const inputStyle: React.CSSProperties = {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
-      <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 4 }}>{label}</div>
+    <label style={{ display: 'block' }}>
+      <span style={{ fontSize: 10, color: C.textMuted, marginBottom: 4, display: 'block' }}>
+        {label}
+      </span>
       {children}
-    </div>
+    </label>
   );
 }

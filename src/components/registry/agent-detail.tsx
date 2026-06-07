@@ -183,6 +183,7 @@ export function AgentDetail({ aid }: { aid: string }) {
                       {['Session', 'Peer', 'Role', 'Status', 'Grants', 'Boundary'].map((h) => (
                         <th
                           key={h}
+                          scope="col"
                           style={{
                             padding: '8px 14px',
                             fontSize: 10,

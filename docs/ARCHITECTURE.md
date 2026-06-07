@@ -194,10 +194,19 @@ walk every consumer.
 ## State that lives in the console
 
 Almost none. Some local component state (selected event in the monitor
-drawer, search filters in the registry, scroll-lock in the run timeline)
-but no global store. `zustand` is in `package.json` because the original
-plan called for it; it's currently unused. We can either delete it or
-let it ride for the first feature that needs cross-route state.
+drawer, scroll-lock in the run timeline) but no global store. Filter
+state on `/audit`, `/registry`, `/monitor`, and the run-detail tabs is
+synced to the URL with `useUrlState` from `src/hooks/use-url-state.ts`
+so views are shareable and survive reload. No `zustand` — if cross-route
+state ever needs persistence we'll add it back deliberately for the
+specific feature that needs it.
+
+## Refetch cadences
+
+TanStack Query hooks reference named buckets in
+`src/lib/query-options.ts` (`REFETCH.health/slow/list/realtime/runActive/
+veryslow`) rather than per-hook millisecond literals. One file controls
+how aggressively the console hits each upstream.
 
 ## Things that intentionally aren't here
 

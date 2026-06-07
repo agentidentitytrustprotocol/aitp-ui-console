@@ -18,7 +18,7 @@ const PACK_BOUNDARY: Record<string, string> = {
 
 export default function ScenariosPage() {
   const { data, isLoading, error } = useScenarios();
-  const scenarios = data?.scenarios ?? [];
+  const scenarios = useMemo(() => data?.scenarios ?? [], [data?.scenarios]);
 
   const packs = useMemo(
     () => Array.from(new Set(scenarios.map((s) => s.metadata.pack))).sort(),

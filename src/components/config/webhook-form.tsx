@@ -66,6 +66,7 @@ export function WebhookForm({ onClose, onCreated }: { onClose: () => void; onCre
           <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>New webhook</div>
           <button
             onClick={onClose}
+            aria-label="Close webhook form"
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted }}
           >
             <X size={16} />

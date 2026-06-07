@@ -43,6 +43,7 @@ export function ProcessList() {
               {['Agent', 'Run', 'AID', 'Port', 'PID', 'Status', 'Exit'].map((h) => (
                 <th
                   key={h}
+                  scope="col"
                   style={{
                     padding: '6px 10px',
                     fontSize: 10,

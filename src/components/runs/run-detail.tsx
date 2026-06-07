@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, X } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -18,6 +18,7 @@ import { RunCpSessions } from './run-cp-sessions';
 import { RunDeliveries } from './run-deliveries';
 import { useRun } from '@/hooks/use-run';
 import { useRunEvents } from '@/hooks/use-run-events';
+import { useUrlEnum } from '@/hooks/use-url-state';
 import { postJSON } from '@/lib/api/client';
 import { C } from '@/lib/colors';
 import { REFETCH } from '@/lib/query-options';
@@ -26,11 +27,12 @@ import type { RunEvent } from '@/lib/types/playground';
 const TERMINAL = new Set(['success', 'failed', 'cancelled', 'complete']);
 
 type RunTab = 'timeline' | 'narrate' | 'cp-audit' | 'cp-sessions' | 'deliveries';
+const RUN_TABS = ['timeline', 'narrate', 'cp-audit', 'cp-sessions', 'deliveries'] as const;
 
 export function RunDetail({ runId }: { runId: string }) {
   const qc = useQueryClient();
   const run = useRun(runId, { refetchInterval: REFETCH.realtime });
-  const [tab, setTab] = useState<RunTab>('timeline');
+  const [tab, setTab] = useUrlEnum<RunTab>('tab', RUN_TABS, 'timeline');
 
   const active = run.data ? !TERMINAL.has(run.data.status) : true;
   const live = useRunEvents(active ? runId : null);

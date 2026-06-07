@@ -19,43 +19,65 @@ interface TreeBuild {
 
 /** Build the delegation tree from a flat list.
  *
- *  Two safety properties beyond the obvious parent-child wiring:
+ *  Three safety properties beyond the obvious parent-child wiring:
  *  - Orphans: rows whose `parentJti` points to a row not in the
  *    result window are bucketed separately rather than silently
  *    promoted to roots.
- *  - Cycle guard: each child is attached at most once via a visited
- *    set, so a malformed dataset can't cause infinite recursion. */
-function buildTree(rows: Delegation[]): TreeBuild {
+ *  - Cycle detection: before attaching `node` under `parent`, we walk
+ *    up the existing `parentJti` chain from `parent`. If we encounter
+ *    `node.jti` along the way (or self-parenting), attaching would
+ *    form a cycle. The node is marked and bucketed with orphans rather
+ *    than wired in — otherwise rendering would infinite-recurse.
+ *  - Each child is attached at most once. */
+export function buildTree(rows: Delegation[]): TreeBuild {
   const byJti = new Map<string, DelegationNode>();
   for (const d of rows) byJti.set(d.jti, { ...d, children: [] });
 
-  const visited = new Set<string>();
   const roots: DelegationNode[] = [];
   const orphans: DelegationNode[] = [];
 
   for (const node of byJti.values()) {
-    if (visited.has(node.jti)) {
-      node.cycle = true;
-      continue;
-    }
     if (!node.parentJti) {
       roots.push(node);
-      visited.add(node.jti);
+      continue;
+    }
+    if (node.parentJti === node.jti) {
+      node.cycle = true;
+      orphans.push(node);
       continue;
     }
     const parent = byJti.get(node.parentJti);
     if (!parent) {
       node.orphan = true;
       orphans.push(node);
-      visited.add(node.jti);
       continue;
     }
-    if (visited.has(node.jti)) continue;
+    if (formsCycle(parent, node.jti, byJti)) {
+      node.cycle = true;
+      orphans.push(node);
+      continue;
+    }
     parent.children!.push(node);
-    visited.add(node.jti);
   }
 
   return { roots, orphans };
+}
+
+function formsCycle(
+  ancestor: DelegationNode,
+  target: string,
+  byJti: Map<string, DelegationNode>,
+): boolean {
+  let cur: DelegationNode | undefined = ancestor;
+  const seen = new Set<string>();
+  while (cur) {
+    if (cur.jti === target) return true;
+    if (seen.has(cur.jti)) return true;
+    seen.add(cur.jti);
+    if (!cur.parentJti) return false;
+    cur = byJti.get(cur.parentJti);
+  }
+  return false;
 }
 
 export function DelegationTree() {
@@ -112,7 +134,7 @@ export function DelegationTree() {
                 textTransform: 'uppercase',
               }}
             >
-              Orphaned · {orphans.length} (parent outside result window)
+              Orphaned · {orphans.length} (parent outside result window or cycle)
             </div>
             {orphans.map((o) => (
               <TreeNode
@@ -155,6 +177,21 @@ export function DelegationTree() {
                     }}
                   >
                     not in result window
+                  </span>
+                )}
+                {selected.cycle && (
+                  <span
+                    className="mono"
+                    style={{
+                      fontSize: 9,
+                      color: C.amber,
+                      background: C.amber + '15',
+                      padding: '1px 5px',
+                      borderRadius: 3,
+                      marginLeft: 6,
+                    }}
+                  >
+                    cycle detected
                   </span>
                 )}
               </Detail>
@@ -325,6 +362,22 @@ function TreeNode({
             orphan
           </span>
         )}
+        {node.cycle && (
+          <span
+            className="mono"
+            style={{
+              fontSize: 9,
+              color: C.amber,
+              background: C.amber + '15',
+              padding: '0 5px',
+              borderRadius: 3,
+              marginLeft: node.orphan ? 6 : 'auto',
+            }}
+            title="Parent chain cycles back to this jti — not attached as a child."
+          >
+            cycle
+          </span>
+        )}
         {node.revoked && (
           <span
             className="mono"
@@ -334,7 +387,7 @@ function TreeNode({
               background: C.red + '20',
               padding: '0 5px',
               borderRadius: 3,
-              marginLeft: node.orphan ? 6 : 'auto',
+              marginLeft: node.orphan || node.cycle ? 6 : 'auto',
             }}
           >
             revoked

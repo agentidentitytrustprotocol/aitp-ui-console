@@ -130,8 +130,18 @@ export function useSse<T>({
         try {
           esRef.current?.close();
         } catch {}
+        if (timerRef.current) {
+          clearTimeout(timerRef.current);
+          timerRef.current = null;
+        }
         setState('closed');
       } else {
+        // A reconnect timer may already be pending from a prior failure;
+        // clear it so we don't stack timers across visibility cycles.
+        if (timerRef.current) {
+          clearTimeout(timerRef.current);
+          timerRef.current = null;
+        }
         reconnectDelay.current = 1_000;
         connect();
       }

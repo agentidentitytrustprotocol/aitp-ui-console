@@ -36,9 +36,10 @@ describe('proxyGet', () => {
     expect(await res.json()).toEqual({ ok: true });
   });
 
-  it('returns a structured 502 when upstream throws', async () => {
+  it('returns a structured 502 with a sanitized error when upstream throws', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     global.fetch = (async () => {
-      throw new TypeError('fetch failed');
+      throw new TypeError('fetch failed: ECONNREFUSED 127.0.0.1:9999');
     }) as unknown as typeof fetch;
 
     const req = asNextReq('http://localhost:3001/api/cp/health');
@@ -46,9 +47,15 @@ describe('proxyGet', () => {
 
     expect(res.status).toBe(502);
     const body = await res.json();
-    expect(body.upstream_status).toBe(502);
-    expect(body.target).toContain('http://localhost:4000/api/health');
-    expect(String(body.error)).toMatch(/fetch failed/);
+    expect(body).toEqual({
+      error: 'Upstream unreachable',
+      target: 'http://localhost:4000/api/health',
+      upstream_status: 502,
+    });
+    // Raw error detail must stay server-side (logged) — never in the body.
+    expect(String(body.error)).not.toMatch(/ECONNREFUSED/);
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 
   it('adds Authorization header when a key is configured', async () => {

@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { C, eventColor } from '@/lib/colors';
 import type { CpEvent } from '@/lib/types/cp';
@@ -8,10 +9,11 @@ import { shortId } from '@/lib/utils';
 interface Props {
   event: CpEvent;
   selected?: boolean;
-  onClick?: () => void;
+  onSelect?: (event: CpEvent) => void;
 }
 
-export function EventRow({ event, selected, onClick }: Props) {
+function EventRowImpl({ event, selected, onSelect }: Props) {
+  const onClick = onSelect ? () => onSelect(event) : undefined;
   const color = eventColor(event.type);
   const ts = event.ts ? new Date(event.ts).toLocaleTimeString() : '—';
 
@@ -79,3 +81,5 @@ export function EventRow({ event, selected, onClick }: Props) {
     </div>
   );
 }
+
+export const EventRow = memo(EventRowImpl);

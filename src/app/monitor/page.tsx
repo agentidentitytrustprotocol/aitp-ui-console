@@ -1,17 +1,18 @@
 'use client';
 
-import { useState } from 'react';
 import { Radio } from 'lucide-react';
 import { SectionTitle } from '@/components/shared/card';
 import { TabBar } from '@/components/shared/tab-bar';
 import { EventTicker } from '@/components/monitor/event-ticker';
 import { DelegationTree } from '@/components/monitor/delegation-tree';
 import { TctList } from '@/components/monitor/tct-list';
+import { useUrlEnum } from '@/hooks/use-url-state';
 
 type MonitorTab = 'events' | 'delegations' | 'tcts';
+const MONITOR_TABS = ['events', 'delegations', 'tcts'] as const;
 
 export default function MonitorPage() {
-  const [tab, setTab] = useState<MonitorTab>('events');
+  const [tab, setTab] = useUrlEnum<MonitorTab>('tab', MONITOR_TABS, 'events');
   return (
     <div className="anim-in">
       <SectionTitle

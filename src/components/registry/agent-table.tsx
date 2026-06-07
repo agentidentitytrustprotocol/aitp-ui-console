@@ -13,6 +13,7 @@ import { TimeAgo } from '@/components/shared/time-ago';
 import { EmptyState } from '@/components/shared/empty-state';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { useRegistry } from '@/hooks/use-registry';
+import { useUrlEnum, useUrlState } from '@/hooks/use-url-state';
 import { C } from '@/lib/colors';
 import type { Agent } from '@/lib/types/cp';
 
@@ -25,8 +26,8 @@ interface AgentRow extends Agent {
 
 export function AgentTable() {
   const { data, isLoading, error } = useRegistry();
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<StatusFilter>('all');
+  const [search, setSearch] = useUrlState('q');
+  const [status, setStatus] = useUrlEnum<StatusFilter>('status', STATUS_FILTERS, 'all');
   const [showEnroll, setShowEnroll] = useState(false);
 
   const agents = (data?.agents ?? []) as AgentRow[];

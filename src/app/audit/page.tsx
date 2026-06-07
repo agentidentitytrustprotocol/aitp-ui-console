@@ -1,18 +1,20 @@
 'use client';
 
-import { useState } from 'react';
 import { ScrollText } from 'lucide-react';
 import { Card, SectionTitle } from '@/components/shared/card';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { AuditTable } from '@/components/audit/audit-table';
 import { useAudit } from '@/hooks/use-audit';
+import { useUrlInt, useUrlState } from '@/hooks/use-url-state';
 import { C } from '@/lib/colors';
 
+const LIMIT_OPTIONS = [50, 100, 250, 500] as const;
+
 export default function AuditPage() {
-  const [actor, setActor] = useState('');
-  const [action, setAction] = useState('');
-  const [limit, setLimit] = useState(100);
+  const [actor, setActor] = useUrlState('actor');
+  const [action, setAction] = useUrlState('action');
+  const [limit, setLimit] = useUrlInt('limit', 100, LIMIT_OPTIONS);
 
   const { data, isLoading, error } = useAudit({ actor, action, limit });
   const events = data?.events ?? [];
@@ -56,7 +58,7 @@ export default function AuditPage() {
               onChange={(e) => setLimit(Number(e.target.value))}
               style={inputStyle}
             >
-              {[50, 100, 250, 500].map((n) => (
+              {LIMIT_OPTIONS.map((n) => (
                 <option key={n} value={n}>
                   {n}
                 </option>

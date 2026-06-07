@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Search, X, Eye } from 'lucide-react';
 import { Card } from '@/components/shared/card';
 import { EventRow } from './event-row';
@@ -16,16 +16,19 @@ export function EventTicker() {
 
   const { events, connected, state } = useCpEvents({ maxBuffer: 200 });
 
-  const filtered = events.filter((e) => {
-    if (!filter) return true;
+  const filtered = useMemo(() => {
+    if (!filter) return events;
     const q = filter.toLowerCase();
-    return (
-      e.type.toLowerCase().includes(q) ||
-      e.aidA?.toLowerCase().includes(q) ||
-      e.aidB?.toLowerCase().includes(q) ||
-      e.sessionId?.toLowerCase().includes(q)
+    return events.filter(
+      (e) =>
+        e.type.toLowerCase().includes(q) ||
+        e.aidA?.toLowerCase().includes(q) ||
+        e.aidB?.toLowerCase().includes(q) ||
+        e.sessionId?.toLowerCase().includes(q),
     );
-  });
+  }, [events, filter]);
+
+  const handleSelect = useCallback((e: CpEvent) => setSelected(e), []);
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, height: '100%' }}>
@@ -97,7 +100,7 @@ export function EventTicker() {
                 key={`${e.id}-${e.ts}`}
                 event={e}
                 selected={selected?.id === e.id}
-                onClick={() => setSelected(e)}
+                onSelect={handleSelect}
               />
             ))
           )}

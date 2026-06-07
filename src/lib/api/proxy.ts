@@ -30,6 +30,14 @@ function makeError(status: number, message: string, target: string): Response {
   );
 }
 
+/** Logged server-side so admins can debug; the client envelope intentionally
+ *  carries only a fixed message + the request target. Raw error strings can
+ *  include hostnames, file paths, or TLS detail we don't want to ship to the
+ *  browser. */
+function logUpstreamError(method: string, target: string, err: unknown): void {
+  console.error(`[proxy] ${method} ${target} failed:`, err);
+}
+
 export async function proxyGet(
   service: Service,
   path: string,
@@ -51,7 +59,8 @@ export async function proxyGet(
       },
     });
   } catch (err) {
-    return makeError(502, `Upstream unreachable: ${String(err)}`, target);
+    logUpstreamError('GET', target, err);
+    return makeError(502, 'Upstream unreachable', target);
   }
 }
 
@@ -76,7 +85,8 @@ export async function proxyPost(
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    return makeError(502, `Upstream unreachable: ${String(err)}`, target);
+    logUpstreamError('POST', target, err);
+    return makeError(502, 'Upstream unreachable', target);
   }
 }
 
@@ -101,7 +111,8 @@ export async function proxyPut(
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    return makeError(502, `Upstream unreachable: ${String(err)}`, target);
+    logUpstreamError('PUT', target, err);
+    return makeError(502, 'Upstream unreachable', target);
   }
 }
 
@@ -126,7 +137,8 @@ export async function proxyPatch(
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    return makeError(502, `Upstream unreachable: ${String(err)}`, target);
+    logUpstreamError('PATCH', target, err);
+    return makeError(502, 'Upstream unreachable', target);
   }
 }
 
@@ -149,7 +161,8 @@ export async function proxyDelete(
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    return makeError(502, `Upstream unreachable: ${String(err)}`, target);
+    logUpstreamError('DELETE', target, err);
+    return makeError(502, 'Upstream unreachable', target);
   }
 }
 
@@ -177,6 +190,7 @@ export async function proxySse(
       },
     });
   } catch (err) {
-    return makeError(502, `Upstream unreachable: ${String(err)}`, target);
+    logUpstreamError('SSE', target, err);
+    return makeError(502, 'Upstream unreachable', target);
   }
 }

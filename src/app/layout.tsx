@@ -15,6 +15,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className="dark">
       <body>
+        <a href="#main" className="skip-link">
+          Skip to main content
+        </a>
         <Providers>
           <div
             style={{
@@ -28,7 +31,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <Sidebar />
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <Topbar />
-              <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>{children}</div>
+              <main id="main" style={{ flex: 1, overflow: 'auto', padding: 24 }}>
+                {children}
+              </main>
             </div>
           </div>
         </Providers>

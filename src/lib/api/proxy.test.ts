@@ -61,7 +61,6 @@ describe('proxyGet', () => {
   it('adds Authorization header when a key is configured', async () => {
     process.env.CP_API_KEY = 'super-secret';
     jest.resetModules();
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const proxy = require('./proxy') as typeof import('./proxy');
 
     const upstream = jest.fn(async () => new Response('{}', { status: 200 }));

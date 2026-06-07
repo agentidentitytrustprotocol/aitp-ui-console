@@ -64,12 +64,46 @@ because it doesn't touch the network.
 
 ```bash
 npm run typecheck        # strict tsc --noEmit
-npm run lint             # next lint
+npm run lint             # next lint (next/core-web-vitals ruleset)
 npm test                 # unit + component tests (~1s)
 npm run build            # production build (~30s)
+npm run analyze          # ANALYZE=true next build — opens bundle report
+npm run format           # prettier --write
+npm run format:check     # prettier --check (CI-friendly)
 ```
 
 For integration / LLM tests, see [`TESTING.md`](./TESTING.md).
+
+## Adding a new top-level route
+
+Walk through `/scenarios` if you want to read a worked example. The
+minimum recipe is six steps:
+
+1. **Backend proxy.** Drop a 4-line route handler under
+   `src/app/api/<service>/<path>/route.ts`. It just delegates to one of
+   the helpers in `src/lib/api/proxy.ts`. Add a row to
+   [`docs/PROXIES.md`](./PROXIES.md) at the same time.
+2. **Types.** If the upstream returns a new shape, model it in
+   `src/lib/types/{playground,cp}.ts`. Hooks return those types
+   directly — no mapping layer.
+3. **Hook.** Create `src/hooks/use-<resource>.ts`. Use TanStack Query
+   for REST, `useSse` for SSE. Pick a refetch cadence from
+   `REFETCH` in `src/lib/query-options.ts` (do not introduce a raw
+   millisecond literal — extend `REFETCH` if no existing bucket fits).
+4. **Component.** Compose with the shared primitives in
+   `src/components/shared/` (`Card`, `EmptyState`, `LoadingSkeleton`,
+   `AidCell`, `TimeAgo`, badges). Render explicit empty / error /
+   loading states.
+5. **Page.** Thin wrapper in `src/app/<section>/page.tsx` that imports
+   the component. If filters or selection are operator-visible, sync
+   them to the URL with `useUrlState` / `useUrlEnum` from
+   `src/hooks/use-url-state.ts`.
+6. **Tests + nav + docs.** Colocate `<name>.test.tsx`. Add the route to
+   `src/components/layout/sidebar.tsx` if it's a top-level nav target.
+   Hit it from `src/test/proxies.integration.test.ts` so the contract
+   is exercised end-to-end. Update [`PROXIES.md`](./PROXIES.md) and the
+   Sections table in [`../README.md`](../README.md) if the route is
+   user-facing.
 
 ## Conventions
 

@@ -65,6 +65,7 @@ export function TctList() {
                 {['JTI', 'Issuer', 'Subject', 'Audience', 'Grants', 'Status', 'Expires'].map((h) => (
                   <th
                     key={h}
+                    scope="col"
                     style={{
                       padding: '8px 12px',
                       fontSize: 10,

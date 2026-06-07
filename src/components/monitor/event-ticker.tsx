@@ -123,6 +123,7 @@ export function EventTicker() {
               </span>
               <button
                 onClick={() => setSelected(null)}
+                aria-label="Close event detail"
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted }}
               >
                 <X size={14} />

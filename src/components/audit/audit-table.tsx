@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { Check, ChevronDown, Copy } from 'lucide-react';
 import { AidCell } from '@/components/shared/aid-cell';
 import { CapabilityBadge } from '@/components/shared/capability-badge';
 import { C, eventColor } from '@/lib/colors';
@@ -14,6 +14,17 @@ interface Props {
 
 export function AuditTable({ events }: Props) {
   const [open, setOpen] = useState<string | null>(null);
+  const [justCopied, setJustCopied] = useState<string | null>(null);
+
+  async function copyPayload(id: string, payload: unknown) {
+    try {
+      await navigator.clipboard?.writeText(JSON.stringify(payload, null, 2));
+      setJustCopied(id);
+      setTimeout(() => setJustCopied((prev) => (prev === id ? null : prev)), 1_500);
+    } catch {
+      // Older browsers / non-secure contexts — leave the row untouched.
+    }
+  }
 
   return (
     <div style={{ width: '100%', overflowX: 'auto' }}>
@@ -23,6 +34,7 @@ export function AuditTable({ events }: Props) {
             {['When', 'Type', 'Actors', 'Grants', 'Session / Run', ''].map((h) => (
               <th
                 key={h}
+                scope="col"
                 style={{
                   padding: '8px 14px',
                   fontSize: 10,
@@ -99,22 +111,58 @@ export function AuditTable({ events }: Props) {
                 {expanded && (
                   <tr>
                     <td colSpan={6} style={{ padding: '0 14px 14px' }}>
-                      <pre
-                        className="mono"
-                        style={{
-                          fontSize: 11,
-                          color: C.textDim,
-                          background: C.bg3,
-                          borderRadius: 6,
-                          padding: 12,
-                          overflowX: 'auto',
-                          margin: 0,
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-word',
-                        }}
-                      >
-                        {JSON.stringify(e.payload, null, 2)}
-                      </pre>
+                      <div style={{ position: 'relative' }}>
+                        <button
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            copyPayload(e.id, e.payload);
+                          }}
+                          aria-label="Copy payload as JSON"
+                          title="Copy payload as JSON"
+                          style={{
+                            position: 'absolute',
+                            top: 6,
+                            right: 6,
+                            background: C.bg2,
+                            border: `1px solid ${C.border}`,
+                            borderRadius: 4,
+                            padding: '3px 7px',
+                            cursor: 'pointer',
+                            color: justCopied === e.id ? C.green : C.textDim,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            fontSize: 10,
+                          }}
+                        >
+                          {justCopied === e.id ? (
+                            <>
+                              <Check size={11} /> copied
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={11} /> copy
+                            </>
+                          )}
+                        </button>
+                        <pre
+                          className="mono"
+                          style={{
+                            fontSize: 11,
+                            color: C.textDim,
+                            background: C.bg3,
+                            borderRadius: 6,
+                            padding: 12,
+                            paddingRight: 80,
+                            overflowX: 'auto',
+                            margin: 0,
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                          }}
+                        >
+                          {JSON.stringify(e.payload, null, 2)}
+                        </pre>
+                      </div>
                     </td>
                   </tr>
                 )}

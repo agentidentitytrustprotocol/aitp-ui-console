@@ -51,6 +51,7 @@ export function RunList() {
                 {['Run ID', 'Scenario', 'Status', 'Events', 'Started', ''].map((h) => (
                   <th
                     key={h}
+                    scope="col"
                     style={{
                       padding: '10px 16px',
                       textAlign: 'left',

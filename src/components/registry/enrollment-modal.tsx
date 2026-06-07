@@ -80,6 +80,7 @@ export function EnrollmentModal({ onClose }: { onClose: () => void }) {
           </div>
           <button
             onClick={onClose}
+            aria-label="Close enrollment modal"
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted }}
           >
             <X size={16} />

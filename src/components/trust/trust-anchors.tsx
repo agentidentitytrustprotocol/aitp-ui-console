@@ -222,6 +222,7 @@ export function TrustAnchorsView() {
               {['Namespace', 'Issuer', 'Label', 'JWKS cached', 'Added', ''].map((h) => (
                 <th
                   key={h}
+                  scope="col"
                   style={{
                     padding: '8px 14px',
                     fontSize: 10,
@@ -337,10 +338,14 @@ const iconButtonStyle: React.CSSProperties = {
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  // Wrapping the control in <label> associates the click target and the
+  // accessible name without us having to thread ids through every field.
   return (
-    <div>
-      <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 4 }}>{label}</div>
+    <label style={{ display: 'block' }}>
+      <span style={{ fontSize: 10, color: C.textMuted, marginBottom: 4, display: 'block' }}>
+        {label}
+      </span>
       {children}
-    </div>
+    </label>
   );
 }

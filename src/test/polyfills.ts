@@ -5,7 +5,6 @@
 // exists — jsdom sets up TextEncoder differently from Node so make sure both
 // flavours are present.
 if (typeof (globalThis as { TextEncoder?: unknown }).TextEncoder === 'undefined') {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const util = require('util');
   (globalThis as Record<string, unknown>).TextEncoder = util.TextEncoder;
   (globalThis as Record<string, unknown>).TextDecoder = util.TextDecoder;

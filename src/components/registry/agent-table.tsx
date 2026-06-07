@@ -147,6 +147,7 @@ export function AgentTable() {
                 {['AID', 'Name', 'Capabilities', 'Status', 'Boundary', 'Last seen'].map((h) => (
                   <th
                     key={h}
+                    scope="col"
                     style={{
                       padding: '10px 16px',
                       textAlign: 'left',

@@ -1,5 +1,9 @@
 'use client';
 
+// useSearchParams (via useUrlState) requires dynamic rendering; the page
+// is interactive client-side anyway, so this is the right default.
+export const dynamic = 'force-dynamic';
+
 import { Download, ScrollText } from 'lucide-react';
 import { Card, SectionTitle } from '@/components/shared/card';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';

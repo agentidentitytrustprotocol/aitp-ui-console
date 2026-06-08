@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, type RenderOptions, type RenderResult } from '@testing-library/react';
 import type { ReactElement, ReactNode } from 'react';
+import { ToastProvider } from '@/components/shared/toast';
 
 export function makeClient() {
   return new QueryClient({
@@ -12,7 +13,11 @@ export function makeClient() {
 }
 
 function Wrap({ children, client }: { children: ReactNode; client: QueryClient }) {
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={client}>
+      <ToastProvider>{children}</ToastProvider>
+    </QueryClientProvider>
+  );
 }
 
 export interface RenderWithClientResult extends RenderResult {

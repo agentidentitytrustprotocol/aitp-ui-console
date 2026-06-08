@@ -68,8 +68,11 @@ export function useSse<T>({
         try {
           const data = JSON.parse(evt.data as string) as T;
           onMessageRef.current(data);
-        } catch {
-          // ignore unparseable frames
+        } catch (err) {
+          // Surface so consumers can count drops or display a banner.
+          // Reason: silent drops looked like "missing events" bugs before.
+          console.warn('[sse] unparseable frame', { url, err });
+          onErrorRef.current?.(new Event('error'));
         }
       };
 
@@ -95,6 +98,7 @@ export function useSse<T>({
         return;
       }
 
+      const probeTimeout = setTimeout(() => probeController.abort(), 10_000);
       try {
         const res = await fetch(capacityProbePath, {
           method: 'GET',
@@ -102,6 +106,7 @@ export function useSse<T>({
           cache: 'no-store',
           signal: probeController.signal,
         });
+        clearTimeout(probeTimeout);
         try {
           await res.body?.cancel();
         } catch {}
@@ -118,7 +123,9 @@ export function useSse<T>({
           return;
         }
       } catch {
-        // Probe failed — try the EventSource anyway.
+        // Probe failed (network error or timeout) — try the EventSource
+        // anyway; EventSource has its own reconnect handling.
+        clearTimeout(probeTimeout);
       }
       openEventSource();
     }

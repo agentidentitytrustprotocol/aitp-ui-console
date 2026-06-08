@@ -15,11 +15,13 @@ import { ManifestViewer } from './manifest-viewer';
 import { useAgent } from '@/hooks/use-registry';
 import { useDeregisterAgent } from '@/hooks/use-enrollment';
 import { useSessions } from '@/hooks/use-sessions';
+import { useToast } from '@/components/shared/toast';
 import { C } from '@/lib/colors';
 import { shortId } from '@/lib/utils';
 
 export function AgentDetail({ aid }: { aid: string }) {
   const router = useRouter();
+  const toast = useToast();
   const { data: agent, isLoading, error } = useAgent(aid);
   const sessions = useSessions({ aid, limit: 10 });
   const deregister = useDeregisterAgent();
@@ -27,7 +29,11 @@ export function AgentDetail({ aid }: { aid: string }) {
   function handleDeregister() {
     if (!confirm(`Deregister ${aid}? Active sessions will not be affected.`)) return;
     deregister.mutate(aid, {
-      onSuccess: () => router.push('/registry'),
+      onSuccess: () => {
+        toast.success('Agent deregistered', aid);
+        router.push('/registry');
+      },
+      onError: (err) => toast.error('Failed to deregister agent', String(err)),
     });
   }
 

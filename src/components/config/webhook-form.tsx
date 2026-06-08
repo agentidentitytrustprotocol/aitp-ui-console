@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { X } from 'lucide-react';
-import { Card } from '@/components/shared/card';
 import { InlineSpinner } from '@/components/shared/loading-skeleton';
+import { Modal } from '@/components/shared/modal';
+import { useToast } from '@/components/shared/toast';
 import { C } from '@/lib/colors';
 import { useCreateWebhook } from '@/hooks/use-webhooks';
 
@@ -22,6 +22,7 @@ export function WebhookForm({ onClose, onCreated }: { onClose: () => void; onCre
   const [active, setActive] = useState(true);
 
   const create = useCreateWebhook();
+  const toast = useToast();
 
   function toggleEvent(t: string) {
     setEvents((prev) => (prev.includes(t) ? prev.filter((e) => e !== t) : [...prev, t]));
@@ -34,45 +35,18 @@ export function WebhookForm({ onClose, onCreated }: { onClose: () => void; onCre
       { url, events, active },
       {
         onSuccess: (w) => {
+          toast.success('Webhook created', url);
           if (w.secret) onCreated?.(w.secret);
           onClose();
         },
+        onError: (err) => toast.error('Failed to create webhook', String(err)),
       },
     );
   }
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: '#000c',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 100,
-        padding: 20,
-      }}
-      onClick={onClose}
-    >
-      <Card
-        style={{ padding: 20, maxWidth: 480, width: '100%' }}
-        onClick={() => undefined}
-      >
-        <div
-          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>New webhook</div>
-          <button
-            onClick={onClose}
-            aria-label="Close webhook form"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted }}
-          >
-            <X size={16} />
-          </button>
-        </div>
-        <form onSubmit={submit} onClick={(e) => e.stopPropagation()}>
+    <Modal open onClose={onClose} dismissable={!create.isPending} maxWidth={480} title="New webhook">
+        <form onSubmit={submit}>
           <label style={{ fontSize: 11, color: C.textDim, display: 'block', marginBottom: 6 }}>URL</label>
           <input
             type="url"
@@ -188,7 +162,6 @@ export function WebhookForm({ onClose, onCreated }: { onClose: () => void; onCre
             </button>
           </div>
         </form>
-      </Card>
-    </div>
+    </Modal>
   );
 }

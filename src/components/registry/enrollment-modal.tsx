@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Copy, KeyRound, X } from 'lucide-react';
-import { Card } from '@/components/shared/card';
+import { Copy, KeyRound } from 'lucide-react';
 import { InlineSpinner } from '@/components/shared/loading-skeleton';
+import { Modal } from '@/components/shared/modal';
+import { useToast } from '@/components/shared/toast';
 import { useCreateEnrollmentToken } from '@/hooks/use-enrollment';
 import { C } from '@/lib/colors';
 import type { EnrollmentToken } from '@/lib/types/cp';
 
 export function EnrollmentModal({ onClose }: { onClose: () => void }) {
+  const toast = useToast();
   const [json, setJson] = useState('');
   const [parseError, setParseError] = useState<string | null>(null);
   const create = useCreateEnrollmentToken();
@@ -42,7 +44,13 @@ export function EnrollmentModal({ onClose }: { onClose: () => void }) {
         signature: parsed.signature,
         proof_of_possession: parsed.proof_of_possession,
       },
-      { onSuccess: setIssued },
+      {
+        onSuccess: (token) => {
+          setIssued(token);
+          toast.success('Enrollment token minted', `expires in ${Math.floor((token.exp - Math.floor(Date.now() / 1000)) / 60)} min`);
+        },
+        onError: (err) => toast.error('Failed to mint token', String(err)),
+      },
     );
   }
 
@@ -51,44 +59,19 @@ export function EnrollmentModal({ onClose }: { onClose: () => void }) {
   const secs = remaining % 60;
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: '#000c',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 100,
-        padding: 20,
-      }}
-      onClick={onClose}
+    <Modal
+      open
+      onClose={onClose}
+      dismissable={!create.isPending}
+      title={
+        <>
+          <KeyRound size={15} color={C.teal} />
+          New enrollment token
+        </>
+      }
     >
-      <Card style={{ padding: 20, maxWidth: 560, width: '100%' }} onClick={() => undefined}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: 16,
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <KeyRound size={15} color={C.teal} />
-            <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>New enrollment token</div>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="Close enrollment modal"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted }}
-          >
-            <X size={16} />
-          </button>
-        </div>
-
         {!issued ? (
-          <form onSubmit={submit} onClick={(e) => e.stopPropagation()}>
+          <form onSubmit={submit}>
             <label style={{ fontSize: 11, color: C.textDim, display: 'block', marginBottom: 6 }}>
               Signed manifest envelope (JSON)
             </label>
@@ -172,7 +155,7 @@ export function EnrollmentModal({ onClose }: { onClose: () => void }) {
             </div>
           </form>
         ) : (
-          <div onClick={(e) => e.stopPropagation()}>
+          <div>
             <div
               style={{
                 padding: 14,
@@ -233,6 +216,7 @@ export function EnrollmentModal({ onClose }: { onClose: () => void }) {
                 <button
                   onClick={() => {
                     navigator.clipboard?.writeText(issued.token);
+                    toast.success('Token copied to clipboard');
                   }}
                   style={{
                     background: C.teal,
@@ -273,7 +257,6 @@ export function EnrollmentModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
         )}
-      </Card>
-    </div>
+    </Modal>
   );
 }

@@ -7,9 +7,11 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { LoadingSkeleton, InlineSpinner } from '@/components/shared/loading-skeleton';
 import { TimeAgo } from '@/components/shared/time-ago';
 import { useCreateRevocation, useRevocationList } from '@/hooks/use-trust';
+import { useToast } from '@/components/shared/toast';
 import { C } from '@/lib/colors';
 
 export function RevocationView() {
+  const toast = useToast();
   const { data, isLoading, error } = useRevocationList();
   const create = useCreateRevocation();
   const [jti, setJti] = useState('');
@@ -31,7 +33,11 @@ export function RevocationView() {
     create.mutate(
       { jti, reason: reason || undefined },
       {
-        onSuccess: reset,
+        onSuccess: () => {
+          toast.success('Revocation recorded', jti);
+          reset();
+        },
+        onError: (err) => toast.error('Revocation failed', String(err)),
       },
     );
   }

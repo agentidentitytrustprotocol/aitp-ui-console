@@ -64,8 +64,22 @@ export function EventTicker() {
               }}
             />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.textDim }}>
+          <div
+            role="status"
+            aria-live="polite"
+            aria-label={`event stream: ${
+              state === 'connected'
+                ? 'connected'
+                : state === 'at-capacity'
+                ? 'control plane at capacity'
+                : state === 'reconnecting'
+                ? 'reconnecting'
+                : 'disconnected'
+            }`}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.textDim }}
+          >
             <div
+              aria-hidden="true"
               style={{
                 width: 6,
                 height: 6,

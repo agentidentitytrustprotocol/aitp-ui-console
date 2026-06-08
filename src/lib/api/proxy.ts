@@ -3,6 +3,11 @@ import { serverConfig } from '../config';
 
 export type Service = 'playground' | 'cp';
 
+/** Default upstream timeout for non-SSE requests. Overridable per call;
+ *  upstreams should always return inside this window, otherwise the UI
+ *  would hang on dead/slow services. */
+const DEFAULT_TIMEOUT_MS = 30_000;
+
 function serviceBase(service: Service): string {
   return service === 'playground' ? serverConfig.playgroundUrl : serverConfig.cpUrl;
 }
@@ -12,6 +17,34 @@ function serviceHeaders(service: Service): Record<string, string> {
   const h: Record<string, string> = { 'Content-Type': 'application/json' };
   if (key) h['Authorization'] = `Bearer ${key}`;
   return h;
+}
+
+/** Combine the request's abort signal with a timeout signal so an idle
+ *  upstream can't pin a route handler forever. Returns the merged signal
+ *  plus a cleanup that clears the timeout when the fetch settles. */
+function withTimeout(req: NextRequest, ms = DEFAULT_TIMEOUT_MS): {
+  signal: AbortSignal;
+  cancel: () => void;
+  isTimeout: () => boolean;
+} {
+  const timeoutCtrl = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    timeoutCtrl.abort();
+  }, ms);
+  const signal =
+    typeof (AbortSignal as unknown as { any?: (s: AbortSignal[]) => AbortSignal }).any === 'function'
+      ? (AbortSignal as unknown as { any: (s: AbortSignal[]) => AbortSignal }).any([
+          req.signal,
+          timeoutCtrl.signal,
+        ])
+      : timeoutCtrl.signal;
+  return {
+    signal,
+    cancel: () => clearTimeout(timer),
+    isTimeout: () => timedOut,
+  };
 }
 
 function emptyBodyStatus(status: number): boolean {
@@ -38,6 +71,45 @@ function logUpstreamError(method: string, target: string, err: unknown): void {
   console.error(`[proxy] ${method} ${target} failed:`, err);
 }
 
+async function runProxy(
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  target: string,
+  service: Service,
+  req: NextRequest,
+  body?: string,
+): Promise<Response> {
+  const t = withTimeout(req);
+  try {
+    const init: RequestInit = {
+      method,
+      headers: serviceHeaders(service),
+      signal: t.signal,
+      cache: 'no-store',
+    };
+    if (body !== undefined) init.body = body;
+    const res = await fetch(target, init);
+    const data = await res.text();
+    return new Response(emptyBodyStatus(res.status) ? null : data, {
+      status: res.status,
+      headers: {
+        'Content-Type':
+          method === 'GET'
+            ? res.headers.get('Content-Type') ?? 'application/json'
+            : 'application/json',
+      },
+    });
+  } catch (err) {
+    if (t.isTimeout()) {
+      logUpstreamError(method, target, 'upstream timeout');
+      return makeError(504, 'Upstream timeout', target);
+    }
+    logUpstreamError(method, target, err);
+    return makeError(502, 'Upstream unreachable', target);
+  } finally {
+    t.cancel();
+  }
+}
+
 export async function proxyGet(
   service: Service,
   path: string,
@@ -45,23 +117,7 @@ export async function proxyGet(
 ): Promise<Response> {
   const url = new URL(req.url);
   const target = `${serviceBase(service)}${path}${url.search}`;
-  try {
-    const res = await fetch(target, {
-      headers: serviceHeaders(service),
-      signal: req.signal,
-      cache: 'no-store',
-    });
-    const data = await res.text();
-    return new Response(emptyBodyStatus(res.status) ? null : data, {
-      status: res.status,
-      headers: {
-        'Content-Type': res.headers.get('Content-Type') ?? 'application/json',
-      },
-    });
-  } catch (err) {
-    logUpstreamError('GET', target, err);
-    return makeError(502, 'Upstream unreachable', target);
-  }
+  return runProxy('GET', target, service, req);
 }
 
 export async function proxyPost(
@@ -71,23 +127,7 @@ export async function proxyPost(
 ): Promise<Response> {
   const body = await req.text();
   const target = `${serviceBase(service)}${path}`;
-  try {
-    const res = await fetch(target, {
-      method: 'POST',
-      headers: serviceHeaders(service),
-      body,
-      signal: req.signal,
-      cache: 'no-store',
-    });
-    const data = await res.text();
-    return new Response(emptyBodyStatus(res.status) ? null : data, {
-      status: res.status,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  } catch (err) {
-    logUpstreamError('POST', target, err);
-    return makeError(502, 'Upstream unreachable', target);
-  }
+  return runProxy('POST', target, service, req, body);
 }
 
 export async function proxyPut(
@@ -97,23 +137,7 @@ export async function proxyPut(
 ): Promise<Response> {
   const body = await req.text();
   const target = `${serviceBase(service)}${path}`;
-  try {
-    const res = await fetch(target, {
-      method: 'PUT',
-      headers: serviceHeaders(service),
-      body,
-      signal: req.signal,
-      cache: 'no-store',
-    });
-    const data = await res.text();
-    return new Response(emptyBodyStatus(res.status) ? null : data, {
-      status: res.status,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  } catch (err) {
-    logUpstreamError('PUT', target, err);
-    return makeError(502, 'Upstream unreachable', target);
-  }
+  return runProxy('PUT', target, service, req, body);
 }
 
 export async function proxyPatch(
@@ -123,23 +147,7 @@ export async function proxyPatch(
 ): Promise<Response> {
   const body = await req.text();
   const target = `${serviceBase(service)}${path}`;
-  try {
-    const res = await fetch(target, {
-      method: 'PATCH',
-      headers: serviceHeaders(service),
-      body,
-      signal: req.signal,
-      cache: 'no-store',
-    });
-    const data = await res.text();
-    return new Response(emptyBodyStatus(res.status) ? null : data, {
-      status: res.status,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  } catch (err) {
-    logUpstreamError('PATCH', target, err);
-    return makeError(502, 'Upstream unreachable', target);
-  }
+  return runProxy('PATCH', target, service, req, body);
 }
 
 export async function proxyDelete(
@@ -148,22 +156,7 @@ export async function proxyDelete(
   req: NextRequest,
 ): Promise<Response> {
   const target = `${serviceBase(service)}${path}`;
-  try {
-    const res = await fetch(target, {
-      method: 'DELETE',
-      headers: serviceHeaders(service),
-      signal: req.signal,
-      cache: 'no-store',
-    });
-    const data = await res.text();
-    return new Response(emptyBodyStatus(res.status) ? null : data, {
-      status: res.status,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  } catch (err) {
-    logUpstreamError('DELETE', target, err);
-    return makeError(502, 'Upstream unreachable', target);
-  }
+  return runProxy('DELETE', target, service, req);
 }
 
 /** SSE proxy — streams the upstream SSE response body to the browser. */

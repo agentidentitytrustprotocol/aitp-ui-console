@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
 import {
   Activity,
   AlertTriangle,
   CheckCircle,
   Cpu,
   LayoutDashboard,
+  RefreshCw,
   ShieldCheck,
   Webhook,
   Zap,
@@ -20,14 +20,25 @@ import { AgentActivity } from '@/components/dashboard/agent-activity';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { useDashboard } from '@/hooks/use-dashboard';
+import { useUrlEnum } from '@/hooks/use-url-state';
 import type { Range } from '@/lib/types/cp';
 import { C } from '@/lib/colors';
 
 const RANGES: Range[] = ['1h', '24h', '7d', '30d'];
 
+const REFRESH_OPTIONS = ['off', '10s', '30s', '1m'] as const;
+type RefreshKey = (typeof REFRESH_OPTIONS)[number];
+const REFRESH_MS: Record<RefreshKey, number | false> = {
+  off: false,
+  '10s': 10_000,
+  '30s': 30_000,
+  '1m': 60_000,
+};
+
 export default function DashboardPage() {
-  const [range, setRange] = useState<Range>('24h');
-  const { data, isLoading, error } = useDashboard(range);
+  const [range, setRange] = useUrlEnum<Range>('range', RANGES, '24h');
+  const [refresh, setRefresh] = useUrlEnum<RefreshKey>('refresh', REFRESH_OPTIONS, '30s');
+  const { data, isLoading, error, isFetching } = useDashboard(range, REFRESH_MS[refresh]);
 
   const kpis = data?.kpis;
   const successRate =
@@ -42,33 +53,91 @@ export default function DashboardPage() {
         title="Dashboard"
         sub="AITP ecosystem overview"
         right={
-          <div
-            style={{
-              display: 'flex',
-              gap: 2,
-              background: C.bg3,
-              padding: 3,
-              borderRadius: 6,
-              border: `1px solid ${C.border}`,
-            }}
-          >
-            {RANGES.map((r) => (
-              <button
-                key={r}
-                onClick={() => setRange(r)}
-                style={{
-                  padding: '4px 12px',
-                  borderRadius: 4,
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  background: range === r ? C.teal : 'transparent',
-                  color: range === r ? '#fff' : C.textDim,
-                }}
-              >
-                {r}
-              </button>
-            ))}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span
+              role="status"
+              aria-live="polite"
+              aria-label={
+                refresh === 'off'
+                  ? 'auto-refresh disabled'
+                  : `auto-refresh every ${refresh}${isFetching ? ', refreshing now' : ''}`
+              }
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                fontSize: 11,
+                color: C.textMuted,
+              }}
+            >
+              <RefreshCw
+                size={11}
+                className={isFetching && refresh !== 'off' ? 'spin' : ''}
+                aria-hidden="true"
+              />
+            </span>
+            <div
+              role="group"
+              aria-label="Auto-refresh interval"
+              style={{
+                display: 'flex',
+                gap: 2,
+                background: C.bg3,
+                padding: 3,
+                borderRadius: 6,
+                border: `1px solid ${C.border}`,
+              }}
+            >
+              {REFRESH_OPTIONS.map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setRefresh(r)}
+                  aria-pressed={refresh === r}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: 4,
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: 11,
+                    background: refresh === r ? C.teal : 'transparent',
+                    color: refresh === r ? '#fff' : C.textDim,
+                  }}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+            <div
+              role="group"
+              aria-label="Time range"
+              style={{
+                display: 'flex',
+                gap: 2,
+                background: C.bg3,
+                padding: 3,
+                borderRadius: 6,
+                border: `1px solid ${C.border}`,
+              }}
+            >
+              {RANGES.map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setRange(r)}
+                  aria-pressed={range === r}
+                  style={{
+                    padding: '4px 12px',
+                    borderRadius: 4,
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    background: range === r ? C.teal : 'transparent',
+                    color: range === r ? '#fff' : C.textDim,
+                  }}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
           </div>
         }
       />

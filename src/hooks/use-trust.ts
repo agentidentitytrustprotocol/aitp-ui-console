@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { delJSON, getJSON, postJSON } from '@/lib/api/client';
+import { delJSON, getJSON, patchJSON, postJSON } from '@/lib/api/client';
 import { REFETCH } from '@/lib/query-options';
 import type {
   Delegation,
@@ -63,17 +63,6 @@ export function useCreateTrustAnchor() {
       postJSON<TrustAnchor>('/api/cp/trust-anchors', input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cp-trust-anchors'] }),
   });
-}
-
-async function patchJSON<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(path, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    cache: 'no-store',
-  });
-  if (!res.ok) throw new Error(`PATCH ${path} failed: ${res.status}`);
-  return (await res.json()) as T;
 }
 
 export function useUpdateTrustAnchor() {

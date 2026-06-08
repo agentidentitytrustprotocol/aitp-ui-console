@@ -9,11 +9,11 @@ interface AgentMetricsResponse {
   agents: AgentMetrics[];
 }
 
-export function useDashboard(range: Range) {
+export function useDashboard(range: Range, refetchInterval: number | false = REFETCH.slow) {
   return useQuery({
     queryKey: ['dashboard', range],
     queryFn: () => getJSON<DashboardOverview>(`/api/cp/dashboard?range=${range}`),
-    refetchInterval: REFETCH.slow,
+    refetchInterval,
   });
 }
 

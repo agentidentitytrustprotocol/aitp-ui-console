@@ -1,15 +1,17 @@
 'use client';
 
-import { useState } from 'react';
-import { Activity, RefreshCw, Trash2 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { Activity, AlertTriangle, RefreshCw, Trash2 } from 'lucide-react';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/shared/card';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { WebhookForm } from './webhook-form';
 import { useDeleteWebhook, useUpdateWebhook, useWebhooks } from '@/hooks/use-webhooks';
+import { useSelection } from '@/hooks/use-selection';
 import { useResetCircuitBreaker } from '@/hooks/use-circuit-breaker';
 import { getJSON } from '@/lib/api/client';
+import { useToast } from '@/components/shared/toast';
 import { C } from '@/lib/colors';
 import { REFETCH } from '@/lib/query-options';
 import type { CircuitBreakerState, WebhookCircuitBreaker } from '@/lib/types/cp';
@@ -104,17 +106,141 @@ function BreakerPill({ id }: { id: string }) {
 }
 
 export function WebhookList() {
+  const toast = useToast();
   const { data, isLoading, error } = useWebhooks();
   const update = useUpdateWebhook();
   const remove = useDeleteWebhook();
+  const selection = useSelection<string>();
   const [showForm, setShowForm] = useState(false);
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const webhooks = data?.webhooks ?? [];
 
+  async function bulkApply(label: string, op: (id: string) => Promise<unknown>) {
+    const ids = selection.ids;
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    let ok = 0;
+    let fail = 0;
+    for (const id of ids) {
+      try {
+        await op(id);
+        ok += 1;
+      } catch {
+        fail += 1;
+      }
+    }
+    setBulkBusy(false);
+    selection.clear();
+    if (fail === 0) toast.success(`${label} ${ok} webhook${ok === 1 ? '' : 's'}`);
+    else toast.error(`${label} ${ok}, ${fail} failed`);
+  }
+
+  function bulkPause() {
+    return bulkApply('Paused', (id) => update.mutateAsync({ id, active: false }));
+  }
+  function bulkResume() {
+    return bulkApply('Resumed', (id) => update.mutateAsync({ id, active: true }));
+  }
+  function bulkDelete() {
+    if (
+      !confirm(
+        `Delete ${selection.size} webhook${selection.size === 1 ? '' : 's'}? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    return bulkApply('Deleted', (id) => remove.mutateAsync(id));
+  }
+
+  // Eagerly poll each breaker so we can surface a banner when any webhook
+  // is open / half-open. Cheap: N webhooks × one small GET every minute.
+  const breakerQueries = useQueries({
+    queries: webhooks.map((w) => ({
+      queryKey: ['cp-breaker', w.id],
+      queryFn: () =>
+        getJSON<WebhookCircuitBreaker>(
+          `/api/cp/webhooks/${encodeURIComponent(w.id)}/circuit-breaker`,
+        ),
+      refetchInterval: REFETCH.slow,
+      staleTime: 30_000,
+    })),
+  });
+  const trippedCount = useMemo(
+    () =>
+      breakerQueries.reduce(
+        (n, q) => (q.data && q.data.state !== 'closed' ? n + 1 : n),
+        0,
+      ),
+    [breakerQueries],
+  );
+
   return (
     <Card style={{ padding: 20 }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 16 }}>Webhooks</div>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 16,
+          gap: 8,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 600, color: C.text, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span>Webhooks</span>
+          {selection.size > 0 && (
+            <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontWeight: 400 }}>
+              <span style={{ fontSize: 11, color: C.textDim }}>{selection.size} selected</span>
+              <button onClick={bulkResume} disabled={bulkBusy} style={bulkBtn(C.green)}>
+                Resume
+              </button>
+              <button onClick={bulkPause} disabled={bulkBusy} style={bulkBtn(C.amber)}>
+                Pause
+              </button>
+              <button onClick={bulkDelete} disabled={bulkBusy} style={bulkBtn(C.red)}>
+                Delete
+              </button>
+              <button
+                onClick={() => selection.clear()}
+                style={{
+                  background: 'none',
+                  border: `1px solid ${C.border}`,
+                  color: C.textDim,
+                  fontSize: 11,
+                  padding: '4px 9px',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                }}
+              >
+                Clear
+              </button>
+            </span>
+          )}
+        </div>
+        {trippedCount > 0 && (
+          <div
+            role="alert"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: 11,
+              padding: '4px 10px',
+              borderRadius: 4,
+              background: C.red + '15',
+              border: `1px solid ${C.red}40`,
+              color: C.red,
+            }}
+          >
+            <AlertTriangle size={11} />
+            {trippedCount === 1
+              ? '1 webhook breaker tripped'
+              : `${trippedCount} webhook breakers tripped`}
+          </div>
+        )}
+      </div>
 
       {createdSecret && (
         <div
@@ -163,6 +289,28 @@ export function WebhookList() {
         <EmptyState title="No webhooks yet" description="Forward CP events to external services." />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {webhooks.length > 0 && (
+            <label
+              style={{
+                display: 'inline-flex',
+                gap: 6,
+                alignItems: 'center',
+                fontSize: 11,
+                color: C.textDim,
+                marginBottom: 2,
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="checkbox"
+                aria-label="Select all webhooks"
+                checked={webhooks.length > 0 && webhooks.every((w) => selection.has(w.id))}
+                onChange={() => selection.toggleAll(webhooks.map((w) => w.id))}
+                style={{ accentColor: C.teal }}
+              />
+              Select all
+            </label>
+          )}
           {webhooks.map((w) => (
             <div
               key={w.id}
@@ -176,6 +324,13 @@ export function WebhookList() {
                 gap: 12,
               }}
             >
+              <input
+                type="checkbox"
+                aria-label={`Select webhook ${w.url}`}
+                checked={selection.has(w.id)}
+                onChange={() => selection.toggle(w.id)}
+                style={{ accentColor: C.teal, flexShrink: 0 }}
+              />
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div
                   style={{
@@ -221,7 +376,19 @@ export function WebhookList() {
                 <input
                   type="checkbox"
                   checked={w.active}
-                  onChange={(e) => update.mutate({ id: w.id, active: e.target.checked })}
+                  onChange={(e) =>
+                    update.mutate(
+                      { id: w.id, active: e.target.checked },
+                      {
+                        onSuccess: () =>
+                          toast.success(
+                            e.target.checked ? 'Webhook resumed' : 'Webhook paused',
+                            w.url,
+                          ),
+                        onError: (err) => toast.error('Failed to update webhook', String(err)),
+                      },
+                    )
+                  }
                   style={{ accentColor: C.teal }}
                 />
                 <span style={{ color: w.active ? C.green : C.textMuted }}>
@@ -230,10 +397,15 @@ export function WebhookList() {
               </label>
               <button
                 onClick={() => {
-                  if (confirm(`Delete webhook for ${w.url}?`)) remove.mutate(w.id);
+                  if (!confirm(`Delete webhook for ${w.url}?`)) return;
+                  remove.mutate(w.id, {
+                    onSuccess: () => toast.success('Webhook deleted', w.url),
+                    onError: (err) => toast.error('Failed to delete webhook', String(err)),
+                  });
                 }}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted }}
                 title="Delete"
+                aria-label={`Delete webhook ${w.url}`}
               >
                 <Trash2 size={14} />
               </button>
@@ -267,4 +439,16 @@ export function WebhookList() {
       )}
     </Card>
   );
+}
+
+function bulkBtn(accent: string): React.CSSProperties {
+  return {
+    background: accent + '15',
+    border: `1px solid ${accent}40`,
+    color: accent,
+    fontSize: 11,
+    padding: '4px 9px',
+    borderRadius: 4,
+    cursor: 'pointer',
+  };
 }

@@ -46,8 +46,14 @@ export function RunTimeline({ events, active, connected }: Props) {
       >
         <span>Event timeline</span>
         {active && (
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.textDim }}>
+          <span
+            role="status"
+            aria-live="polite"
+            aria-label={`timeline stream: ${connected ? 'streaming' : 'reconnecting'}`}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.textDim }}
+          >
             <div
+              aria-hidden="true"
               style={{
                 width: 6,
                 height: 6,

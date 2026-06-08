@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowLeft, Download, RotateCcw, X } from 'lucide-react';
+import { ArrowLeft, Copy, Download, RotateCcw, X } from 'lucide-react';
 import Link from 'next/link';
 import { Card } from '@/components/shared/card';
 import { BoundaryBadge } from '@/components/shared/boundary-badge';
@@ -9,9 +9,11 @@ import { CapabilityBadge } from '@/components/shared/capability-badge';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { EmptyState } from '@/components/shared/empty-state';
 import { LoadingSkeleton, InlineSpinner } from '@/components/shared/loading-skeleton';
+import { useToast } from '@/components/shared/toast';
 import { EventRow } from './event-row';
 import { useSession, useSessionReplay } from '@/hooks/use-sessions';
 import { C } from '@/lib/colors';
+import { downloadText } from '@/lib/export';
 import { shortId } from '@/lib/utils';
 
 const HANDSHAKE_MESSAGES = [
@@ -22,11 +24,27 @@ const HANDSHAKE_MESSAGES = [
 ];
 
 export function SessionTrace({ sessionId }: { sessionId: string }) {
+  const toast = useToast();
   const { data, isLoading, error } = useSession(sessionId);
   const [replayOpen, setReplayOpen] = useState(false);
   const replay = useSessionReplay(sessionId, replayOpen);
 
   const exportHref = `/api/cp/sessions/${encodeURIComponent(sessionId)}/export`;
+
+  function copyReplay() {
+    if (!replay.data) return;
+    const text = JSON.stringify(replay.data, null, 2);
+    navigator.clipboard?.writeText(text).then(
+      () => toast.success('Replay JSON copied'),
+      () => toast.error('Clipboard unavailable', 'Try the Download button instead.'),
+    );
+  }
+
+  function downloadReplay() {
+    if (!replay.data) return;
+    const text = JSON.stringify(replay.data, null, 2);
+    downloadText(`session-${shortId(sessionId, 12)}-replay.json`, text, 'application/json');
+  }
 
   return (
     <div className="anim-in">
@@ -173,18 +191,38 @@ export function SessionTrace({ sessionId }: { sessionId: string }) {
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <RotateCcw size={13} color={C.teal} /> Replay result
                 </span>
-                <button
-                  onClick={() => setReplayOpen(false)}
-                  aria-label="Close replay panel"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: C.textMuted,
-                  }}
-                >
-                  <X size={14} />
-                </button>
+                <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                  <button
+                    onClick={copyReplay}
+                    disabled={!replay.data}
+                    aria-label="Copy replay JSON"
+                    title="Copy replay JSON to clipboard"
+                    style={headerButtonStyle}
+                  >
+                    <Copy size={11} /> Copy
+                  </button>
+                  <button
+                    onClick={downloadReplay}
+                    disabled={!replay.data}
+                    aria-label="Download replay JSON"
+                    title="Download replay JSON"
+                    style={headerButtonStyle}
+                  >
+                    <Download size={11} /> JSON
+                  </button>
+                  <button
+                    onClick={() => setReplayOpen(false)}
+                    aria-label="Close replay panel"
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: C.textMuted,
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                </span>
               </div>
               <div style={{ padding: 16 }}>
                 {replay.isLoading || replay.isFetching ? (

@@ -20,6 +20,8 @@ export function StatusBadge({ status }: { status: string | null | undefined }) {
 
   return (
     <span
+      role="status"
+      aria-label={`status: ${key}`}
       style={{
         fontSize: 11,
         color,
@@ -28,7 +30,11 @@ export function StatusBadge({ status }: { status: string | null | undefined }) {
         gap: 4,
       }}
     >
-      <span className={pulsing ? 'pulse' : ''} style={{ display: 'inline-block' }}>
+      <span
+        aria-hidden="true"
+        className={pulsing ? 'pulse' : ''}
+        style={{ display: 'inline-block' }}
+      >
         {icon}
       </span>
       {key}

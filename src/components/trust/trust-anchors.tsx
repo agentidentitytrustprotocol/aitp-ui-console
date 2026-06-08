@@ -12,6 +12,8 @@ import {
   useTrustAnchors,
   useUpdateTrustAnchor,
 } from '@/hooks/use-trust';
+import { useSelection } from '@/hooks/use-selection';
+import { useToast } from '@/components/shared/toast';
 import { C } from '@/lib/colors';
 import type { TrustAnchor } from '@/lib/types/cp';
 
@@ -22,13 +24,39 @@ function blank() {
 }
 
 export function TrustAnchorsView() {
+  const toast = useToast();
   const { data, isLoading, error } = useTrustAnchors();
   const create = useCreateTrustAnchor();
   const update = useUpdateTrustAnchor();
   const remove = useDeleteTrustAnchor();
+  const selection = useSelection<string>();
   const [mode, setMode] = useState<Mode>({ kind: 'closed' });
   const [form, setForm] = useState(blank);
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  async function bulkDelete() {
+    const ids = selection.ids;
+    if (ids.length === 0) return;
+    if (!confirm(`Delete ${ids.length} trust anchor${ids.length === 1 ? '' : 's'}?`)) return;
+    setBulkDeleting(true);
+    let ok = 0;
+    let fail = 0;
+    // Run sequentially: CP rate-limits and a parallel burst would also make
+    // the failure tally less informative.
+    for (const id of ids) {
+      try {
+        await remove.mutateAsync(id);
+        ok += 1;
+      } catch {
+        fail += 1;
+      }
+    }
+    setBulkDeleting(false);
+    selection.clear();
+    if (fail === 0) toast.success(`Deleted ${ok} trust anchor${ok === 1 ? '' : 's'}`);
+    else toast.error(`Deleted ${ok}, ${fail} failed`);
+  }
 
   function startCreate() {
     setForm(blank());
@@ -58,7 +86,13 @@ export function TrustAnchorsView() {
           jwksUrl: form.jwksUrl || null,
           label: form.label || null,
         },
-        { onSuccess: close },
+        {
+          onSuccess: () => {
+            toast.success('Trust anchor updated', form.issuerUrl);
+            close();
+          },
+          onError: (err) => toast.error('Failed to update trust anchor', String(err)),
+        },
       );
       return;
     }
@@ -69,7 +103,13 @@ export function TrustAnchorsView() {
         jwksUrl: form.jwksUrl || undefined,
         label: form.label || undefined,
       },
-      { onSuccess: close },
+      {
+        onSuccess: () => {
+          toast.success('Trust anchor added', form.issuerUrl);
+          close();
+        },
+        onError: (err) => toast.error('Failed to add trust anchor', String(err)),
+      },
     );
   }
 
@@ -96,23 +136,64 @@ export function TrustAnchorsView() {
             {anchors.length}
           </span>
         </div>
-        <button
-          onClick={() => (formOpen ? close() : startCreate())}
-          style={{
-            background: C.teal,
-            border: 'none',
-            color: '#fff',
-            fontSize: 11,
-            padding: '5px 10px',
-            borderRadius: 5,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-          }}
-        >
-          <Plus size={12} /> {formOpen ? 'Cancel' : 'Add anchor'}
-        </button>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {selection.size > 0 && (
+            <>
+              <span style={{ fontSize: 11, color: C.textDim }}>
+                {selection.size} selected
+              </span>
+              <button
+                onClick={bulkDelete}
+                disabled={bulkDeleting}
+                style={{
+                  background: C.red + '15',
+                  border: `1px solid ${C.red}40`,
+                  color: C.red,
+                  fontSize: 11,
+                  padding: '5px 10px',
+                  borderRadius: 5,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <Trash2 size={12} /> {bulkDeleting ? 'Deleting…' : 'Delete'}
+              </button>
+              <button
+                onClick={() => selection.clear()}
+                style={{
+                  background: 'none',
+                  border: `1px solid ${C.border}`,
+                  color: C.textDim,
+                  fontSize: 11,
+                  padding: '5px 10px',
+                  borderRadius: 5,
+                  cursor: 'pointer',
+                }}
+              >
+                Clear
+              </button>
+            </>
+          )}
+          <button
+            onClick={() => (formOpen ? close() : startCreate())}
+            style={{
+              background: C.teal,
+              border: 'none',
+              color: '#fff',
+              fontSize: 11,
+              padding: '5px 10px',
+              borderRadius: 5,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <Plus size={12} /> {formOpen ? 'Cancel' : 'Add anchor'}
+          </button>
+        </div>
       </div>
 
       {formOpen && (
@@ -219,6 +300,15 @@ export function TrustAnchorsView() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+              <th style={{ padding: '8px 14px', width: 32 }}>
+                <input
+                  type="checkbox"
+                  aria-label="Select all trust anchors"
+                  checked={anchors.length > 0 && anchors.every((a) => selection.has(a.id))}
+                  onChange={() => selection.toggleAll(anchors.map((a) => a.id))}
+                  style={{ accentColor: C.teal }}
+                />
+              </th>
               {['Namespace', 'Issuer', 'Label', 'JWKS cached', 'Added', ''].map((h) => (
                 <th
                   key={h}
@@ -239,6 +329,15 @@ export function TrustAnchorsView() {
           <tbody>
             {anchors.map((a) => (
               <tr key={a.id} style={{ borderBottom: `1px solid ${C.border}20` }}>
+                <td style={{ padding: '10px 14px' }}>
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${a.label ?? a.issuerUrl}`}
+                    checked={selection.has(a.id)}
+                    onChange={() => selection.toggle(a.id)}
+                    style={{ accentColor: C.teal }}
+                  />
+                </td>
                 <td style={{ padding: '10px 14px' }}>
                   <span className="mono" style={{ fontSize: 11, color: C.teal }}>
                     {a.namespace}
@@ -269,7 +368,14 @@ export function TrustAnchorsView() {
                       </button>
                       <button
                         onClick={() =>
-                          remove.mutate(a.id, { onSuccess: () => setConfirmingDelete(null) })
+                          remove.mutate(a.id, {
+                            onSuccess: () => {
+                              toast.success('Trust anchor deleted', a.issuerUrl);
+                              setConfirmingDelete(null);
+                            },
+                            onError: (err) =>
+                              toast.error('Failed to delete trust anchor', String(err)),
+                          })
                         }
                         disabled={remove.isPending}
                         style={{

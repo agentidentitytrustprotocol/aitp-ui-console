@@ -8,12 +8,14 @@ import { LoadingSkeleton, InlineSpinner } from '@/components/shared/loading-skel
 import { TimeAgo } from '@/components/shared/time-ago';
 import { AidCell } from '@/components/shared/aid-cell';
 import { useCreatePinnedKey, useDeletePinnedKey, usePinnedKeys } from '@/hooks/use-trust';
+import { useToast } from '@/components/shared/toast';
 import { C } from '@/lib/colors';
 import { shortId } from '@/lib/utils';
 
 const ED25519_PUBKEY_B64URL = /^[A-Za-z0-9_-]{43}$/;
 
 export function PinnedKeysView() {
+  const toast = useToast();
   const { data, isLoading, error } = usePinnedKeys();
   const create = useCreatePinnedKey();
   const remove = useDeletePinnedKey();
@@ -42,6 +44,7 @@ export function PinnedKeysView() {
       },
       {
         onSuccess: () => {
+          toast.success('Key pinned', aid);
           setNamespace('');
           setAid('');
           setPubkey('');
@@ -49,6 +52,7 @@ export function PinnedKeysView() {
           setExpiresAt('');
           setShowForm(false);
         },
+        onError: (err) => toast.error('Failed to pin key', String(err)),
       },
     );
   }
@@ -256,12 +260,16 @@ export function PinnedKeysView() {
                   <button
                     onClick={() => {
                       if (
-                        confirm(
-                          `Unpin ${k.aid} in namespace "${k.namespace}"?`,
-                        )
-                      ) {
-                        remove.mutate({ namespace: k.namespace, aid: k.aid });
-                      }
+                        !confirm(`Unpin ${k.aid} in namespace "${k.namespace}"?`)
+                      ) return;
+                      remove.mutate(
+                        { namespace: k.namespace, aid: k.aid },
+                        {
+                          onSuccess: () => toast.success('Key unpinned', k.aid),
+                          onError: (err) =>
+                            toast.error('Failed to unpin key', String(err)),
+                        },
+                      );
                     }}
                     title="Unpin"
                     aria-label={`Unpin ${k.aid} in namespace ${k.namespace}`}

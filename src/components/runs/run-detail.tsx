@@ -19,6 +19,7 @@ import { RunDeliveries } from './run-deliveries';
 import { useRun } from '@/hooks/use-run';
 import { useRunEvents } from '@/hooks/use-run-events';
 import { useUrlEnum } from '@/hooks/use-url-state';
+import { useToast } from '@/components/shared/toast';
 import { postJSON } from '@/lib/api/client';
 import { C } from '@/lib/colors';
 import { REFETCH } from '@/lib/query-options';
@@ -29,22 +30,44 @@ const TERMINAL = new Set(['success', 'failed', 'cancelled', 'complete']);
 type RunTab = 'timeline' | 'narrate' | 'cp-audit' | 'cp-sessions' | 'deliveries';
 const RUN_TABS = ['timeline', 'narrate', 'cp-audit', 'cp-sessions', 'deliveries'] as const;
 
+/** Choose which event list to show in the timeline.
+ *
+ *  - Run is in a terminal state and the persisted query has events → trust
+ *    the query (it includes any final/terminal frame that may have arrived
+ *    after the SSE stream closed).
+ *  - Otherwise, prefer the live SSE buffer when it has any events
+ *    (real-time wins over stale query data).
+ *  - Fall back to whatever the query has, or an empty list.
+ *
+ *  Extracted so it can be unit-tested without mounting the component. */
+export function mergeRunEvents<E>(
+  active: boolean,
+  liveEvents: E[],
+  queryEvents: E[] | undefined,
+): E[] {
+  if (!active && queryEvents) return queryEvents;
+  if (liveEvents.length > 0) return liveEvents;
+  return queryEvents ?? [];
+}
+
 export function RunDetail({ runId }: { runId: string }) {
   const qc = useQueryClient();
+  const toast = useToast();
   const run = useRun(runId, { refetchInterval: REFETCH.realtime });
   const [tab, setTab] = useUrlEnum<RunTab>('tab', RUN_TABS, 'timeline');
 
   const active = run.data ? !TERMINAL.has(run.data.status) : true;
   const live = useRunEvents(active ? runId : null);
 
-  const events: RunEvent[] = useMemo(() => {
-    if (!active && run.data?.events) return run.data.events;
-    if (live.events.length > 0) return live.events;
-    return run.data?.events ?? [];
-  }, [active, live.events, run.data?.events]);
+  const events: RunEvent[] = useMemo(
+    () => mergeRunEvents(active, live.events, run.data?.events),
+    [active, live.events, run.data?.events],
+  );
 
   const cancel = useMutation({
     mutationFn: () => postJSON(`/api/playground/runs/${encodeURIComponent(runId)}/cancel`, {}),
+    onSuccess: () => toast.success('Cancel requested', runId),
+    onError: (err) => toast.error('Cancel failed', String(err)),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['run', runId] });
       qc.invalidateQueries({ queryKey: ['runs'] });

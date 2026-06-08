@@ -40,7 +40,14 @@ export function middleware(req: NextRequest): NextResponse {
   const host = req.headers.get('host');
   const allow = trustedOrigins();
 
-  if (origin && allow.has(origin)) return NextResponse.next();
+  // No Origin header at all → not a browser (curl, server-to-server,
+  // integration tests, mobile clients). CSRF requires an attacker who can
+  // make a victim's *browser* submit a cross-site request, so absent
+  // Origin is not a CSRF vector. Modern browsers always set Origin on
+  // POST/PUT/PATCH/DELETE.
+  if (!origin) return NextResponse.next();
+
+  if (allow.has(origin)) return NextResponse.next();
 
   const oHost = originHost(origin);
   if (oHost && host && oHost === host) return NextResponse.next();

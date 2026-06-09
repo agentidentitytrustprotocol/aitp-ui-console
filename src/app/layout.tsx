@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import type { ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import './globals.css';
 import { Providers } from './providers';
 import { Sidebar } from '@/components/layout/sidebar';
@@ -32,7 +32,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <Topbar />
               <main id="main" style={{ flex: 1, overflow: 'auto', padding: 24 }}>
-                {children}
+                {/* Suspense boundary required by Next 15 for any consumer
+                    of useSearchParams (e.g. our useUrlState hook). One
+                    boundary at the layout level covers every page. */}
+                <Suspense>{children}</Suspense>
               </main>
             </div>
           </div>

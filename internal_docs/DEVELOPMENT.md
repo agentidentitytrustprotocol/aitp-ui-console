@@ -1,46 +1,53 @@
 # Development
 
+> **Contributor doc — repo only.** Files in `internal_docs/` are **not**
+> published to the docs site (the website syncs `docs/` only). For the
+> user-facing docs see [`docs/`](../docs) or
+> <https://agentidentitytrustprotocol.io/console>.
+
+First-time setup and the day-to-day loop for working on the **console**.
+The console is useful on its own (it degrades gracefully when a backend is
+down), but most flows need the two sibling services running. Their setup is
+their own — this doc links out rather than duplicating it.
+
 ## Prerequisites
 
 - Node 20+ (Node 24 known-working)
-- Docker (for the CP's Postgres)
-- `uv` (for the playground's Python deps): https://github.com/astral-sh/uv
+- For the sibling services: Docker (CP's Postgres) and `uv` (playground's
+  Python deps). See their getting-started docs:
+  [control plane](https://agentidentitytrustprotocol.io/control-plane) · [playground](https://agentidentitytrustprotocol.io/playground/getting-started).
 
-## First-time setup
+## First-time setup (console)
 
 ```bash
-# Console
 cd aitp-ui-console
 npm install
 cp .env.example .env.local       # both API keys can stay blank for local
-
-# Control plane (sibling)
-cd ../aitp-cp
-docker compose up -d postgres    # starts on :5432
-npm install
-npm run db:migrate
-# Generate an enrollment secret once and put it in your env file
-node -e "console.log('ENROLLMENT_SECRET=' + require('crypto').randomBytes(32).toString('hex'))" >> .env.local
-
-# Playground (sibling)
-cd ../aitp-playground
-cp .env.example .env             # fill in OPENAI_API_KEY or ANTHROPIC_API_KEY
-uv sync
 ```
+
+The console reads `PLAYGROUND_URL`, `CP_URL`, optional `*_API_KEY`s, and
+`TRUSTED_ORIGINS` from the environment — all documented in `.env.example`.
+For local development the defaults (`localhost:8000` / `localhost:4000`)
+and blank keys are correct.
+
+To exercise live data, bring up the siblings per their own docs:
+[control plane setup](https://agentidentitytrustprotocol.io/control-plane) and
+[playground getting-started](https://agentidentitytrustprotocol.io/playground/getting-started).
 
 ## Day-to-day
 
-You'll typically want three terminals:
+You'll typically want three terminals — the console plus the two
+upstreams:
 
 ```bash
-# T1 — CP
-cd aitp-cp && npm run dev          # → :4000
+# T1 — Control plane (see /control-plane for full setup)
+cd ../aitp-cp && npm run dev          # → :4000
 
-# T2 — Playground
-cd aitp-playground && uv run uvicorn aitp_playground.main:app --reload --port 8000
+# T2 — Playground (see /playground/getting-started)
+cd ../aitp-playground && uv run uvicorn aitp_playground.main:app --reload --port 8000
 
-# T3 — Console
-cd aitp-ui-console && npm run dev  # → :3001
+# T3 — Console (this repo)
+cd aitp-ui-console && npm run dev      # → :3001
 ```
 
 Open http://localhost:3001 — the topbar dots should both be green.
@@ -58,7 +65,7 @@ because it doesn't touch the network.
 | Adding a new backend call | a new hook in `src/hooks/use-<resource>.ts` + a proxy route under `src/app/api/...` |
 | Changing the palette | `tailwind.config.ts` AND `src/lib/colors.ts` — keep them in sync |
 | Touching the SSE behavior | `src/hooks/use-sse.ts` + `src/hooks/use-sse.test.tsx` |
-| Touching the proxy contract | `src/lib/api/proxy.ts` + `src/lib/api/proxy.test.ts` + `docs/PROXIES.md` |
+| Touching the proxy contract | `src/lib/api/proxy.ts` + `src/lib/api/proxy.test.ts` + [PROXIES.md](../docs/PROXIES.md) |
 
 ## Quality gates
 
@@ -72,7 +79,9 @@ npm run format           # prettier --write
 npm run format:check     # prettier --check (CI-friendly)
 ```
 
-For integration / LLM tests, see [`TESTING.md`](./TESTING.md).
+`typecheck`, `lint`, `test`, and `build` are exactly what CI runs on every
+push and PR — see [DEPLOYMENT.md](./DEPLOYMENT.md#ci). For
+integration / LLM tests, see [TESTING.md](./TESTING.md).
 
 ## Adding a new top-level route
 
@@ -82,7 +91,7 @@ minimum recipe is six steps:
 1. **Backend proxy.** Drop a 4-line route handler under
    `src/app/api/<service>/<path>/route.ts`. It just delegates to one of
    the helpers in `src/lib/api/proxy.ts`. Add a row to
-   [`docs/PROXIES.md`](./PROXIES.md) at the same time.
+   [PROXIES.md](../docs/PROXIES.md) at the same time.
 2. **Types.** If the upstream returns a new shape, model it in
    `src/lib/types/{playground,cp}.ts`. Hooks return those types
    directly — no mapping layer.
@@ -101,25 +110,13 @@ minimum recipe is six steps:
 6. **Tests + nav + docs.** Colocate `<name>.test.tsx`. Add the route to
    `src/components/layout/sidebar.tsx` if it's a top-level nav target.
    Hit it from `src/test/proxies.integration.test.ts` so the contract
-   is exercised end-to-end. Update [`PROXIES.md`](./PROXIES.md) and the
-   Sections table in [`../README.md`](../README.md) if the route is
-   user-facing.
+   is exercised end-to-end. Update [PROXIES.md](../docs/PROXIES.md), and the
+   Sections table in [`../README.md`](../README.md) and
+   [FEATURES.md](../docs/FEATURES.md) if the route is user-facing.
 
 ## Conventions
 
-- **Client components.** Every page renders live data, so almost every
-  component is `'use client'`. Server components are limited to root
-  page wrappers that read params.
-- **Empty states everywhere.** Any view that depends on a backend fetch
-  must render a friendly empty state when the backend is unreachable or
-  returns no rows. Use `EmptyState` from `src/components/shared/`.
-- **One color source.** Colors come from `src/lib/colors.ts` (mirrored
-  in `tailwind.config.ts`). Don't hard-code hex elsewhere.
-- **AIDs always copy-able.** When you display an AID, use `AidCell`
-  from `src/components/shared/`. It truncates intelligently and
-  copies the full value on click.
-- **Times always live.** When you show a relative timestamp, use
-  `TimeAgo` from `src/components/shared/`. It refreshes once per second.
-- **No comments on the obvious.** Reserve comments for non-obvious
-  invariants, references to spec rules, or pointer to why something is
-  done a certain way.
+Code layout, hook/component/proxy patterns, accessibility, and the
+"things we don't do" list all live in one place:
+**[CONVENTIONS.md](../docs/CONVENTIONS.md)**. Read it before adding a page, hook,
+or backend call.

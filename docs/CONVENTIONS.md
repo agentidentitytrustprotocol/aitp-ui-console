@@ -1,7 +1,10 @@
 # Conventions
 
 How code is laid out and why. Read this before adding a new page,
-hook, or backend call.
+hook, or backend call. For *why* the structure is shaped this way see
+[ARCHITECTURE.md](https://agentidentitytrustprotocol.io/console/architecture);
+for the end-to-end "add a route" recipe see the repo's contributor docs at
+[`internal_docs/DEVELOPMENT.md`](https://github.com/agentidentitytrustprotocol/aitp-ui-console/tree/main/internal_docs).
 
 ## Layering
 

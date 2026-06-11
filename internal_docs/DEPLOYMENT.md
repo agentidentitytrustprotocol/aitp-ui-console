@@ -1,8 +1,18 @@
 # Deployment
 
+> **Contributor doc — repo only.** Files in `internal_docs/` are **not**
+> published to the docs site (the website syncs `docs/` only). For the
+> user-facing docs see [`docs/`](../docs) or
+> <https://agentidentitytrustprotocol.io/console>.
+
 This console is a stock Next.js 15 app and deploys cleanly to Vercel.
 The only deploy-time decisions are environment variables and which
 Vercel plan to pick (because of SSE).
+
+The two upstreams deploy on their own — this doc only covers the console.
+For their hosting see the [control plane deploy](https://agentidentitytrustprotocol.io/control-plane/deploy)
+and [playground docker](https://agentidentitytrustprotocol.io/playground/docker) docs. The console just needs
+their public URLs.
 
 ## CI
 

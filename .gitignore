@@ -6,6 +6,7 @@ out
 .DS_Store
 *.tsbuildinfo
 next-env.d.ts
+coverage/
 
 # Local-only configuration
 .envrc

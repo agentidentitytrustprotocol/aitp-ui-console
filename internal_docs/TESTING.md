@@ -39,13 +39,27 @@ What's covered:
 - `lib/utils.ts` — `cn`, `formatAid`, `formatGrants`, `shortId`,
   `timeAgo` (with `jest.useFakeTimers`)
 - `lib/colors.ts` — `eventColor`, `boundaryColor`, `statusColor`
+- `lib/export.ts` — `toCsv` (RFC-4180 escaping) and `downloadText`
+  (anchor lifecycle + deferred `URL.revokeObjectURL`)
+- `lib/api/client.ts` — `getJSON/postJSON/putJSON/patchJSON/delJSON`:
+  method/headers/body, `cache: no-store`, the `method path failed: status`
+  error (with/without/truncated detail), an error-body read that throws,
+  and the merged abort/timeout signal
 - `lib/api/proxy.ts` — every helper (`proxyGet/Post/Put/Delete/Sse`),
   including the 204-no-body case and the "upstream is down" 502
   envelope
 - `hooks/use-sse.ts` — connect / parse / ignore-garbage / close-on-unmount
   / error path
+- `hooks/{use-trust, use-sessions, use-run-extras}.ts` — query hooks:
+  filter→query-string building, `encodeURIComponent` of ids, the
+  `enabled` gate (idle until a non-null id, replay also waits on its
+  flag), and `useRunNarrate`'s plain-text read + error path
 - `components/shared/{aid-cell, status-badge, boundary-badge,
   capability-badge}.tsx` — render + interaction
+- `components/shared/{time-ago, tab-bar, modal}.tsx` — interval
+  re-render + cleanup; active-tab styling and count-badge nullish rules;
+  modal ESC / backdrop / close-button dismissal, the `dismissable=false`
+  lock, and body-scroll lock + restore
 - `components/scenarios/run-input-form.tsx` — JSON-schema-driven control
   rendering (string, enum, boolean, number) and submission
 - `components/runs/agent-status-grid.tsx` — state machine derived from

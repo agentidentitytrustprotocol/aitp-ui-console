@@ -1,4 +1,4 @@
-import { renderHook } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -18,8 +18,13 @@ import {
   useCreatePinnedKey,
   useCreateRevocation,
   useCreateTrustAnchor,
+  useDelegations,
   useDeletePinnedKey,
   useDeleteTrustAnchor,
+  usePinnedKeys,
+  useRevocationList,
+  useTcts,
+  useTrustAnchors,
   useUpdateTrustAnchor,
 } from './use-trust';
 
@@ -140,5 +145,45 @@ describe('useCreateRevocation', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['cp-revocation-list'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['cp-delegations'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['cp-tcts'] });
+  });
+});
+
+describe('useTcts', () => {
+  it('fetches the bare path when no params are given', async () => {
+    getMock.mockResolvedValue({ tcts: [] });
+    const { result } = renderHook(() => useTcts(), { wrapper: wrapper(makeClient()) });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(getMock).toHaveBeenCalledWith('/api/cp/tcts');
+  });
+
+  it('encodes only the truthy filters into the query string', async () => {
+    getMock.mockResolvedValue({ tcts: [] });
+    const { result } = renderHook(
+      () => useTcts({ issuer: 'aid:pubkey:i', subject: '', capability: 'research.query' }),
+      { wrapper: wrapper(makeClient()) },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(getMock).toHaveBeenCalledWith(
+      '/api/cp/tcts?issuer=aid%3Apubkey%3Ai&capability=research.query',
+    );
+  });
+});
+
+describe('trust read lists', () => {
+  it.each([
+    ['useDelegations', useDelegations, '/api/cp/delegations', { delegations: [] }],
+    ['useTrustAnchors', useTrustAnchors, '/api/cp/trust-anchors', { trustAnchors: [] }],
+    ['usePinnedKeys', usePinnedKeys, '/api/cp/pinned-keys', { pinnedKeys: [] }],
+    [
+      'useRevocationList',
+      useRevocationList,
+      '/api/cp/well-known/aitp-revocation-list',
+      { revokedJtis: [] },
+    ],
+  ] as const)('%s fetches its endpoint', async (_name, hook, path, payload) => {
+    getMock.mockResolvedValue(payload);
+    const { result } = renderHook(() => hook(), { wrapper: wrapper(makeClient()) });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(getMock).toHaveBeenCalledWith(path);
   });
 });

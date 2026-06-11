@@ -1,10 +1,16 @@
 # Architecture
 
 The console is a thin client on top of two backend services. It owns no
-state of its own — the playground holds scenario definitions and run
-history, the control plane holds the agent registry, sessions, audit log,
-and webhook subscriptions. The console's job is to render that state and
-let humans drive workflows against it.
+state of its own — the [playground](https://agentidentitytrustprotocol.io/playground) holds scenario
+definitions and run history, the [control plane](https://agentidentitytrustprotocol.io/control-plane) holds the
+agent registry, sessions, audit log, trust config, and webhook
+subscriptions. The console's job is to render that state and let humans
+drive workflows against it.
+
+This doc is about the console's *shape*: topology, the BFF proxy, layering,
+SSE, and data flow. For what each screen does, see
+[FEATURES.md](https://agentidentitytrustprotocol.io/console/features); for the code conventions that follow from
+this structure, see [CONVENTIONS.md](https://agentidentitytrustprotocol.io/console/conventions).
 
 ## Topology
 
@@ -36,7 +42,7 @@ let humans drive workflows against it.
 │ FastAPI on :8000    │         │ Next.js on :4000         │
 │ Scenarios, runs,    │         │ Registry, sessions,      │
 │ live SSE timeline   │         │ audit, dashboard,        │
-│                     │         │ webhooks                 │
+│                     │         │ trust, webhooks          │
 └─────────────────────┘         └──────────────────────────┘
 ```
 
@@ -55,6 +61,16 @@ Two reasons:
 
 The cost is one extra hop and a `text → string → Response` re-pack on
 every request. That tradeoff is documented in `src/lib/api/proxy.ts`.
+Every console route's upstream mapping lives in [PROXIES.md](https://agentidentitytrustprotocol.io/console/proxies).
+
+### CSRF guard
+
+`src/middleware.ts` runs on every `/api/**` mutation (POST/PUT/PATCH/
+DELETE) and rejects requests whose `Origin` doesn't match the request
+`Host` (or an entry in `TRUSTED_ORIGINS`). GETs and SSE are unguarded —
+they're not state-changing and `EventSource` can't attach headers. Absent
+`Origin` (curl, server-to-server, integration tests) is allowed because
+CSRF requires a victim's *browser*.
 
 ## Layering
 
@@ -84,6 +100,8 @@ src/
 │   │   └── cp.ts             ← Control plane response types
 │   ├── colors.ts             ← Design tokens (mirrors tailwind.config.ts)
 │   ├── config.ts             ← serverConfig (env), clientConfig
+│   ├── query-options.ts      ← Named refetch cadences (REFETCH.*)
+│   ├── export.ts             ← CSV / NDJSON download helpers
 │   └── utils.ts              ← cn(), formatAid(), timeAgo(), shortId()
 │
 └── test/                     ← Shared test utilities, polyfills, stubs
@@ -99,8 +117,8 @@ Two streams matter:
 
 - **`/api/playground/runs/[id]/events`** — per-run event timeline,
   emitted by the playground as the scenario executes.
-- **`/api/cp/events/stream`** — global audit event stream, emitted by
-  the control plane for every registry/handshake/audit event.
+- **`/api/cp/events/stream`** — global event stream, emitted by the
+  control plane for every registry/handshake/audit event.
 
 Both are read in the browser via `useSse` (`src/hooks/use-sse.ts`), which
 wraps the native `EventSource`. We deliberately do *not* pull in a
@@ -112,101 +130,51 @@ WebSocket library:
 - SSE is HTTP, so the same BFF proxy approach works (`proxySse` simply
   forwards `Response.body` with `Content-Type: text/event-stream`).
 
-### Backpressure (CP `MAX_SSE_CONNECTIONS`)
-
-The control plane caps live SSE listeners. When it's at capacity it
-returns a 503 on the stream endpoint instead of opening the connection.
-Browsers don't expose the EventSource handshake status, so `useSse` takes
-an optional `capacityProbePath` that does a one-shot `fetch()` before
-opening the EventSource. A 503 surfaces as the `at-capacity` state with a
-longer backoff (5s → 30s) so the UI can render a distinct banner
-("CP at capacity") rather than a generic "reconnecting" spinner. The CP
-event ticker opts into this; the per-run playground stream does not need
-it (the playground does not enforce a connection cap).
-
-## Per-run CP correlation
-
-Three playground routes correlate CP state back to a specific run:
-
-| Tab in `/runs/[id]` | Backend route | Notes |
-| --- | --- | --- |
-| CP audit | `/runs/:id/cp-audit` | CP audit entries with this `runId` |
-| CP sessions | `/runs/:id/cp-sessions` | handshake sessions started for this run |
-| Deliveries | `/runs/:id/deliveries` | webhook deliveries triggered by run events |
-
-When the playground has no `CP_BASE_URL` configured it returns
-`cp_enabled: false` with empty arrays; the console renders an explicit
-"CP not wired up" empty state rather than a generic error.
-
-## Trust posture
-
-A dedicated `/trust` route surfaces three CP collections that together
-describe the system's trust posture:
-
-- **Trust anchors** (`/api/cp/trust-anchors`) — OIDC issuers accepted
-  for AITP identity proofs, scoped by namespace.
-- **Pinned keys** (`/api/cp/pinned-keys`) — static SPKI pins per
-  `(namespace, aid)` for environments that bypass discovery.
-- **Revocation entries** (`/api/cp/revocation/entries`) — the
-  authoritative revocation list. POSTing a jti cascades to every
-  delegation whose chain contains it (`/api/cp/delegations` recomputes
-  on next read).
-
-Revocation is a two-step confirm in the UI because cascading and
-admin-audit logging make it materially destructive.
-
-## Fault injection flow
-
-`POST /api/playground/runs` accepts an optional
-`fault_injection: { manifest_404?: string[]; peer_offline?: string[] }`
-keyed by agent id. The `RunInputForm` surfaces these behind an
-"Advanced" disclosure. Runs that were started with non-empty fault
-injection render a `fault-injected` chip on the run-detail header for
-visual triage.
+The control plane caps concurrent SSE listeners and returns a 503 at the
+limit. Because browsers don't expose the EventSource handshake status,
+`useSse` takes an optional `capacityProbePath` that does a one-shot
+`fetch()` first; a 503 surfaces as a distinct `at-capacity` state with a
+longer backoff. The CP ticker opts into this; the per-run playground
+stream does not need it. The probe contract and the CP-side cap are
+covered in [PROXIES.md](https://agentidentitytrustprotocol.io/console/proxies#cp-sse-capacity-handling).
 
 ## Data fetching
 
 Every read goes through TanStack Query (`@tanstack/react-query`). Each
-resource has a small hook in `src/hooks/use-<resource>.ts`:
+resource has a small hook in `src/hooks/use-<resource>.ts` that returns
+the upstream type directly — there is no mapping layer between fetched
+data and rendered components.
 
-- `useDashboard(range)` — 30s refetch
-- `useRegistry()` — 30s refetch + refetch on window focus
-- `useSessions({ status, aid, limit })` — 5s refetch
-- `useScenarios()`, `useScenario(ref)` — default cache
-- `useRuns()` — adaptive: 3s when any run is `pending`/`running`,
-  otherwise 15s
-- `useRun(id)`, `useWebhooks()`, `useAgentMetrics()`, etc.
+Refetch cadences are **not** per-hook millisecond literals; hooks
+reference named buckets in `src/lib/query-options.ts`
+(`REFETCH.health / slow / list / realtime / runActive / veryslow`). One
+file controls how aggressively the console hits each upstream. The runs
+list, for example, uses `runActive` while a run is in flight and `list`
+otherwise.
 
-Writes use `useMutation` and invalidate the relevant query key on
-success. Mutations currently exist for: creating a run, cancelling a
-run, creating/updating/deleting webhooks.
+Writes use `useMutation` and invalidate the relevant query key on success.
+Mutations exist for: triggering and cancelling runs; enrollment-token
+minting; trust-anchor / pinned-key / revocation edits; and webhook CRUD
+(including circuit-breaker reset).
 
 ## Type flow
 
 Backend response types live in `src/lib/types/playground.ts` and
-`src/lib/types/cp.ts`. They mirror the JSON shapes that the upstream
-services serialize. Hooks return these types directly — there is no
-mapping layer between fetched data and rendered components.
-
-If an upstream changes shape, fix the type file and the compiler will
-walk every consumer.
+`src/lib/types/cp.ts`. They mirror the JSON shapes the upstream services
+serialize — the source of truth for those shapes is the
+[playground](https://agentidentitytrustprotocol.io/playground) and [CP API](https://agentidentitytrustprotocol.io/control-plane/api) docs. Hooks
+return these types directly. If an upstream changes shape, fix the type
+file and the compiler walks every consumer.
 
 ## State that lives in the console
 
-Almost none. Some local component state (selected event in the monitor
-drawer, scroll-lock in the run timeline) but no global store. Filter
-state on `/audit`, `/registry`, `/monitor`, and the run-detail tabs is
-synced to the URL with `useUrlState` from `src/hooks/use-url-state.ts`
-so views are shareable and survive reload. No `zustand` — if cross-route
+Almost none. Some local component state (selected event, timeline
+scroll-lock) but no global store. Operator-visible filter / tab state on
+`/dashboard`, `/audit`, `/registry`, `/monitor`, and the run-detail tabs
+is synced to the URL with `useUrlState` (`src/hooks/use-url-state.ts`) so
+views are shareable and survive reload. No `zustand` — if cross-route
 state ever needs persistence we'll add it back deliberately for the
 specific feature that needs it.
-
-## Refetch cadences
-
-TanStack Query hooks reference named buckets in
-`src/lib/query-options.ts` (`REFETCH.health/slow/list/realtime/runActive/
-veryslow`) rather than per-hook millisecond literals. One file controls
-how aggressively the console hits each upstream.
 
 ## Things that intentionally aren't here
 
@@ -217,6 +185,6 @@ how aggressively the console hits each upstream.
 - **A WebSocket lib** — `EventSource` handles everything we need.
 - **Server components / Server actions** — every page is client-side
   because they all subscribe to live data. The only server-side code is
-  the BFF route handlers.
+  the BFF route handlers and the middleware.
 - **A monorepo build tool** — the console builds independently. The
   sibling services have their own build pipelines.

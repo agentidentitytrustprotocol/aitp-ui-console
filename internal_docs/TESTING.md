@@ -1,5 +1,10 @@
 # Testing
 
+> **Contributor doc — repo only.** Files in `internal_docs/` are **not**
+> published to the docs site (the website syncs `docs/` only). For the
+> user-facing docs see [`docs/`](../docs) or
+> <https://agentidentitytrustprotocol.io/console>.
+
 Two test suites:
 
 | Command | What it runs | When to use |
@@ -62,26 +67,15 @@ real HTTP. There are two env gates:
 
 ### Prerequisites
 
-You need three things running:
+You need all three services running: the console (`npm run dev` on :3001)
+plus the two upstreams. Start the upstreams per their own docs —
+[control plane](https://agentidentitytrustprotocol.io/control-plane) and
+[playground getting-started](https://agentidentitytrustprotocol.io/playground/getting-started) — or see the
+day-to-day section in [DEVELOPMENT.md](./DEVELOPMENT.md#day-to-day) for the
+three-terminal layout.
 
-```bash
-# Console (this repo)
-npm run dev                # :3001
-
-# Control plane (sibling)
-cd ../aitp-cp
-docker compose up -d postgres
-npm run db:migrate
-ENROLLMENT_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))") \
-  npm run dev              # :4000
-
-# Playground (sibling)
-cd ../aitp-playground
-uv run uvicorn aitp_playground.main:app --reload --port 8000
-```
-
-Override URLs with `CONSOLE_URL`, `PLAYGROUND_URL`, `CP_URL` env vars if
-needed.
+Override the targets with `CONSOLE_URL`, `PLAYGROUND_URL`, `CP_URL` env
+vars if your services aren't on the default ports.
 
 ### Run it
 

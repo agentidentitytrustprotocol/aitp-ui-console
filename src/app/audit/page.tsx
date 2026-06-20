@@ -19,11 +19,11 @@ const LIMIT_OPTIONS = [50, 100, 250, 500] as const;
 
 export default function AuditPage() {
   const toast = useToast();
-  const [actor, setActor] = useUrlState('actor');
-  const [action, setAction] = useUrlState('action');
+  const [aid, setAid] = useUrlState('aid');
+  const [type, setType] = useUrlState('type');
   const [limit, setLimit] = useUrlInt('limit', 100, LIMIT_OPTIONS);
 
-  const { data, isLoading, error } = useAudit({ actor, action, limit });
+  const { data, isLoading, error } = useAudit({ aid, type, limit });
   const events = data?.events ?? [];
 
   function exportRows(format: 'csv' | 'ndjson') {
@@ -68,7 +68,7 @@ export default function AuditPage() {
       <SectionTitle
         icon={ScrollText}
         title="Audit"
-        sub="Admin and system audit trail from the Control Plane"
+        sub="Protocol event history from the Control Plane (handshakes, delegations, TCTs)"
         right={
           <div style={{ display: 'flex', gap: 6 }}>
             <button
@@ -98,19 +98,19 @@ export default function AuditPage() {
             alignItems: 'end',
           }}
         >
-          <Field label="Actor">
+          <Field label="AID">
             <input
-              value={actor}
-              onChange={(e) => setActor(e.target.value)}
-              placeholder="aid or admin user"
+              value={aid}
+              onChange={(e) => setAid(e.target.value)}
+              placeholder="aid:pubkey:… (initiator or responder)"
               style={inputStyle}
             />
           </Field>
-          <Field label="Action">
+          <Field label="Type">
             <input
-              value={action}
-              onChange={(e) => setAction(e.target.value)}
-              placeholder="agent.register, webhook.created, revocation.added…"
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              placeholder="handshake.complete, delegation.issued, tct.revoked…"
               style={inputStyle}
             />
           </Field>

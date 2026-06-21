@@ -42,7 +42,7 @@ export function RevocationView() {
     );
   }
 
-  const entries = data?.entries ?? [];
+  const entries = data?.revocation_list?.entries ?? [];
 
   return (
     <Card style={{ padding: 0 }}>
@@ -228,7 +228,7 @@ export function RevocationView() {
                   {e.reason ?? '—'}
                 </td>
                 <td style={{ padding: '10px 14px', fontSize: 11, color: C.textDim }}>
-                  <TimeAgo ts={e.revokedAt} />
+                  <TimeAgo ts={e.revoked_at ?? e.revokedAt} />
                 </td>
               </tr>
             ))}

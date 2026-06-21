@@ -7,5 +7,5 @@ export default async function ScenarioDetailPage({
 }) {
   const { ref } = await params;
   const decoded = ref.map(decodeURIComponent).join('/');
-  return <ScenarioDetail ref={decoded} />;
+  return <ScenarioDetail scenarioRef={decoded} />;
 }

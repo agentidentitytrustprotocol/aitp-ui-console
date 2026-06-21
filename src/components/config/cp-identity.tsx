@@ -101,18 +101,24 @@ export function CpIdentityCard() {
         ) : revocation.error || !revocation.data ? (
           <div style={{ fontSize: 11, color: C.textMuted }}>Revocation list unavailable.</div>
         ) : (
+          (() => {
+            const list = revocation.data.revocation_list;
+            const entries = list?.entries ?? [];
+            return (
           <>
             <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>
-              <span style={{ color: revocation.data.entries.length === 0 ? C.green : C.amber }}>
-                {revocation.data.entries.length} {revocation.data.entries.length === 1 ? 'entry' : 'entries'}
+              <span style={{ color: entries.length === 0 ? C.green : C.amber }}>
+                {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
               </span>{' '}
-              · expires {expiresIn(revocation.data.expiresAt)}
-              {revocation.data.signedBy && ' · signed by CP'}
+              · expires {expiresIn(list?.expires_at)}
+              {revocation.data.signature && ' · signed by CP'}
             </div>
             <div className="mono" style={{ fontSize: 10, color: C.textMuted }}>
               RFC-AITP-0008 compliant · empty list is a meaningful assertion
             </div>
           </>
+            );
+          })()
         )}
       </div>
 

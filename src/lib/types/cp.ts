@@ -115,11 +115,25 @@ export interface ManifestEnvelope {
   [key: string]: unknown;
 }
 
+/** The CP serves the revocation list as a signed envelope:
+ *  `{ revocation_list: { ... entries }, signature }` — mirroring
+ *  `ManifestEnvelope`. The inner list follows RFC-AITP-0008. */
 export interface RevocationList {
-  entries: Array<{ jti: string; revokedAt: string; reason?: string }>;
-  issuedAt: string;
-  expiresAt: string;
-  signedBy?: string;
+  revocation_list?: {
+    version?: string;
+    issuer?: string;
+    published_at?: number;
+    expires_at?: number;
+    entries?: Array<{
+      jti: string;
+      reason?: string;
+      revoked_at?: string | number;
+      revokedAt?: string | number;
+      [key: string]: unknown;
+    }>;
+  };
+  signature?: string;
+  [key: string]: unknown;
 }
 
 /** `/api/readyz` returns just { ready } on success, or

@@ -16,7 +16,7 @@ import { postJSON } from '@/lib/api/client';
 import { C } from '@/lib/colors';
 import type { RunCreated, RunCreateInput } from '@/lib/types/playground';
 
-export function ScenarioDetail({ ref: scenarioRef }: { ref: string }) {
+export function ScenarioDetail({ scenarioRef }: { scenarioRef: string }) {
   const router = useRouter();
   const { data, isLoading, error } = useScenario(scenarioRef);
 

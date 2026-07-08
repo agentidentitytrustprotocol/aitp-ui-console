@@ -18,17 +18,23 @@ their public URLs.
 
 `.github/workflows/ci.yml` runs on every push to `main` and every PR:
 
-| Step | Command |
+| Step | Command / action |
 | --- | --- |
 | Typecheck | `npm run typecheck` |
 | Lint | `npm run lint` |
-| Unit tests | `npm test -- --ci` |
-| Build | `npm run build` |
+| Unit tests + coverage | `npm test -- --ci --coverage` (summary in the job summary; `lcov.info` uploaded as an artifact) |
+| Integration tests | `npm run test:integration -- --ci` — the self-contained route-handler suite; live-service suites skip without `RUN_INTEGRATION` |
+| Build | `npm run build` (with a cached `.next/cache`) |
 
-Integration tests (`npm run test:integration`) are **not** part of CI by
-default — they need live playground + control plane + LLM credentials.
-Run them locally before merging changes to the proxy layer or the SSE
-hook. See [`TESTING.md`](./TESTING.md).
+The workflow runs with `permissions: contents: read`, and
+`.github/dependabot.yml` keeps npm packages and GitHub Actions bumped
+weekly (minor/patch npm bumps are grouped; `next`/`react` majors stay
+individual).
+
+The **live-service** integration suites are not part of CI — they need
+the sibling playground + control plane running (and LLM credentials for
+the scenario run). Run them locally before merging changes to the proxy
+layer or the SSE hook. See [`TESTING.md`](./TESTING.md).
 
 ## Vercel
 

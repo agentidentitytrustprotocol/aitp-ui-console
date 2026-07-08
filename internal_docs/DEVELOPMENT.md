@@ -37,17 +37,18 @@ To exercise live data, bring up the siblings per their own docs:
 ## Day-to-day
 
 You'll typically want three terminals — the console plus the two
-upstreams:
+upstreams. The upstream start commands are theirs, not ours — follow
+their docs so this file can't drift when they change:
 
 ```bash
-# T1 — Control plane (see /control-plane for full setup)
-cd ../aitp-cp && npm run dev          # → :4000
+# T1 — Control plane → :4000
+#      start per https://agentidentitytrustprotocol.io/control-plane
 
-# T2 — Playground (see /playground/getting-started)
-cd ../aitp-playground && uv run uvicorn aitp_playground.main:app --reload --port 8000
+# T2 — Playground → :8000
+#      start per https://agentidentitytrustprotocol.io/playground/getting-started
 
 # T3 — Console (this repo)
-cd aitp-ui-console && npm run dev      # → :3001
+npm run dev                            # → :3001
 ```
 
 Open http://localhost:3001 — the topbar dots should both be green.
@@ -72,16 +73,18 @@ because it doesn't touch the network.
 ```bash
 npm run typecheck        # strict tsc --noEmit
 npm run lint             # next lint (next/core-web-vitals ruleset)
-npm test                 # unit + component tests (~1s)
+npm test                 # unit + component tests (~10s)
+npm run test:integration # route-handler tests (instant) + gated e2e suites
 npm run build            # production build (~30s)
 npm run analyze          # ANALYZE=true next build — opens bundle report
 npm run format           # prettier --write
 npm run format:check     # prettier --check (CI-friendly)
 ```
 
-`typecheck`, `lint`, `test`, and `build` are exactly what CI runs on every
-push and PR — see [DEPLOYMENT.md](./DEPLOYMENT.md#ci). For
-integration / LLM tests, see [TESTING.md](./TESTING.md).
+`typecheck`, `lint`, `test` (with coverage), `test:integration` (the
+self-contained part), and `build` are exactly what CI runs on every push
+and PR — see [DEPLOYMENT.md](./DEPLOYMENT.md#ci). For the live-service /
+LLM tests, see [TESTING.md](./TESTING.md).
 
 ## Adding a new top-level route
 
@@ -110,7 +113,9 @@ minimum recipe is six steps:
 6. **Tests + nav + docs.** Colocate `<name>.test.tsx`. Add the route to
    `src/components/layout/sidebar.tsx` if it's a top-level nav target.
    Hit it from `src/test/proxies.integration.test.ts` so the contract
-   is exercised end-to-end. Update [PROXIES.md](../docs/PROXIES.md), and the
+   is exercised against the live services, and add a mock-upstream case
+   to `src/test/bff-routes.integration.test.ts` so CI covers the route's
+   path mapping too. Update [PROXIES.md](../docs/PROXIES.md), and the
    Sections table in [`../README.md`](../README.md) and
    [FEATURES.md](../docs/FEATURES.md) if the route is user-facing.
 

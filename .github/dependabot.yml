@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # Batch minor/patch bumps into one PR to keep noise down; majors
+      # (and the Next/React core, which needs care) stay individual.
+      minor-and-patch:
+        update-types: ['minor', 'patch']
+        exclude-patterns: ['next', 'react', 'react-dom']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday

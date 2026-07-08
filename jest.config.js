@@ -22,6 +22,17 @@ module.exports = {
   },
   setupFiles: ['<rootDir>/src/test/polyfills.ts'],
   setupFilesAfterEnv: ['<rootDir>/src/test/setup.ts'],
+  // Ratchet: set a little below actual coverage (81.3 / 66.9 / 73.3 / 82.6
+  // as of 2026-07) so CI fails on meaningful regressions without making
+  // every small PR fight the threshold. Bump these when coverage rises.
+  coverageThreshold: {
+    global: {
+      statements: 79,
+      branches: 63,
+      functions: 70,
+      lines: 80,
+    },
+  },
   transform: {
     '^.+\\.tsx?$': [
       'ts-jest',

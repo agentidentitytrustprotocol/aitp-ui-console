@@ -144,6 +144,32 @@ describeIntegration('proxy contracts — cp', () => {
     expect(env.manifest).toBeDefined();
     expect(env.manifest!.aid).toMatch(/^aid:/);
   });
+
+  it('GET /api/cp/well-known/aitp-revocation-list returns the signed envelope', async () => {
+    const { status, body } = await jsonGET(
+      `${consoleUrl()}/api/cp/well-known/aitp-revocation-list`,
+    );
+    expect(status).toBe(200);
+    expect(body).toHaveProperty('revocation_list');
+  });
+
+  it('GET /api/cp/events/history returns the event feed the Audit page renders', async () => {
+    const { status, body } = await jsonGET(`${consoleUrl()}/api/cp/events/history?limit=50`);
+    expect(status).toBe(200);
+    expect(body).toHaveProperty('events');
+  });
+
+  it('GET /api/cp/audit returns the separate admin-action log', async () => {
+    const { status, body } = await jsonGET(`${consoleUrl()}/api/cp/audit?limit=50`);
+    expect(status).toBe(200);
+    expect(body).toBeTruthy();
+  });
+
+  it('GET /api/cp/metrics returns metrics content', async () => {
+    const res = await fetch(`${consoleUrl()}/api/cp/metrics`);
+    expect(res.status).toBe(200);
+    expect((await res.text()).length).toBeGreaterThan(0);
+  });
 });
 
 describeIntegration('SSE proxy', () => {

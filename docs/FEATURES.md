@@ -22,7 +22,7 @@ when its backend is down rather than crashing.
 | [Monitor](#monitor) | `/monitor`, `/monitor/sessions/[id]` | CP | Live event ticker, delegation tree, TCTs |
 | [Registry](#registry) | `/registry`, `/registry/[aid]` | CP | View agents, mint enrollment tokens, deregister |
 | [Trust](#trust) | `/trust` | CP | Manage trust anchors, pinned keys, revocations |
-| [Audit](#audit) | `/audit` | CP | Filter and export the admin audit trail |
+| [Audit](#audit) | `/audit` | CP | Filter and export the protocol event history |
 | [Config](#config) | `/config` | Both | Health, identity, metrics, webhooks |
 
 ---
@@ -69,11 +69,10 @@ trigger form.
    schema, so you get text / number / boolean / enum controls with
    required-field markers automatically.
 4. *(Optional)* Expand **Advanced → Fault injection** to deliberately
-   break the run for testing: `manifest_404` (force a 404 when a peer's
-   AITP manifest is fetched) and `peer_offline` (refuse handshakes from
-   an agent), each toggled per agent. A badge shows how many faults are
-   armed. The injection contract is the playground's — see
-   [aitp-integration](https://agentidentitytrustprotocol.io/playground/aitp-integration).
+   break the run for testing: `manifest_404` and `peer_offline`, each
+   toggled per agent. A badge shows how many faults are armed. What each
+   fault kind does and the injection contract are the playground's — see
+   [scenarios](https://agentidentitytrustprotocol.io/playground/scenarios).
 5. Hit **Run scenario**. The console POSTs the run and navigates straight
    to its detail page, where the live timeline takes over.
 
@@ -111,17 +110,14 @@ The main area has five tabs:
 ### Live timeline behaviour
 
 The Timeline tab subscribes to the run's SSE stream and renders a typed
-card per event. The playground emits the lifecycle (the card renderers
-handle each shape):
-
-`run.started` → `agent.spawning` → `agent.ready` → `trust.peers_resolved`
-→ `trust.establishing` → `trust.established` (with its granted capability
-badges) → `step.started` → `llm.started` / `llm.complete` →
-`step.complete` → `run.complete`, plus the unhappy paths
-`step.probing_no_trust`, `step.access_denied`, and `run.failed`. Anything
+card per event. The console ships a card renderer for every family the
+playground emits — `run.*`, `agent.*`, `trust.*` (with granted-capability
+badges on `trust.established`), `step.*` (including the unhappy paths
+`step.probing_no_trust` and `step.access_denied`), and `llm.*`. Anything
 the console doesn't recognise falls back to a generic card rather than
-being dropped. The event *shapes* are the playground's contract — see
-[aitp-integration](https://agentidentitytrustprotocol.io/playground/aitp-integration).
+being dropped. The event catalog, ordering, and *shapes* are the
+playground's contract — see
+[observability](https://agentidentitytrustprotocol.io/playground/observability).
 
 The view **auto-scrolls** to the newest event unless you've scrolled up,
 in which case a **jump-to-latest** control appears; a small indicator
@@ -183,8 +179,8 @@ The control plane's agent registry, made operable.
    short-lived, single-use bearer token with a live **expiry countdown**
    and a hidden-by-default reveal/copy control.
 4. Hand the token to the agent, which redeems it against the CP to
-   register. Token mechanics (HMAC, ~5-minute TTL, JTI single-use) are the
-   control plane's — see the [CP API](https://agentidentitytrustprotocol.io/control-plane/api).
+   register. Token mechanics — lifetime, signing, single-use enforcement —
+   are the control plane's; see the [CP API](https://agentidentitytrustprotocol.io/control-plane/api).
 
 ## Trust
 
@@ -202,18 +198,22 @@ posture. Each tab is a small CRUD surface.
 ### Revocation confirm flow
 
 Revoking is a **two-step confirm**: enter a JTI (and optional reason),
-then explicitly confirm. It's gated this way because, on the CP side, a
-revocation cascades to every delegation chain that contains the JTI and is
-itself written to the admin audit log — it is materially destructive. The
-cascade rules are the control plane's; see
+then explicitly confirm. It's gated this way because revocation is
+materially destructive — on the CP side its effects cascade well beyond
+the single JTI. The cascade rules are the control plane's; see
 [revocation](https://agentidentitytrustprotocol.io/spec/revocation) and the [CP data model](https://agentidentitytrustprotocol.io/control-plane/data-model).
 
 ## Audit
 
-A filterable, exportable view of the control plane's admin audit trail.
+A filterable, exportable view of the control plane's **protocol event
+history** (handshakes, delegations, TCT issuance/revocation) — the same
+event feed the Monitor ticker streams live, queried here historically via
+`/api/cp/events/history`. (The CP also keeps a separate admin-action log
+at `/api/cp/audit`; that log has a different shape and is *not* what this
+page renders.)
 
-- **Filters** — actor, action, and result limit (`50 / 100 / 250 / 500`),
-  all synced to the URL.
+- **Filters** — AID (matches initiator or responder), event type, and
+  result limit (`50 / 100 / 250 / 500`), all synced to the URL.
 - **Rows** — timestamp, event type (colour-coded), actor AIDs, granted
   capabilities, and session/run links. Expanding a row reveals the full
   event payload as a copyable JSON tree.
@@ -239,7 +239,7 @@ Operational settings and health, split across two columns.
   Each row exposes its **circuit-breaker** state (`closed` / `open` /
   `half-open` with a failure count) and a **reset** action when it's
   tripped. Circuit-breaker semantics are the CP's — see
-  [CP events](https://agentidentitytrustprotocol.io/control-plane/events).
+  [CP operations](https://agentidentitytrustprotocol.io/control-plane/operations).
 
 ---
 

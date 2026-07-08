@@ -86,9 +86,18 @@ ephemeral UI state only (e.g. an inline confirm dialog).
 - SSE tests drive the polyfilled `EventSource` from
   `src/test/polyfills.ts`. See `src/hooks/use-sse.test.tsx` for the
   pattern.
-- Integration tests live in `src/test/*.integration.test.ts` and are
-  gated by `RUN_INTEGRATION=1`. They hit a real running console + CP +
-  playground.
+- Integration tests live in `src/test/*.integration.test.ts` (node
+  environment, `jest.integration.config.js`). Two kinds:
+  - **Self-contained** (`bff-routes.integration.test.ts`) — call the real
+    route handlers against an in-process mock upstream; run everywhere,
+    including CI, with no services.
+  - **Live-service** (`proxies`, `cp-mutations`, `scenario-run`) — gated
+    by `RUN_INTEGRATION=1` (and `RUN_LLM_INTEGRATION=1` for the scenario
+    run); they hit a real running console + CP + playground and skip
+    silently otherwise.
+- CI also runs `next build` as a gate — it catches missing Suspense
+  boundaries, prerender errors, and bad RSC boundaries that type/lint
+  can't.
 
 ## Things we don't do
 

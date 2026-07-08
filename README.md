@@ -29,7 +29,7 @@ deliberately don't duplicate them:
 | Monitor | `/monitor`, `/monitor/sessions/[id]` | CP — live event ticker, delegation tree, observed TCTs |
 | Registry | `/registry`, `/registry/[aid]` | CP — agent table, manifest viewer, enrollment-token modal, deregister |
 | Trust | `/trust` | CP — trust anchors, pinned SPKI keys, revocation entries |
-| Audit | `/audit` | CP — filterable admin audit trail |
+| Audit | `/audit` | CP — filterable, exportable protocol event history |
 | Config | `/config` | Both — health/readiness, SDK capabilities, playground processes, metrics, CP identity, webhooks (with circuit breaker) |
 
 ## Commands
@@ -38,10 +38,16 @@ deliberately don't duplicate them:
 npm install
 npm run dev                 # port 3001
 npm run build
+npm run start               # serve a production build on :3001
+npm run analyze             # build with the bundle analyzer
 npm run typecheck
 npm run lint
+npm run format              # prettier --write over src/
+npm run format:check
 npm test                    # unit + component tests
-npm run test:integration    # gated end-to-end tests (see internal_docs/TESTING.md)
+npm run test:watch
+npm run test:integration    # route-handler tests + gated end-to-end tests
+                            # (see internal_docs/TESTING.md)
 ```
 
 ## Documentation

@@ -13,8 +13,10 @@ follow the links to the [playground](https://agentidentitytrustprotocol.io/playg
 [CP API](https://agentidentitytrustprotocol.io/control-plane/api) docs for request/response semantics.
 
 Status codes and bodies pass through unchanged. On connection failure the
-proxy synthesizes a 502 with shape `{ error, target, upstream_status: 502 }`;
-raw error detail is logged server-side, never sent to the browser.
+proxy synthesizes a **502** (`Upstream unreachable`) and on timeout a
+**504** (`Upstream timeout`), both with shape
+`{ error, target, upstream_status }`; raw error detail is logged
+server-side, never sent to the browser.
 
 ## Playground (`PLAYGROUND_URL`, default `http://localhost:8000`)
 
@@ -64,7 +66,7 @@ raw error detail is logged server-side, never sent to the browser.
 | GET | `/api/cp/sessions/[sessionId]` | `/api/sessions/:sessionId` |
 | GET | `/api/cp/sessions/[sessionId]/replay` | `/api/sessions/:sessionId/replay` |
 | GET | `/api/cp/sessions/[sessionId]/export` | `/api/sessions/:sessionId/export` |
-| GET | `/api/cp/audit` | `/api/audit` |
+| GET | `/api/cp/audit` | `/api/audit` (admin-action log; the Audit *screen* uses `events/history` above) |
 | GET | `/api/cp/metrics` | `/api/metrics` |
 | GET | `/api/cp/tcts` | `/api/tcts` |
 | GET | `/api/cp/delegations` | `/api/delegations` |
@@ -100,8 +102,9 @@ raw error detail is logged server-side, never sent to the browser.
    `Content-Type: text/event-stream`. The proxy auto-rewrites
    `Cache-Control` and `X-Accel-Buffering`.
 5. Add a row to this table.
-6. Add a hit to `src/test/proxies.integration.test.ts` so the contract
-   is exercised end-to-end.
+6. Add a hit to `src/test/proxies.integration.test.ts` (live services)
+   and a mock-upstream case to `src/test/bff-routes.integration.test.ts`
+   (runs in CI) so the contract is exercised end-to-end.
 
 The full "add a route end-to-end" recipe (proxy → types → hook →
 component → page → tests) lives in the repo's contributor docs:
@@ -137,9 +140,9 @@ capacity. The client `useSse` hook takes an optional `capacityProbePath`
 — when supplied it issues a quick GET to that path before opening the
 EventSource. A 503 surfaces as a distinct `at-capacity` state so the UI
 can display a "control plane at capacity" banner rather than the generic
-"reconnecting" state, with a longer backoff. The CP-side cap
-(`MAX_SSE_CONNECTIONS`) and its 503 behaviour are documented in the
-[CP events](https://agentidentitytrustprotocol.io/control-plane/events) docs.
+"reconnecting" state, with a longer backoff. The CP-side cap and its 503
+behaviour are documented in the
+[CP operations](https://agentidentitytrustprotocol.io/control-plane/operations) docs.
 
 ## Enrollment-token flow
 

@@ -137,9 +137,224 @@ describe('proxyDelete', () => {
   });
 });
 
+describe('timeout handling', () => {
+  afterEach(() => {
+    global.fetch = ORIGINAL_FETCH;
+    jest.useRealTimers();
+  });
+
+  /** A fetch that never resolves on its own — it only rejects once the
+   *  proxy's timeout signal aborts, mimicking a hung upstream. */
+  function hangingFetch(): jest.Mock {
+    return jest.fn(
+      (_target: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () =>
+            reject(new DOMException('This operation was aborted', 'AbortError')),
+          );
+        }),
+    );
+  }
+
+  it('GET returns a 504 envelope when the upstream hangs past the default timeout', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    // Keep real microtasks so NextRequest body/stream plumbing still works.
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+    global.fetch = hangingFetch() as unknown as typeof fetch;
+
+    const req = asNextReq('http://localhost:3001/api/cp/health');
+    const pending = proxyGet('cp', '/api/health', req);
+    await jest.advanceTimersByTimeAsync(30_000);
+    const res = await pending;
+
+    expect(res.status).toBe(504);
+    expect(await res.json()).toEqual({
+      error: 'Upstream timeout',
+      target: 'http://localhost:4000/api/health',
+      upstream_status: 504,
+    });
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it('POST returns a 504 envelope when the upstream hangs past the default timeout', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+    global.fetch = hangingFetch() as unknown as typeof fetch;
+
+    const req = asNextReq('http://localhost:3001/api/playground/runs', {
+      method: 'POST',
+      body: JSON.stringify({ scenario_ref: 'x' }),
+    });
+    const pending = proxyPost('playground', '/runs', req);
+    await jest.advanceTimersByTimeAsync(30_000);
+    const res = await pending;
+
+    expect(res.status).toBe(504);
+    expect(await res.json()).toEqual({
+      error: 'Upstream timeout',
+      target: 'http://localhost:8000/runs',
+      upstream_status: 504,
+    });
+    errorSpy.mockRestore();
+  });
+
+  it('does not time out a fetch that settles inside the window', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+    global.fetch = (async () => new Response('{"ok":true}', { status: 200 })) as unknown as typeof fetch;
+
+    const req = asNextReq('http://localhost:3001/api/cp/health');
+    const res = await proxyGet('cp', '/api/health', req);
+
+    expect(res.status).toBe(200);
+    // The timeout timer must have been cancelled — nothing left to fire.
+    expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
+describe('mutation error mapping', () => {
+  afterEach(() => {
+    global.fetch = ORIGINAL_FETCH;
+  });
+
+  it('POST maps a rejected fetch to a 502 envelope', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    global.fetch = (async () => {
+      throw new TypeError('fetch failed: ECONNREFUSED 127.0.0.1:9999');
+    }) as unknown as typeof fetch;
+
+    const req = asNextReq('http://localhost:3001/api/playground/runs', {
+      method: 'POST',
+      body: JSON.stringify({ scenario_ref: 'x' }),
+    });
+    const res = await proxyPost('playground', '/runs', req);
+
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body).toEqual({
+      error: 'Upstream unreachable',
+      target: 'http://localhost:8000/runs',
+      upstream_status: 502,
+    });
+    expect(String(body.error)).not.toMatch(/ECONNREFUSED/);
+    errorSpy.mockRestore();
+  });
+
+  it('DELETE maps a rejected fetch to a 502 envelope', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    global.fetch = (async () => {
+      throw new Error('socket hang up');
+    }) as unknown as typeof fetch;
+
+    const req = asNextReq('http://localhost:3001/api/cp/webhooks/abc', { method: 'DELETE' });
+    const res = await proxyDelete('cp', '/api/webhooks/abc', req);
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({
+      error: 'Upstream unreachable',
+      target: 'http://localhost:4000/api/webhooks/abc',
+      upstream_status: 502,
+    });
+    errorSpy.mockRestore();
+  });
+});
+
+describe('content-type handling', () => {
+  afterEach(() => {
+    global.fetch = ORIGINAL_FETCH;
+  });
+
+  it('GET preserves the upstream Content-Type', async () => {
+    global.fetch = (async () =>
+      new Response('pong', { status: 200, headers: { 'Content-Type': 'text/plain' } })) as unknown as typeof fetch;
+
+    const req = asNextReq('http://localhost:3001/api/cp/ping');
+    const res = await proxyGet('cp', '/api/ping', req);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toBe('text/plain');
+    expect(await res.text()).toBe('pong');
+  });
+
+  it('GET falls back to application/json when upstream omits Content-Type', async () => {
+    // A null-body Response carries no Content-Type header at all.
+    global.fetch = (async () => new Response(null, { status: 200 })) as unknown as typeof fetch;
+
+    const req = asNextReq('http://localhost:3001/api/cp/ping');
+    const res = await proxyGet('cp', '/api/ping', req);
+
+    expect(res.headers.get('Content-Type')).toBe('application/json');
+  });
+
+  it('POST always returns application/json even when upstream says text/plain', async () => {
+    global.fetch = (async () =>
+      new Response('{"ok":true}', { status: 201, headers: { 'Content-Type': 'text/plain' } })) as unknown as typeof fetch;
+
+    const req = asNextReq('http://localhost:3001/api/playground/runs', {
+      method: 'POST',
+      body: '{}',
+    });
+    const res = await proxyPost('playground', '/runs', req);
+
+    expect(res.status).toBe(201);
+    expect(res.headers.get('Content-Type')).toBe('application/json');
+  });
+});
+
+describe('emptyBodyStatus handling', () => {
+  afterEach(() => {
+    global.fetch = ORIGINAL_FETCH;
+  });
+
+  it.each([205, 304])('upstream %i yields a null-body response without throwing', async (status) => {
+    global.fetch = (async () => new Response(null, { status })) as unknown as typeof fetch;
+
+    const req = asNextReq('http://localhost:3001/api/cp/resource');
+    const res = await proxyGet('cp', '/api/resource', req);
+
+    expect(res.status).toBe(status);
+    expect(res.body).toBeNull();
+    await expect(res.text()).resolves.toBe('');
+  });
+});
+
 describe('proxySse', () => {
   afterEach(() => {
     global.fetch = ORIGINAL_FETCH;
+  });
+
+  it('passes a non-200 upstream status through but still rewrites headers for SSE', async () => {
+    global.fetch = (async () =>
+      new Response('{"error":"down"}', {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' },
+      })) as unknown as typeof fetch;
+
+    const req = asNextReq('http://localhost:3001/api/cp/events/stream');
+    const res = await proxySse('cp', '/api/events/stream', req);
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Content-Type')).toBe('text/event-stream');
+    expect(res.headers.get('Cache-Control')).toMatch(/no-cache/);
+    expect(await res.text()).toBe('{"error":"down"}');
+  });
+
+  it('returns the sanitized 502 envelope when fetch rejects', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    global.fetch = (async () => {
+      throw new Error('econnrefused');
+    }) as unknown as typeof fetch;
+
+    const req = asNextReq('http://localhost:3001/api/cp/events/stream');
+    const res = await proxySse('cp', '/api/events/stream', req);
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({
+      error: 'Upstream unreachable',
+      target: 'http://localhost:4000/api/events/stream',
+      upstream_status: 502,
+    });
+    errorSpy.mockRestore();
   });
 
   it('streams the upstream body and rewrites response headers for SSE', async () => {

@@ -102,7 +102,7 @@ src/
 │   ├── config.ts             ← serverConfig (env), clientConfig
 │   ├── query-options.ts      ← Named refetch cadences (REFETCH.*)
 │   ├── export.ts             ← CSV / NDJSON download helpers
-│   └── utils.ts              ← cn(), formatAid(), timeAgo(), shortId()
+│   └── utils.ts              ← cn(), formatAid(), formatGrants(), timeAgo(), shortId()
 │
 └── test/                     ← Shared test utilities, polyfills, stubs
 ```
@@ -185,6 +185,8 @@ specific feature that needs it.
 - **A WebSocket lib** — `EventSource` handles everything we need.
 - **Server components / Server actions** — every page is client-side
   because they all subscribe to live data. The only server-side code is
-  the BFF route handlers and the middleware.
+  the BFF route handlers, the middleware, and the routing layer in
+  `next.config.ts` (the bare-domain `/` → `/dashboard` redirect and the
+  `X-Frame-Options` / `X-Content-Type-Options` security headers).
 - **A monorepo build tool** — the console builds independently. The
   sibling services have their own build pipelines.

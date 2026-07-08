@@ -8,7 +8,7 @@ here stays in the repository for people working *on* the console.
   the day-to-day three-terminal loop, quality gates, and the end-to-end
   "add a new route" recipe.
 - [`TESTING.md`](./TESTING.md) — the unit and integration test suites,
-  their env gates, what each covers, and a suggested CI strategy.
+  their env gates, what each covers, and how CI runs them.
 - [`DEPLOYMENT.md`](./DEPLOYMENT.md) — deploying the console to Vercel
   (env vars, SSE plan sizing, runtime/routing notes) and the CI pipeline.
 

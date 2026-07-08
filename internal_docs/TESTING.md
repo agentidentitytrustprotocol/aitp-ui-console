@@ -5,15 +5,15 @@
 > user-facing docs see [`docs/`](../docs) or
 > <https://agentidentitytrustprotocol.io/console>.
 
-Two test suites:
+Two test commands, three tiers:
 
 | Command | What it runs | When to use |
 | --- | --- | --- |
-| `npm test` | Unit tests (jsdom) — utils, colors, hooks, components, proxy with mocked `fetch` | Every push, every PR |
-| `npm run test:integration` | End-to-end tests (node) against live console + sibling services | Before merging changes that touch proxy contracts or live UI flow |
+| `npm test` | Unit tests (jsdom) — utils, colors, hooks, components, proxy with mocked `fetch` | Every push, every PR (CI runs this with coverage) |
+| `npm run test:integration` | **Self-contained** route-handler tests (always run, no services needed — CI runs these too) plus **live-service** end-to-end tests (env-gated) | Route-handler tests: every PR. Live-service tests: before merging changes that touch proxy contracts or live UI flow |
 
-The integration suite is gated by env vars and skips silently when those
-vars aren't set, so the command is safe to run anywhere.
+The live-service suites are gated by env vars and skip silently when
+those vars aren't set, so the command is safe to run anywhere.
 
 ## Unit tests (`npm test`)
 
@@ -72,11 +72,30 @@ from `src/test/test-utils.tsx`.
 ## Integration tests (`npm run test:integration`)
 
 Live in `src/test/*.integration.test.ts`. They run in `node` and hit
-real HTTP. There are two env gates:
+real HTTP.
+
+### Self-contained: `bff-routes.integration.test.ts` (no gate, no services)
+
+Spins up an in-process `node:http` mock upstream, points
+`PLAYGROUND_URL` / `CP_URL` at it, and calls the actual Next.js route
+handlers directly. Covers the routing contract end-to-end: path mapping,
+query/body passthrough, auth-header injection, catch-all segment
+encoding, status + content-type passthrough, 204 empty-body handling,
+SSE streaming (including the 503 capacity signal), and the synthesized
+502 envelope. Runs in under a second and is part of CI.
+
+Because `serverConfig` reads env at module load, the suite requires all
+`@/` modules lazily inside `beforeAll` — keep it that way when adding
+cases.
+
+### Live-service suites
+
+The remaining suites hit a real running console + siblings. There are
+two env gates:
 
 | Gate | Default | What runs |
 | --- | --- | --- |
-| `RUN_INTEGRATION=1` | off | Proxy contract tests: each BFF route is hit and the response shape is compared against the live upstream contract. SSE connectivity is verified by opening the stream and asserting it stays alive. |
+| `RUN_INTEGRATION=1` | off | Proxy contract tests (`proxies.integration.test.ts`): each BFF route is hit and the response shape is compared against the live upstream contract. SSE connectivity is verified by opening the stream and asserting it stays alive. Plus CP write flows (`cp-mutations.integration.test.ts`): the full webhook lifecycle — create → update → circuit-breaker read → reset → delete — with self-cleanup. |
 | `RUN_LLM_INTEGRATION=1` | off | Additionally runs a real scenario end-to-end: triggers `intra-org/research-and-write@1.0.0` (or `SCENARIO_REF`), follows the SSE event timeline, asserts the run reaches `success` and emits the expected lifecycle milestones. **This calls the configured LLM provider in the playground and may incur API cost.** |
 
 ### Prerequisites
@@ -115,9 +134,15 @@ RUN_INTEGRATION=1 RUN_LLM_INTEGRATION=1 \
 
 - `proxies.integration.test.ts`
   - Every documented BFF route returns a non-error status and the
-    documented payload shape.
+    documented payload shape (including `events/history`, the separate
+    admin `audit` log, and both `.well-known` documents).
   - SSE endpoints (`/api/cp/events/stream`, `/api/playground/runs/:id/events`)
     open with `text/event-stream` and a non-empty body.
+- `cp-mutations.integration.test.ts`
+  - Webhook lifecycle through the proxy: create (`POST /api/cp/webhooks`),
+    update (`PUT …/[id]`), circuit-breaker read + reset, delete, and
+    absence from the list afterwards. The webhook targets an RFC-reserved
+    `.invalid` host so the CP can never deliver to a real endpoint.
 - `scenario-run.integration.test.ts`
   - `POST /api/playground/runs` returns a `run_id`.
   - SSE stream emits `run.started → agent.spawning → agent.ready →
@@ -133,31 +158,20 @@ does the same for `RUN_LLM_INTEGRATION`. This means you can wire the
 suite into CI unconditionally — without the gate vars, every test
 skips and exits 0.
 
-## CI strategy (suggested)
+## CI
 
-```yaml
-unit:
-  run: npm test
+What `.github/workflows/ci.yml` actually runs today (see
+[DEPLOYMENT.md](./DEPLOYMENT.md#ci) for the full step list):
 
-proxies:
-  needs: [unit]
-  services: [aitp-cp, aitp-playground]   # via docker compose
-  env: { RUN_INTEGRATION: "1" }
-  run: |
-    npm run dev &
-    until curl -fs http://localhost:3001/api/cp/health; do sleep 1; done
-    npm run test:integration
+- `npm test -- --ci --coverage` — unit suite with coverage; the summary
+  lands in the job summary and `lcov.info` is uploaded as an artifact.
+- `npm run test:integration -- --ci` — the self-contained
+  `bff-routes` suite runs for real; the live-service suites skip
+  (no `RUN_INTEGRATION` in CI).
 
-llm:
-  if: github.event_name == 'workflow_dispatch'   # manual only — costs money
-  needs: [proxies]
-  services: [aitp-cp, aitp-playground]
-  env:
-    RUN_INTEGRATION: "1"
-    RUN_LLM_INTEGRATION: "1"
-    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-  run: |
-    npm run dev &
-    until curl -fs http://localhost:3001/api/cp/health; do sleep 1; done
-    npm run test:integration
-```
+The live-service suites stay local-only for now because they need the
+sibling repos running. If we later publish CP/playground container
+images, the natural next step is a `workflow_dispatch` job that brings
+them up via docker compose, waits on their health endpoints, and runs
+`RUN_INTEGRATION=1 npm run test:integration` (keep the LLM gate manual —
+it costs money).

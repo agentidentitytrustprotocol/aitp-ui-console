@@ -82,6 +82,21 @@ beforeAll(async () => {
       } else if (/^\/runs\/[^/]+\/narrate$/.test(url)) {
         res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end('Agent A greeted Agent B.');
+      } else if (url === '/hosted-agents' && req.method === 'POST') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ hosted_id: 'h1', received: JSON.parse(body || '{}') }));
+      } else if (url === '/hosted-agents' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ hosted: [{ hosted_id: 'h1' }] }));
+      } else if (/^\/hosted-agents\/[^/]+\/resolve-and-handshake$/.test(url)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ trust: 'established', received: JSON.parse(body || '{}') }));
+      } else if (/^\/hosted-agents\/[^/]+\/invoke$/.test(url)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ result: JSON.parse(body || '{}') }));
+      } else if (/^\/hosted-agents\/[^/]+$/.test(url) && req.method === 'DELETE') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ stopped: url.split('/').pop() }));
       } else if (url.startsWith('/api/registry/agents/') && req.method === 'DELETE') {
         res.writeHead(204);
         res.end();
@@ -198,6 +213,78 @@ describe('BFF route handlers against a mock upstream', () => {
     expect(res.status).toBe(204);
     expect(res.body).toBeNull();
     expect(lastRequest().url).toBe('/api/registry/agents/aid%3Apubkey%3Aabc');
+  });
+
+  it('POST /api/playground/hosted-agents forwards the host body', async () => {
+    const route: RouteModule = require('@/app/api/playground/hosted-agents/route');
+    const payload = { ref: 'federated/org-a@1.0.0', public_scheme: 'https' };
+    const res = await route.POST!(
+      makeRequest('http://localhost:3001/api/playground/hosted-agents', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ hosted_id: 'h1', received: payload });
+    expect(lastRequest().url).toBe('/hosted-agents');
+    expect(JSON.parse(lastRequest().body)).toEqual(payload);
+  });
+
+  it('GET /api/playground/hosted-agents returns the wrapped list', async () => {
+    const route: RouteModule = require('@/app/api/playground/hosted-agents/route');
+    const res = await route.GET!(
+      makeRequest('http://localhost:3001/api/playground/hosted-agents'),
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ hosted: [{ hosted_id: 'h1' }] });
+  });
+
+  it('DELETE /api/playground/hosted-agents/[id] encodes the id', async () => {
+    const route: RouteModule = require('@/app/api/playground/hosted-agents/[id]/route');
+    const res = await route.DELETE!(
+      makeRequest('http://localhost:3001/api/playground/hosted-agents/h%3A1', {
+        method: 'DELETE',
+      }),
+      params({ id: 'h:1' }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(lastRequest().url).toBe('/hosted-agents/h%3A1');
+    expect(lastRequest().method).toBe('DELETE');
+  });
+
+  it('POST /api/playground/hosted-agents/[id]/resolve-and-handshake maps to the sub-route', async () => {
+    const route: RouteModule = require('@/app/api/playground/hosted-agents/[id]/resolve-and-handshake/route');
+    const body = { peer_did: 'did:web:org-b.example.com' };
+    const res = await route.POST!(
+      makeRequest('http://localhost:3001/api/playground/hosted-agents/h1/resolve-and-handshake', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+      params({ id: 'h1' }),
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ trust: 'established', received: body });
+    expect(lastRequest().url).toBe('/hosted-agents/h1/resolve-and-handshake');
+  });
+
+  it('POST /api/playground/hosted-agents/[id]/invoke maps to the sub-route', async () => {
+    const route: RouteModule = require('@/app/api/playground/hosted-agents/[id]/invoke/route');
+    const body = { peer_port: 9101, capability: 'summarize', payload: { text: 'hi' } };
+    const res = await route.POST!(
+      makeRequest('http://localhost:3001/api/playground/hosted-agents/h1/invoke', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+      params({ id: 'h1' }),
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ result: body });
+    expect(lastRequest().url).toBe('/hosted-agents/h1/invoke');
   });
 
   it('SSE route streams upstream frames with event-stream headers', async () => {

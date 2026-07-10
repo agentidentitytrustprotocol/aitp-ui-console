@@ -14,12 +14,39 @@ describe('RunInputForm', () => {
     const onSubmit = jest.fn();
     render(<RunInputForm schema={schema} onSubmit={onSubmit} />);
 
-    const input = screen.getByRole('textbox');
+    const input = screen.getByLabelText(/topic/i);
     fireEvent.change(input, { target: { value: 'AI agent trust' } });
     fireEvent.click(screen.getByRole('button', { name: /run scenario/i }));
 
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ inputs: { topic: 'AI agent trust' } }),
+    );
+  });
+
+  it('sends a trimmed run_label when the label field is filled', () => {
+    const schema: JSONSchema = { type: 'object', properties: {} };
+    const onSubmit = jest.fn();
+    render(<RunInputForm schema={schema} onSubmit={onSubmit} />);
+
+    fireEvent.change(screen.getByLabelText(/label/i), {
+      target: { value: '  cross-org smoke test  ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /run scenario/i }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ run_label: 'cross-org smoke test' }),
+    );
+  });
+
+  it('omits run_label when the label field is left empty', () => {
+    const schema: JSONSchema = { type: 'object', properties: {} };
+    const onSubmit = jest.fn();
+    render(<RunInputForm schema={schema} onSubmit={onSubmit} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /run scenario/i }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ run_label: undefined }),
     );
   });
 
@@ -97,30 +124,24 @@ describe('RunInputForm', () => {
     expect(button).toHaveTextContent(/starting/i);
   });
 
-  it('passes selected template + variant on submit', () => {
+  it('passes the selected template name on submit (single flat axis, no variant)', () => {
     const schema: JSONSchema = { type: 'object', properties: {} };
     const onSubmit = jest.fn();
     render(
       <RunInputForm
         schema={schema}
         templates={[
-          {
-            id: 'template-a',
-            name: 'Template A',
-            variants: [{ id: 'variant-1', name: 'V1' }],
-          },
+          { name: 'trust-strict', summary: 'No pre-established trust' },
+          { name: 'revoking' },
         ]}
         onSubmit={onSubmit}
       />,
     );
-    // Variant select only appears after the template is chosen.
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'template-a' } });
-    const selects = screen.getAllByRole('combobox');
-    fireEvent.change(selects[1], { target: { value: 'variant-1' } });
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'trust-strict' } });
     fireEvent.click(screen.getByRole('button', { name: /run scenario/i }));
-    expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ template: 'template-a', variant: 'variant-1' }),
-    );
+    const submitted = onSubmit.mock.calls[0][0];
+    expect(submitted).toEqual(expect.objectContaining({ template: 'trust-strict' }));
+    expect(submitted).not.toHaveProperty('variant');
   });
 
   it('emits fault_injection when an advanced fault is toggled', () => {

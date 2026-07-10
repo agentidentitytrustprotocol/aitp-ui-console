@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Layers,
   List,
+  Network,
   Radio,
   ScrollText,
   Settings,
@@ -31,6 +32,7 @@ const NAV: NavItem[] = [
   { href: '/monitor', label: 'Monitor', icon: Radio },
   { href: '/registry', label: 'Registry', icon: Layers },
   { href: '/trust', label: 'Trust', icon: ShieldCheck },
+  { href: '/federation', label: 'Federation', icon: Network },
   { href: '/audit', label: 'Audit', icon: ScrollText },
   { href: '/config', label: 'Config', icon: Settings },
 ];

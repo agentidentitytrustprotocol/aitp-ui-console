@@ -95,6 +95,20 @@ export function RunDetail({ runId }: { runId: string }) {
           {runId}
         </span>
         {run.data && <StatusBadge status={run.data.status} />}
+        {run.data?.run_label && (
+          <span
+            style={{
+              fontSize: 12,
+              color: C.text,
+              background: C.bg3,
+              border: `1px solid ${C.border}`,
+              borderRadius: 5,
+              padding: '2px 8px',
+            }}
+          >
+            {run.data.run_label}
+          </span>
+        )}
         {run.data?.scenario_ref && (
           <span style={{ fontSize: 12, color: C.textDim }} className="mono">
             {run.data.scenario_ref}

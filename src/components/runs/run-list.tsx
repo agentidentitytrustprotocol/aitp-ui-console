@@ -83,7 +83,16 @@ export function RunList() {
                     </Link>
                   </td>
                   <td style={{ padding: '12px 16px', fontSize: 12, color: C.text }}>
-                    {r.scenario_ref ?? '—'}
+                    {r.run_label ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <span style={{ color: C.text }}>{r.run_label}</span>
+                        <span className="mono" style={{ fontSize: 11, color: C.textMuted }}>
+                          {r.scenario_ref ?? '—'}
+                        </span>
+                      </div>
+                    ) : (
+                      r.scenario_ref ?? '—'
+                    )}
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <StatusBadge status={r.status} />

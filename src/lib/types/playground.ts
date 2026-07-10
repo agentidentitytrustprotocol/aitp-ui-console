@@ -54,19 +54,14 @@ export interface WorkflowStep {
   input_from?: string;
 }
 
-export interface ScenarioVariant {
-  id: string;
-  name?: string;
-  description?: string;
-  workflow?: { steps: WorkflowStep[] };
-  inputs?: Record<string, unknown>;
-}
-
+/** A named scenario template — a trust/agents/workflow override applied on
+ *  top of the base scenario (the backend's docs also call these "variants").
+ *  The playground exposes them as a flat `{ name, summary }` list, embedded
+ *  top-level in `GET /scenarios/{ref}` and via `GET /scenarios/{ref}/templates`.
+ *  There is no separate variant axis: `POST /runs` selects one by `name`. */
 export interface ScenarioTemplate {
-  id: string;
-  name?: string;
-  description?: string;
-  variants?: ScenarioVariant[];
+  name: string;
+  summary?: string;
 }
 
 export interface ScenarioVersion {
@@ -78,8 +73,16 @@ export interface ScenarioVersion {
     agents: AgentSpec[];
     trust: TrustSpec;
     workflow: { steps: WorkflowStep[] };
-    templates?: ScenarioTemplate[];
   };
+  /** Templates are attached top-level by the backend (`body["templates"]`),
+   *  not under `spec`. */
+  templates?: ScenarioTemplate[];
+}
+
+/** `GET /scenarios/{ref}/templates` → `{ ref, templates: [...] }`. */
+export interface ScenarioTemplateList {
+  ref: string;
+  templates: ScenarioTemplate[];
 }
 
 /** Optional fault-injection knobs the run-create form can send. The
@@ -92,8 +95,13 @@ export interface FaultInjection {
 export interface RunCreateInput {
   scenario_ref: string;
   inputs: Record<string, unknown>;
+  /** Optional human-friendly label sent to `POST /runs` (`RunRequest.run_label`).
+   *  Echoed back on `RunCreated`, `RunSummary`, and `RunResponse`. */
+  run_label?: string;
+  /** Name of a scenario template to merge before running (matched exactly
+   *  against `ScenarioTemplate.name`). There is no separate `variant` field —
+   *  the backend collapses template/variant into this single name. */
   template?: string;
-  variant?: string;
   fault_injection?: FaultInjection;
 }
 
@@ -101,12 +109,14 @@ export interface RunCreated {
   run_id: string;
   status: string;
   scenario_ref: string;
+  run_label?: string | null;
 }
 
 export interface RunSummary {
   run_id: string;
   status: string | null;
   scenario_ref: string | null;
+  run_label?: string | null;
   created_at: number | null;
   event_count: number;
 }
@@ -141,6 +151,7 @@ export interface RunResponse {
   run_id: string;
   status: string;
   scenario_ref: string;
+  run_label?: string | null;
   outputs: Record<string, unknown>;
   events: RunEvent[];
   error: string | null;
@@ -188,3 +199,80 @@ export interface RunDeliveriesResponse {
 
 /** `GET /runs/{id}/narrate` returns plain text (PlainTextResponse on
  *  the backend), not structured JSON. */
+
+// ---------------------------------------------------------------------------
+// Federation / hosted agents — the `/hosted-agents/*` cross-org, did:web
+// handshake demo (playground `api/hosted.py`). Field names are verbatim from
+// the backend request/response models.
+// ---------------------------------------------------------------------------
+
+/** A hosted agent process, as returned by every `/hosted-agents` endpoint
+ *  (`hosting.hosted.HostedAgent`, a dataclass serialized with `asdict`). */
+export interface HostedAgent {
+  hosted_id: string;
+  agent_id: string;
+  ref: string;
+  port: number;
+  aid: string;
+  did: string | null;
+  origin: string;
+  manifest_url: string;
+  handshake_url: string;
+  did_document_url: string | null;
+}
+
+/** `GET /hosted-agents` → `{ hosted: [...] }` (wrapped, not a bare array). */
+export interface HostedAgentList {
+  hosted: HostedAgent[];
+}
+
+/** `POST /hosted-agents` body (`HostRequest`). Only `ref` is required. */
+export interface HostRequest {
+  ref: string;
+  public_host?: string;
+  public_scheme?: string;
+  signing_suite?: string;
+  inputs?: Record<string, unknown>;
+  port?: number;
+}
+
+/** `POST /hosted-agents/{id}/resolve-and-handshake` body (`HandshakeRequest`). */
+export interface HostHandshakeRequest {
+  peer_did: string;
+  requested_grants?: string[];
+}
+
+/** `POST /hosted-agents/{id}/invoke` body (`InvokeRequest`). */
+export interface HostInvokeRequest {
+  peer_port: number;
+  capability: string;
+  peer_base_url?: string;
+  payload?: unknown;
+}
+
+/** Response of `resolve-and-handshake`. The first five keys are set by the
+ *  playground; the rest are spread from the downstream agent's
+ *  `/admin/initiate-handshake` result, so treat them as best-effort. */
+export interface HostHandshakeResult {
+  trust: string;
+  peer_did: string;
+  resolved_manifest_url: string;
+  peer_origin: string;
+  peer_base_url: string;
+  grants?: string[];
+  peer_aid?: string;
+  peer_port?: number;
+  session_id?: string;
+  jti?: string;
+  [key: string]: unknown;
+}
+
+/** Response of `invoke` → `{ result: <peer capability response> }`. */
+export interface HostInvokeResult {
+  result: unknown;
+}
+
+/** `DELETE /hosted-agents/{id}` → `{ stopped: <hosted_id> }`. */
+export interface HostStoppedResult {
+  stopped: string;
+}

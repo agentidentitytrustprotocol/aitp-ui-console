@@ -13,8 +13,8 @@ import type {
 
 export interface RunFormSubmission {
   inputs: Record<string, unknown>;
+  run_label?: string;
   template?: string;
-  variant?: string;
   fault_injection?: FaultInjection;
 }
 
@@ -47,8 +47,8 @@ export function RunInputForm({ schema, templates, agents, loading, onSubmit }: P
   }, [schema]);
 
   const [values, setValues] = useState<Record<string, unknown>>(initial);
-  const [templateId, setTemplateId] = useState<string>('');
-  const [variantId, setVariantId] = useState<string>('');
+  const [runLabel, setRunLabel] = useState<string>('');
+  const [templateName, setTemplateName] = useState<string>('');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [manifest404, setManifest404] = useState<string[]>([]);
   const [peerOffline, setPeerOffline] = useState<string[]>([]);
@@ -57,16 +57,11 @@ export function RunInputForm({ schema, templates, agents, loading, onSubmit }: P
   // (i.e. the parent switched scenarios).
   useEffect(() => {
     setValues(initial);
-    setTemplateId('');
-    setVariantId('');
+    setRunLabel('');
+    setTemplateName('');
     setManifest404([]);
     setPeerOffline([]);
   }, [initial]);
-
-  const variants = useMemo(() => {
-    if (!templateId || !templates) return [];
-    return templates.find((t) => t.id === templateId)?.variants ?? [];
-  }, [templateId, templates]);
 
   function update(key: string, val: unknown) {
     setValues((v) => ({ ...v, [key]: val }));
@@ -86,8 +81,8 @@ export function RunInputForm({ schema, templates, agents, loading, onSubmit }: P
     if (peerOffline.length > 0) fi.peer_offline = peerOffline;
     onSubmit({
       inputs: values,
-      template: templateId || undefined,
-      variant: variantId || undefined,
+      run_label: runLabel.trim() || undefined,
+      template: templateName || undefined,
       fault_injection: Object.keys(fi).length > 0 ? fi : undefined,
     });
   }
@@ -107,41 +102,31 @@ export function RunInputForm({ schema, templates, agents, loading, onSubmit }: P
 
   return (
     <form onSubmit={submit}>
+      <div style={{ marginBottom: 14 }}>
+        <Label htmlFor="run-input-label">Label (optional)</Label>
+        <input
+          id="run-input-label"
+          type="text"
+          value={runLabel}
+          onChange={(e) => setRunLabel(e.target.value)}
+          placeholder="e.g. cross-org smoke test"
+          style={baseInput}
+        />
+      </div>
+
       {templates && templates.length > 0 && (
         <div style={{ marginBottom: 14 }}>
           <Label htmlFor="run-input-template">Template</Label>
           <select
             id="run-input-template"
-            value={templateId}
-            onChange={(e) => {
-              setTemplateId(e.target.value);
-              setVariantId('');
-            }}
+            value={templateName}
+            onChange={(e) => setTemplateName(e.target.value)}
             style={baseInput}
           >
             <option value="">— default —</option>
             {templates.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name ?? t.id}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {variants.length > 0 && (
-        <div style={{ marginBottom: 14 }}>
-          <Label htmlFor="run-input-variant">Variant</Label>
-          <select
-            id="run-input-variant"
-            value={variantId}
-            onChange={(e) => setVariantId(e.target.value)}
-            style={baseInput}
-          >
-            <option value="">— pick a variant —</option>
-            {variants.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name ?? v.id}
+              <option key={t.name} value={t.name}>
+                {t.summary ? `${t.name} — ${t.summary}` : t.name}
               </option>
             ))}
           </select>

@@ -151,7 +151,7 @@ export function ScenarioDetail({ scenarioRef }: { scenarioRef: string }) {
               )}
               <RunInputForm
                 schema={data.spec.inputs.schema}
-                templates={data.spec.templates}
+                templates={data.templates}
                 agents={data.spec.agents}
                 loading={trigger.isPending}
                 onSubmit={(submission) => trigger.mutate(submission)}

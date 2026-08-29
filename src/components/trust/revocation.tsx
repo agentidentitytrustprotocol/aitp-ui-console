@@ -184,6 +184,17 @@ export function RevocationView() {
         </div>
       )}
 
+      <div
+        style={{
+          padding: '8px 18px',
+          fontSize: 10,
+          color: C.textMuted,
+          borderBottom: `1px solid ${C.border}`,
+        }}
+      >
+        Entries shown as served by the CP · signature not checked by this console.
+      </div>
+
       {isLoading ? (
         <div style={{ padding: 20 }}>
           <LoadingSkeleton rows={3} />

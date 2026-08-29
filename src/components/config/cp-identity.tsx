@@ -60,7 +60,7 @@ export function CpIdentityCard() {
       ) : (
         <div style={{ padding: 14, background: C.bg3, borderRadius: 8, marginBottom: 14 }}>
           <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 6, letterSpacing: '0.06em' }}>
-            AID
+            AID (as reported by CP_URL — unverified)
           </div>
           <div
             className="mono"
@@ -111,7 +111,7 @@ export function CpIdentityCard() {
                 {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
               </span>{' '}
               · expires {expiresIn(list?.expires_at)}
-              {revocation.data.signature && ' · signed by CP'}
+              {' · as served by CP_URL · signature not checked'}
             </div>
             <div className="mono" style={{ fontSize: 10, color: C.textMuted }}>
               RFC-AITP-0008 compliant · empty list is a meaningful assertion

@@ -1,6 +1,7 @@
 import { screen } from '@testing-library/react';
 import { renderWithClient } from '@/test/test-utils';
-import type { ManifestEnvelope, RevocationList } from '@/lib/types/cp';
+import { C } from '@/lib/colors';
+import type { RevocationList, Verdict, VerifiedManifestEnvelope } from '@/lib/types/cp';
 
 const getMock = jest.fn();
 
@@ -10,7 +11,10 @@ jest.mock('@/lib/api/client', () => ({
 
 import { CpIdentityCard } from './cp-identity';
 
-function manifest(overrides: Partial<ManifestEnvelope['manifest']> = {}): ManifestEnvelope {
+function manifest(
+  verification: Verdict,
+  overrides: Partial<VerifiedManifestEnvelope['manifest']> = {},
+): VerifiedManifestEnvelope {
   return {
     manifest: {
       aid: 'aid:pubkey:test',
@@ -19,6 +23,7 @@ function manifest(overrides: Partial<ManifestEnvelope['manifest']> = {}): Manife
       offered_capabilities: [],
       ...overrides,
     },
+    _verification: verification,
   };
 }
 
@@ -34,7 +39,7 @@ beforeEach(() => {
   getMock.mockReset();
 });
 
-function wireApi(m: ManifestEnvelope | null, r: RevocationList | null) {
+function wireApi(m: VerifiedManifestEnvelope | null, r: RevocationList | null) {
   getMock.mockImplementation(async (url: string) => {
     if (url === '/api/cp/well-known/aitp-manifest') {
       if (!m) throw new Error('manifest unavailable');
@@ -50,22 +55,15 @@ function wireApi(m: ManifestEnvelope | null, r: RevocationList | null) {
 
 describe('CpIdentityCard provenance', () => {
   it('never renders the false "signed by CP" claim, with or without a signature field', async () => {
-    wireApi(manifest(), revocationList({ signature: 'sig-bytes' }));
+    wireApi(manifest({ checked: true, ok: true }), revocationList({ signature: 'sig-bytes' }));
     renderWithClient(<CpIdentityCard />);
     await screen.findByText('aid:pubkey:test');
 
     expect(screen.queryByText(/signed by CP/)).not.toBeInTheDocument();
   });
 
-  it('labels the AID block as unverified, sourced from CP_URL', async () => {
-    wireApi(manifest(), revocationList());
-    renderWithClient(<CpIdentityCard />);
-
-    expect(await screen.findByText('AID (as reported by CP_URL — unverified)')).toBeInTheDocument();
-  });
-
   it('states the revocation snapshot is unchecked, unconditionally', async () => {
-    wireApi(manifest(), revocationList({ signature: undefined }));
+    wireApi(manifest({ checked: true, ok: true }), revocationList({ signature: undefined }));
     renderWithClient(<CpIdentityCard />);
     await screen.findByText('aid:pubkey:test');
 
@@ -74,5 +72,80 @@ describe('CpIdentityCard provenance', () => {
         node?.textContent === '0 entries · expires — · as served by CP_URL · signature not checked',
       ),
     ).toBeInTheDocument();
+  });
+});
+
+describe('CpIdentityCard manifest verdict', () => {
+  it('colours the AID teal and shows "verified" only on ok:true', async () => {
+    wireApi(manifest({ checked: true, ok: true }), revocationList());
+    renderWithClient(<CpIdentityCard />);
+
+    const aid = await screen.findByText('aid:pubkey:test');
+    expect(aid).toHaveStyle({ color: C.tealBright });
+    expect(
+      screen.getByText('· verified · signed by the key bound to this AID'),
+    ).toHaveStyle({ color: C.green });
+  });
+
+  it('renders EXPIRED distinctly from a verification failure, with the AID muted (not red)', async () => {
+    wireApi(manifest({ checked: true, ok: false, code: 'expired' }), revocationList());
+    renderWithClient(<CpIdentityCard />);
+
+    const aid = await screen.findByText('aid:pubkey:test');
+    expect(aid).toHaveStyle({ color: C.textMuted });
+    const badge = screen.getByText(
+      "· EXPIRED · signature not assessed — the CP's manifest lapsed before it could be checked",
+    );
+    expect(badge).toHaveStyle({ color: C.amber });
+  });
+
+  it('renders a signature failure in red, AID muted', async () => {
+    wireApi(manifest({ checked: true, ok: false, code: 'signature_invalid' }), revocationList());
+    renderWithClient(<CpIdentityCard />);
+
+    const aid = await screen.findByText('aid:pubkey:test');
+    expect(aid).toHaveStyle({ color: C.textMuted });
+    expect(screen.getByText('· VERIFICATION FAILED (signature_invalid)')).toHaveStyle({
+      color: C.red,
+    });
+  });
+
+  it('does not overclaim for a pre-signature code: version_unknown and malformed render as not-verified, not a failure', async () => {
+    for (const code of ['version_unknown', 'malformed']) {
+      wireApi(manifest({ checked: true, ok: false, code }), revocationList());
+      const { unmount } = renderWithClient(<CpIdentityCard />);
+      expect(await screen.findByText(`· NOT VERIFIED · signature not assessed (${code})`)).toHaveStyle({
+        color: C.amber,
+      });
+      unmount();
+    }
+  });
+
+  it('renders checked:false as unchecked, not as a failure', async () => {
+    wireApi(manifest({ checked: false, reason: 'sdk_unavailable' }), revocationList());
+    renderWithClient(<CpIdentityCard />);
+
+    const aid = await screen.findByText('aid:pubkey:test');
+    expect(aid).toHaveStyle({ color: C.textMuted });
+    expect(screen.getByText('· signature not checked (sdk_unavailable)')).toHaveStyle({
+      color: C.amber,
+    });
+  });
+
+  it('never colours the AID teal except on ok:true', async () => {
+    const nonOkVerdicts: Verdict[] = [
+      { checked: true, ok: false, code: 'expired' },
+      { checked: true, ok: false, code: 'signature_invalid' },
+      { checked: true, ok: false, code: 'version_unknown' },
+      { checked: true, ok: false, code: 'malformed' },
+      { checked: false, reason: 'sdk_unavailable' },
+    ];
+    for (const verification of nonOkVerdicts) {
+      wireApi(manifest(verification), revocationList());
+      const { unmount } = renderWithClient(<CpIdentityCard />);
+      const aid = await screen.findByText('aid:pubkey:test');
+      expect(aid).not.toHaveStyle({ color: C.tealBright });
+      unmount();
+    }
   });
 });

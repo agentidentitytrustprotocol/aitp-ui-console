@@ -1,11 +1,22 @@
 # BFF Proxy Routes
 
-Every browser request goes through one of these routes. Each is a 4-line
+Every browser request goes through one of these routes. Most are a 4-line
 delegation to `proxyGet` / `proxyPost` / `proxyPut` / `proxyPatch` /
 `proxyDelete` / `proxySse` from `src/lib/api/proxy.ts`. No business logic
 lives here — the proxy exists only to keep credentials off the browser and
 collapse two upstreams to one origin (see
 [ARCHITECTURE.md](https://agentidentitytrustprotocol.io/console/architecture#why-a-bff-proxy)).
+
+**Exception: the two manifest routes below use `proxyGetVerified`, not
+`proxyGet`.** They forward the upstream body unchanged but run it through
+the `aitp` SDK's `verifyManifestJson` server-side first, attaching the
+result as a sibling `_verification` key (`{checked, ok, code}` /
+`{checked: false, reason}`) — never re-serializing the upstream bytes, so
+the response the browser sees is byte-identical to what was verified. This
+is the one case in this table with real logic in the proxy layer: rendering
+a CP-signed artifact as trusted without checking it is exactly the defect
+`plans/cp-signed-artifact-verification.md` exists to fix. See
+[ARCHITECTURE.md](https://agentidentitytrustprotocol.io/console/architecture#what-the-bff-verifies).
 
 This table is the console's **routing contract**: console route → upstream
 path. The *meaning* of each upstream endpoint is owned by its service —
@@ -59,7 +70,7 @@ server-side, never sent to the browser.
 | POST | `/api/cp/registry/enroll` | `/api/registry/enroll` |
 | GET | `/api/cp/registry/agents/[aid]` | `/api/registry/agents/:aid` |
 | DELETE | `/api/cp/registry/agents/[aid]` | `/api/registry/agents/:aid` |
-| GET | `/api/cp/registry/agents/[aid]/manifest` | `/api/registry/agents/:aid/manifest` |
+| GET | `/api/cp/registry/agents/[aid]/manifest` | `/api/registry/agents/:aid/manifest` (verifying — see note above) |
 | **SSE** | `/api/cp/events/stream` | `/api/events/stream` (cap-aware) |
 | GET | `/api/cp/events/history` | `/api/events/history` |
 | GET | `/api/cp/sessions` | `/api/sessions` |
@@ -78,7 +89,7 @@ server-side, never sent to the browser.
 | PUT, DELETE | `/api/cp/webhooks/[id]` | `/api/webhooks/:id` |
 | GET, POST | `/api/cp/webhooks/[id]/circuit-breaker` | `/api/webhooks/:id/circuit-breaker` |
 | POST | `/api/cp/webhooks/[id]/circuit-breaker/reset` | `/api/webhooks/:id/circuit-breaker/reset` |
-| GET | `/api/cp/well-known/aitp-manifest` | `/.well-known/aitp-manifest` |
+| GET | `/api/cp/well-known/aitp-manifest` | `/.well-known/aitp-manifest` (verifying — see note above) |
 | GET | `/api/cp/well-known/aitp-revocation-list` | `/.well-known/aitp-revocation-list` |
 
 ## Adding a new proxy
@@ -101,6 +112,12 @@ server-side, never sent to the browser.
 4. For SSE, use `proxySse` and make sure the upstream sets
    `Content-Type: text/event-stream`. The proxy auto-rewrites
    `Cache-Control` and `X-Accel-Buffering`.
+4a. **If the route serves a CP-signed artifact**, use `proxyGetVerified`
+    instead of `proxyGet`, passing a `verify(bodyText) => Verdict` function.
+    Never verify in the browser — write the verify function in a small
+    dedicated module the route imports (see `src/lib/api/verify-manifest.ts`),
+    not inline in the route, so unit tests under `jsdom` (which cannot load
+    a native addon) never transitively import it.
 5. Add a row to this table.
 6. Add a hit to `src/test/proxies.integration.test.ts` (live services)
    and a mock-upstream case to `src/test/bff-routes.integration.test.ts`

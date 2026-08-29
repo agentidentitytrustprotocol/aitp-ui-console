@@ -100,6 +100,13 @@ export interface Webhook {
   updatedAt: string;
 }
 
+/** Matches the wire type exactly (`aitp-manifest/src/types.rs`'s
+ *  `ManifestEnvelope`, `#[serde(deny_unknown_fields)]` over exactly one
+ *  field): `signature` and `proof_of_possession` live *inside* `manifest`,
+ *  never as siblings of it. Do not add top-level fields here, and do not
+ *  add a top-level index signature — either would silently license an
+ *  invented shape the CP rejects with `malformed`. See Finding 3 in
+ *  plans/cp-signed-artifact-verification.md. */
 export interface ManifestEnvelope {
   manifest: {
     aid: string;
@@ -108,12 +115,32 @@ export interface ManifestEnvelope {
     offered_capabilities?: string[];
     expires_at?: number;
     namespace?: string;
+    signature?: string;
+    proof_of_possession?: unknown;
     [key: string]: unknown;
   };
-  signature?: string;
-  proof_of_possession?: string;
-  [key: string]: unknown;
 }
+
+/** The BFF's verification verdict for a CP-signed artifact it checked
+ *  server-side, via the SDK, never in the browser. Three states, kept
+ *  distinct on purpose:
+ *  - `{checked: true, ok: true}` — the SDK's check passed.
+ *  - `{checked: true, ok: false, code}` — the SDK checked and rejected it.
+ *    `code` is the SDK's own error code (e.g. `signature_invalid`,
+ *    `expired`); branch on it, never on `.message` — the SDK states the
+ *    code is the contract and the wording is not.
+ *  - `{checked: false, reason}` — the check could not run at all (e.g. the
+ *    native addon failed to load). Never conflated with `ok: false`: an
+ *    unchecked artifact and a rejected one are different facts. */
+export type Verdict =
+  | { checked: true; ok: true }
+  | { checked: true; ok: false; code: string }
+  | { checked: false; reason: string };
+
+/** What the BFF actually returns from a verifying-proxy route: the
+ *  upstream envelope, byte-for-byte under `manifest`, plus `_verification`
+ *  as a sibling namespaced key that can never collide with a spec field. */
+export type VerifiedManifestEnvelope = ManifestEnvelope & { _verification: Verdict };
 
 /** The CP serves the revocation list as a signed envelope:
  *  `{ revocation_list: { ... entries }, signature }` — mirroring

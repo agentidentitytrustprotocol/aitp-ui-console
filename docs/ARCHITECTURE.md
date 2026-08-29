@@ -63,6 +63,24 @@ The cost is one extra hop and a `text → string → Response` re-pack on
 every request. That tradeoff is documented in `src/lib/api/proxy.ts`.
 Every console route's upstream mapping lives in [PROXIES.md](https://agentidentitytrustprotocol.io/console/proxies).
 
+### What the BFF verifies
+
+The two routes serving CP-signed artifacts (`well-known/aitp-manifest` and
+the per-agent manifest route) do more than hide credentials — they run the
+artifact through the `aitp` SDK's `verifyManifestJson` server-side before
+the browser ever sees it, and attach the result as `_verification` (see
+[PROXIES.md](https://agentidentitytrustprotocol.io/console/proxies)). This is deliberately server-side, never client-side:
+the browser is where an attacker who can serve the page can also serve a
+verifier that always returns true, and the native addon that does the
+actual check cannot ship to a client bundle anyway.
+
+This is the console's one exception to "the BFF is credential-hiding and
+CORS-avoiding only, no business logic." Rendering a value copied out of an
+unauthenticated fetch as though it had been checked is a defect, not a
+layering purity question — see `plans/cp-signed-artifact-verification.md`
+(local, not tracked in this repo) for the fuller argument. The revocation
+snapshot is not yet covered the same way.
+
 ### CSRF guard
 
 `src/middleware.ts` runs on every `/api/**` mutation (POST/PUT/PATCH/

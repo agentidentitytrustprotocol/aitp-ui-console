@@ -52,6 +52,7 @@ layer or the SSE hook. See [`TESTING.md`](./TESTING.md).
    | `PLAYGROUND_API_KEY` | if upstream enforces | Bearer token forwarded to the playground. |
    | `CP_URL` | yes | Public HTTPS URL of the control plane. |
    | `CP_API_KEY` | if upstream enforces | Bearer token forwarded to the CP. |
+   | `CP_AID` | optional | Pins the CP's identity for revocation-snapshot verification (Tier 2 — see `plans/cp-signed-artifact-verification.md`, Phase 4). Not a secret. Obtain it from the CP's verified manifest on the Config page — only sound because of Phase 3. Leave blank for Tier 1 (self-consistency only). |
    | `TRUSTED_ORIGINS` | optional | Comma-separated extra `Origin`s the CSRF guard should allow. Only needed if the console is reachable on multiple hostnames (e.g. behind a CDN with a custom domain that differs from the Vercel one). |
 
    None of these are referenced at build time, so previews can deploy

@@ -143,8 +143,12 @@ export type Verdict =
 export type VerifiedManifestEnvelope = ManifestEnvelope & { _verification: Verdict };
 
 /** The CP serves the revocation list as a signed envelope:
- *  `{ revocation_list: { ... entries }, signature }` — mirroring
- *  `ManifestEnvelope`. The inner list follows RFC-AITP-0008. */
+ *  `{ revocation_list: { ... entries }, signature }`. Unlike the manifest,
+ *  `signature` really is a top-level sibling of the body on this wire
+ *  shape (`aitp-tct/src/revocation.rs`'s doc comment calls this out
+ *  explicitly), so no Finding-3-style split is needed here -- just no
+ *  top-level index signature, for the same reason `ManifestEnvelope`
+ *  dropped its: it must not license an invented top-level key. */
 export interface RevocationList {
   revocation_list?: {
     version?: string;
@@ -160,8 +164,27 @@ export interface RevocationList {
     }>;
   };
   signature?: string;
-  [key: string]: unknown;
 }
+
+/** Which expected-issuer resolution path a revocation-snapshot verdict
+ *  took. `pinned` needs `CP_AID` configured; `self-consistent` derives the
+ *  expected issuer from the CP's own (Phase-3-verified) manifest, so it
+ *  proves one key signed both artifacts served by the same origin -- not
+ *  that the origin itself is authentic. Never render `self-consistent` as
+ *  "verified". */
+export type RevocationTier = 'pinned' | 'self-consistent';
+
+/** Verdict for a revocation snapshot -- like `Verdict`, but carrying which
+ *  tier resolved the expected issuer (once one was found), and letting the
+ *  `checked: false` case carry the upstream manifest's own failure code
+ *  when that's *why* no trusted issuer was available (Tier 1 only). An
+ *  operator staring at a permanently-unchecked badge needs to see why. */
+export type RevocationVerdict =
+  | { checked: true; ok: true; tier: RevocationTier }
+  | { checked: true; ok: false; code: string; tier: RevocationTier }
+  | { checked: false; reason: string; manifestCode?: string };
+
+export type VerifiedRevocationList = RevocationList & { _verification: RevocationVerdict };
 
 /** `/api/readyz` returns just { ready } on success, or
  *  { ready: false, reason } / { ready: false, error } on failure. */

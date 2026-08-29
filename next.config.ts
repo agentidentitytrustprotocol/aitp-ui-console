@@ -6,6 +6,19 @@ const withBundleAnalyzer = bundleAnalyzer({
 });
 
 const nextConfig: NextConfig = {
+  // THROWAWAY — Phase 2 of plans/cp-signed-artifact-verification.md.
+  // `aitp` ships a native NAPI binary; Next must require() it at runtime
+  // rather than bundle it. Unlike aitp-control-plane's next.config.ts,
+  // there is no `standalone` build here to gate this behind — Vercel does
+  // its own tracing over a normal build — so both settings are unconditional.
+  serverExternalPackages: ['aitp'],
+  outputFileTracingIncludes: {
+    '*': [
+      './node_modules/@agentidentitytrustprotocol/aitp-linux-x64-gnu/**',
+      './node_modules/@agentidentitytrustprotocol/aitp-linux-arm64-gnu/**',
+    ],
+  },
+
   // Resolve the landing path at the routing layer so the bare domain issues a
   // real HTTP redirect to /dashboard. The previous `redirect('/dashboard')` in
   // app/page.tsx produced a 200 that redirected client-side, which aborted the

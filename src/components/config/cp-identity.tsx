@@ -8,8 +8,8 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { getJSON } from '@/lib/api/client';
 import { C } from '@/lib/colors';
 import { REFETCH } from '@/lib/query-options';
-import { manifestVerdictBadge } from '@/lib/verification-display';
-import type { RevocationList, VerifiedManifestEnvelope } from '@/lib/types/cp';
+import { manifestVerdictBadge, revocationVerdictBadge } from '@/lib/verification-display';
+import type { VerifiedManifestEnvelope, VerifiedRevocationList } from '@/lib/types/cp';
 
 function expiresIn(expiresAt: number | string | undefined): string {
   if (expiresAt === undefined) return '—';
@@ -31,7 +31,7 @@ export function CpIdentityCard() {
 
   const revocation = useQuery({
     queryKey: ['cp-revocation'],
-    queryFn: () => getJSON<RevocationList>('/api/cp/well-known/aitp-revocation-list'),
+    queryFn: () => getJSON<VerifiedRevocationList>('/api/cp/well-known/aitp-revocation-list'),
     refetchInterval: REFETCH.veryslow,
   });
 
@@ -111,14 +111,17 @@ export function CpIdentityCard() {
           (() => {
             const list = revocation.data.revocation_list;
             const entries = list?.entries ?? [];
+            const badge = revocationVerdictBadge(revocation.data._verification);
             return (
           <>
             <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>
-              <span style={{ color: entries.length === 0 ? C.green : C.amber }}>
+              <span
+                style={{ color: badge.entriesGreyed ? C.textMuted : entries.length === 0 ? C.green : C.amber }}
+              >
                 {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
               </span>{' '}
-              · expires {expiresIn(list?.expires_at)}
-              {' · as served by CP_URL · signature not checked'}
+              · expires {expiresIn(list?.expires_at)}{' '}
+              <span style={{ color: badge.color }}>{badge.text}</span>
             </div>
             <div className="mono" style={{ fontSize: 10, color: C.textMuted }}>
               RFC-AITP-0008 compliant · empty list is a meaningful assertion

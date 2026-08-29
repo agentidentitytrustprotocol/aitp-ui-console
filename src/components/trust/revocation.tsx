@@ -9,6 +9,7 @@ import { TimeAgo } from '@/components/shared/time-ago';
 import { useCreateRevocation, useRevocationList } from '@/hooks/use-trust';
 import { useToast } from '@/components/shared/toast';
 import { C } from '@/lib/colors';
+import { revocationVerdictBadge } from '@/lib/verification-display';
 
 export function RevocationView() {
   const toast = useToast();
@@ -184,16 +185,18 @@ export function RevocationView() {
         </div>
       )}
 
-      <div
-        style={{
-          padding: '8px 18px',
-          fontSize: 10,
-          color: C.textMuted,
-          borderBottom: `1px solid ${C.border}`,
-        }}
-      >
-        Entries shown as served by the CP · signature not checked by this console.
-      </div>
+      {data && (
+        <div
+          style={{
+            padding: '8px 18px',
+            fontSize: 10,
+            color: revocationVerdictBadge(data._verification).color,
+            borderBottom: `1px solid ${C.border}`,
+          }}
+        >
+          {revocationVerdictBadge(data._verification).text}
+        </div>
+      )}
 
       {isLoading ? (
         <div style={{ padding: 20 }}>

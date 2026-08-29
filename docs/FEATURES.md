@@ -193,9 +193,12 @@ posture. Each tab is a small CRUD surface.
 - **Pinned keys** — static SPKI key pins per `(namespace, aid)` for
   environments that bypass discovery.
 - **Revocation** — add a JTI to the authoritative revocation list, with an
-  optional reason. The list is displayed as served by the CP; the console
-  does not check its signature (the entries table carries a provenance
-  line saying so, in every state including empty).
+  optional reason. The snapshot itself is verified server-side before
+  display (in every state including empty) — self-consistently against
+  the CP's own manifest by default, or against a pinned `CP_AID` if one is
+  configured; see the CP identity bullet under Config for what each tier
+  actually proves. A failed or unassessed check still shows the entries,
+  visibly marked untrusted, rather than hiding them.
 
 ### Revocation confirm flow
 
@@ -233,10 +236,16 @@ Operational settings and health, split across two columns.
   on the server, and API keys never reach the browser.
 - **CP identity** — the control plane's own AITP manifest: AID, display
   name, handshake endpoint, capability set, expiry countdown, and
-  revocation-list pointer. The AID and revocation snapshot are read
-  straight off the wire — labelled as reported by `CP_URL`, unverified —
-  and the console does not check the manifest's or the revocation list's
-  signature.
+  revocation-list pointer. The manifest and the revocation snapshot are
+  each verified server-side (in the BFF, via the `aitp` SDK, never in the
+  browser) before the AID or entry count is shown as trustworthy — the AID
+  is coloured as verified only when its manifest's signature actually
+  checked out; an expired manifest renders as its own distinct state that
+  claims nothing about authenticity either way, never as a softer
+  "verified". The revocation snapshot verifies in one of two tiers: against
+  the CP's own manifest by default (proves one key signed both artifacts,
+  not that the origin is authentic — never rendered as "verified"), or
+  against a pinned `CP_AID` if configured (a real authentication claim).
 - **SDK matrix** — SDK / capability support reported by the playground.
 - **Processes & metrics** — playground process list and the metrics
   panels for both services.

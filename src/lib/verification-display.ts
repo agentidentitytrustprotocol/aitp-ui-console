@@ -1,5 +1,5 @@
 import { C } from './colors';
-import type { Verdict } from './types/cp';
+import type { RevocationVerdict, Verdict } from './types/cp';
 
 export interface VerdictBadge {
   text: string;
@@ -34,7 +34,8 @@ const MANIFEST_UNASSESSED_CODES = new Set(['version_unknown', 'malformed']);
  * "verified" (green) or as an authenticity failure (red). Same reasoning
  * extends to `version_unknown` and `malformed`, which never reach the
  * signature check either. See Phase 3 / Appendix §G3 of
- * plans/cp-signed-artifact-verification.md.
+ * plans/cp-signed-artifact-verification.md, and [O1] for the revocation
+ * side of the same defect.
  */
 export function manifestVerdictBadge(verdict: Verdict): VerdictBadge {
   if (verdict.checked && verdict.ok) {
@@ -70,4 +71,78 @@ export function manifestVerdictBadge(verdict: Verdict): VerdictBadge {
     color: C.amber,
     aidColor: C.textMuted,
   };
+}
+
+export interface RevocationBadge {
+  text: string;
+  color: string;
+  /** True whenever the entry count shouldn't be read as a trustworthy
+   *  fact on its own -- everything except a clean `ok: true`. */
+  entriesGreyed: boolean;
+}
+
+/** Revocation codes that occur strictly before `verify_revocation_list`
+ *  reaches the signature check (`aitp-tct/src/revocation.rs`: version →
+ *  expiry → issuer → key parse → signature) and that carry no actionable
+ *  signal of their own beyond "we couldn't get far enough to check" --
+ *  unlike `issuer_mismatch`, which is pre-signature too but *is*
+ *  independently meaningful (see below). */
+const REVOCATION_UNASSESSED_CODES = new Set(['version_unknown', 'malformed']);
+
+/**
+ * Render a revocation-snapshot verification verdict. `verify_revocation_list`
+ * checks version → expiry → issuer → signature, in that order (mirroring
+ * `verify_manifest`'s ordering exactly), so three of its five codes never
+ * reach the signature check: `version_unknown`, `expired`, `issuer_mismatch`.
+ * Labeling any of them "SIGNATURE INVALID" is the same overclaim Phase 3
+ * removed for the manifest -- flagged as `[O1]` and fixed here rather than
+ * shipped. `issuer_mismatch` gets its own row rather than folding into the
+ * generic "not assessed" bucket: unlike a parse failure or a stale
+ * timestamp, a declared-issuer mismatch *is* independently actionable (a
+ * misconfigured pin, a rotated key, or a forged issuer field) even though
+ * it says nothing about the signature -- so it stays in the red,
+ * attention-worthy class, just honestly worded.
+ */
+export function revocationVerdictBadge(verdict: RevocationVerdict): RevocationBadge {
+  if (verdict.checked && verdict.ok) {
+    return verdict.tier === 'pinned'
+      ? { text: '· verified · signed by pinned CP identity', color: C.green, entriesGreyed: false }
+      : {
+          text: '· self-consistent with CP manifest · no CP_AID pinned',
+          color: C.textDim,
+          entriesGreyed: false,
+        };
+  }
+  if (verdict.checked && verdict.code === 'expired') {
+    return {
+      text: '· EXPIRED · signature not assessed (expired)',
+      color: C.amber,
+      entriesGreyed: true,
+    };
+  }
+  if (verdict.checked && REVOCATION_UNASSESSED_CODES.has(verdict.code)) {
+    return {
+      text: `· NOT VERIFIED · signature not assessed (${verdict.code})`,
+      color: C.amber,
+      entriesGreyed: true,
+    };
+  }
+  if (verdict.checked && verdict.code === 'issuer_mismatch') {
+    return { text: '· ISSUER MISMATCH (issuer_mismatch)', color: C.red, entriesGreyed: true };
+  }
+  if (verdict.checked) {
+    return {
+      text: `· SIGNATURE INVALID (${verdict.code})`,
+      color: C.red,
+      entriesGreyed: true,
+    };
+  }
+  if (verdict.reason === 'no_trusted_issuer' && verdict.manifestCode) {
+    const cause =
+      verdict.manifestCode === 'expired'
+        ? "the CP's manifest has expired, so no trusted issuer is available"
+        : `the CP's manifest failed verification (${verdict.manifestCode}), so no trusted issuer is available`;
+    return { text: `· signature not checked · ${cause} (aitp-control-plane defect)`, color: C.amber, entriesGreyed: true };
+  }
+  return { text: `· signature not checked (${verdict.reason})`, color: C.amber, entriesGreyed: true };
 }

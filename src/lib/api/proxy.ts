@@ -149,12 +149,19 @@ function spliceVerification(rawText: string, verdict: Verdict): string {
  * Verification only applies to a successful fetch — a non-2xx or
  * unreachable upstream is a connectivity problem, not a signature problem,
  * and is proxied through exactly like `proxyGet` would.
+ *
+ * `verify` may be async and may accept the merged abort/timeout signal —
+ * some verifiers need a *second* upstream fetch to resolve what to check
+ * against (e.g. Phase 4's Tier 1, which fetches the CP manifest to learn
+ * the expected issuer before it can verify a revocation snapshot). That
+ * second fetch must share this call's timeout budget, not open its own —
+ * see `fetchUpstreamText`.
  */
 export async function proxyGetVerified(
   service: Service,
   path: string,
   req: NextRequest,
-  verify: (bodyText: string) => Verdict,
+  verify: (bodyText: string, signal: AbortSignal) => Verdict | Promise<Verdict>,
 ): Promise<Response> {
   const url = new URL(req.url);
   const target = `${serviceBase(service)}${path}${url.search}`;
@@ -173,7 +180,7 @@ export async function proxyGetVerified(
         headers: { 'Content-Type': res.headers.get('Content-Type') ?? 'application/json' },
       });
     }
-    const verdict = verify(text);
+    const verdict = await verify(text, t.signal);
     return new Response(spliceVerification(text, verdict), {
       status: res.status,
       headers: { 'Content-Type': 'application/json' },
@@ -188,6 +195,27 @@ export async function proxyGetVerified(
   } finally {
     t.cancel();
   }
+}
+
+/**
+ * A raw upstream GET, sharing an already-merged abort/timeout signal
+ * rather than opening a new timeout budget. For a `proxyGetVerified`
+ * verify function that needs a *second* upstream resource to do its job —
+ * that fetch must not extend the route past the caller's own timeout.
+ */
+export async function fetchUpstreamText(
+  service: Service,
+  path: string,
+  signal: AbortSignal,
+): Promise<{ status: number; text: string }> {
+  const target = `${serviceBase(service)}${path}`;
+  const res = await fetch(target, {
+    method: 'GET',
+    headers: serviceHeaders(service),
+    signal,
+    cache: 'no-store',
+  });
+  return { status: res.status, text: await res.text() };
 }
 
 export async function proxyPost(

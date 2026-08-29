@@ -6,9 +6,9 @@ import { REFETCH } from '@/lib/query-options';
 import type {
   Delegation,
   PinnedKey,
-  RevocationList,
   Tct,
   TrustAnchor,
+  VerifiedRevocationList,
 } from '@/lib/types/cp';
 
 interface TctsResponse {
@@ -127,7 +127,7 @@ export function useDeletePinnedKey() {
 export function useRevocationList() {
   return useQuery({
     queryKey: ['cp-revocation-list'],
-    queryFn: () => getJSON<RevocationList>('/api/cp/well-known/aitp-revocation-list'),
+    queryFn: () => getJSON<VerifiedRevocationList>('/api/cp/well-known/aitp-revocation-list'),
     refetchInterval: REFETCH.veryslow,
   });
 }

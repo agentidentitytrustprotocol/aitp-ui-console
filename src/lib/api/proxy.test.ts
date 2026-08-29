@@ -337,7 +337,7 @@ describe('proxyGetVerified', () => {
     const res = await proxyGetVerified('cp', '/.well-known/aitp-manifest', req, verify);
     const text = await res.text();
 
-    expect(verify).toHaveBeenCalledWith(upstreamBody);
+    expect(verify).toHaveBeenCalledWith(upstreamBody, expect.any(AbortSignal));
     expect(text).toBe(
       '{"manifest":{"aid":"aid:pubkey:x",   "weird_spacing":true},"_verification":{"checked":true,"ok":true}}',
     );
@@ -413,6 +413,42 @@ describe('proxyGetVerified', () => {
       upstream_status: 502,
     });
     errorSpy.mockRestore();
+  });
+
+  it('awaits an async verify function, sharing the same signal proxyGetVerified used', async () => {
+    global.fetch = (async () =>
+      new Response('{"revocation_list":{}}', { status: 200 })) as unknown as typeof fetch;
+    const verify = jest.fn(
+      async (_text: string, signal: AbortSignal): Promise<Verdict> => {
+        expect(signal).toBeInstanceOf(AbortSignal);
+        return { checked: true, ok: true };
+      },
+    );
+
+    const req = asNextReq('http://localhost:3001/api/cp/well-known/aitp-revocation-list');
+    const res = await proxyGetVerified('cp', '/.well-known/aitp-revocation-list', req, verify);
+
+    expect(verify).toHaveBeenCalledTimes(1);
+    expect((await res.json())._verification).toEqual({ checked: true, ok: true });
+  });
+});
+
+describe('fetchUpstreamText', () => {
+  afterEach(() => {
+    global.fetch = ORIGINAL_FETCH;
+  });
+
+  it('returns the raw status and text for a second upstream fetch', async () => {
+    const upstream = jest.fn(async () => new Response('{"manifest":{}}', { status: 200 }));
+    global.fetch = upstream as unknown as typeof fetch;
+
+    const { fetchUpstreamText } = require('./proxy') as typeof import('./proxy');
+    const controller = new AbortController();
+    const result = await fetchUpstreamText('cp', '/.well-known/aitp-manifest', controller.signal);
+
+    expect(result).toEqual({ status: 200, text: '{"manifest":{}}' });
+    const callTarget = (upstream.mock.calls[0] as unknown as [string])[0];
+    expect(callTarget).toBe('http://localhost:4000/.well-known/aitp-manifest');
   });
 });
 

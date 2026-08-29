@@ -80,6 +80,31 @@ layer or the SSE hook. See [`TESTING.md`](./TESTING.md).
 - The middleware in `src/middleware.ts` runs on Vercel's edge runtime
   automatically.
 
+### Native dependencies
+
+The console does not currently depend on any package with a native (NAPI)
+addon. Before adding one — most likely
+`@agentidentitytrustprotocol/aitp`, for CP-signed-artifact verification —
+know that this has already been proven out once and does not need
+re-deriving:
+
+A throwaway branch (`phase2-throwaway-vercel-native-addon-check`, PR #40,
+never merged) installed `aitp` aliased via
+`"aitp": "npm:@agentidentitytrustprotocol/aitp@>=0.7.0"`, added
+`serverExternalPackages: ['aitp']` plus `outputFileTracingIncludes` for
+the two Linux prebuild packages to `next.config.ts` (both **unconditional**
+— this repo has no `output: 'standalone'` build to gate them behind), and
+added a route that called `verifyManifestJson` against a hardcoded
+known-bad envelope. On a real Vercel preview deployment, the route
+returned `{"ok":true,"threw":true}` — the native addon loaded and ran
+inside an actual Vercel serverless function (`nodejs24.x`, `iad1`), not
+just locally. The exact function architecture/libc string and the
+addon's traced on-disk path were not directly observable through
+`vercel inspect`, but the successful, correctly-typed SDK error (not a
+`require`/binary-loading crash) is the stronger signal that it works.
+Full result recorded 2026-08-29 in the (local, gitignored) plan this
+branch belonged to.
+
 ### Networking
 
 The console makes server-to-server fetches to `PLAYGROUND_URL` and

@@ -6,7 +6,7 @@ const COPY: Record<string, string> = {
   intra_org:
     'All agents in the same deployment. Trust anchors known upfront. Manifests served from the same control surface.',
   cross_org:
-    'External agent discovered via the CP registry. Manifest fetched and verified against the issuer manifest before handshake.',
+    'External agent discovered via the CP registry. Manifest fetched and verified against the key bound to the manifest\'s own AID before handshake.',
   cross_cloud:
     'Agents resolved via did:web. Each agent serves its own DID document. No central registry required for discovery.',
 };

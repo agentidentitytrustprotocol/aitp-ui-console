@@ -193,7 +193,9 @@ posture. Each tab is a small CRUD surface.
 - **Pinned keys** — static SPKI key pins per `(namespace, aid)` for
   environments that bypass discovery.
 - **Revocation** — add a JTI to the authoritative revocation list, with an
-  optional reason.
+  optional reason. The list is displayed as served by the CP; the console
+  does not check its signature (the entries table carries a provenance
+  line saying so, in every state including empty).
 
 ### Revocation confirm flow
 
@@ -231,7 +233,10 @@ Operational settings and health, split across two columns.
   on the server, and API keys never reach the browser.
 - **CP identity** — the control plane's own AITP manifest: AID, display
   name, handshake endpoint, capability set, expiry countdown, and
-  revocation-list pointer.
+  revocation-list pointer. The AID and revocation snapshot are read
+  straight off the wire — labelled as reported by `CP_URL`, unverified —
+  and the console does not check the manifest's or the revocation list's
+  signature.
 - **SDK matrix** — SDK / capability support reported by the playground.
 - **Processes & metrics** — playground process list and the metrics
   panels for both services.

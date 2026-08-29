@@ -8,7 +8,8 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { getJSON } from '@/lib/api/client';
 import { C } from '@/lib/colors';
 import { REFETCH } from '@/lib/query-options';
-import type { ManifestEnvelope, RevocationList } from '@/lib/types/cp';
+import { manifestVerdictBadge } from '@/lib/verification-display';
+import type { RevocationList, VerifiedManifestEnvelope } from '@/lib/types/cp';
 
 function expiresIn(expiresAt: number | string | undefined): string {
   if (expiresAt === undefined) return '—';
@@ -24,7 +25,7 @@ function expiresIn(expiresAt: number | string | undefined): string {
 export function CpIdentityCard() {
   const manifest = useQuery({
     queryKey: ['cp-manifest'],
-    queryFn: () => getJSON<ManifestEnvelope>('/api/cp/well-known/aitp-manifest'),
+    queryFn: () => getJSON<VerifiedManifestEnvelope>('/api/cp/well-known/aitp-manifest'),
     refetchInterval: REFETCH.veryslow,
   });
 
@@ -58,28 +59,34 @@ export function CpIdentityCard() {
           description="Couldn't load /.well-known/aitp-manifest from the Control Plane."
         />
       ) : (
-        <div style={{ padding: 14, background: C.bg3, borderRadius: 8, marginBottom: 14 }}>
-          <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 6, letterSpacing: '0.06em' }}>
-            AID (as reported by CP_URL — unverified)
-          </div>
-          <div
-            className="mono"
-            style={{ fontSize: 11, color: C.tealBright, wordBreak: 'break-all', lineHeight: 1.6 }}
-          >
-            {manifest.data.manifest?.aid ?? '—'}
-          </div>
-          <Row label="Display name" value={manifest.data.manifest?.display_name ?? '—'} />
-          <Row label="Endpoint" value={manifest.data.manifest?.handshake_endpoint ?? '—'} />
-          <Row label="Expires" value={expiresIn(manifest.data.manifest?.expires_at)} />
-          <Row
-            label="Capabilities"
-            value={
-              (manifest.data.manifest?.offered_capabilities?.length ?? 0) === 0
-                ? 'none (registry + audit only)'
-                : manifest.data.manifest!.offered_capabilities!.join(', ')
-            }
-          />
-        </div>
+        (() => {
+          const badge = manifestVerdictBadge(manifest.data._verification);
+          return (
+            <div style={{ padding: 14, background: C.bg3, borderRadius: 8, marginBottom: 14 }}>
+              <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 6, letterSpacing: '0.06em' }}>
+                AID
+              </div>
+              <div
+                className="mono"
+                style={{ fontSize: 11, color: badge.aidColor, wordBreak: 'break-all', lineHeight: 1.6 }}
+              >
+                {manifest.data.manifest?.aid ?? '—'}
+              </div>
+              <div style={{ fontSize: 10, color: badge.color, marginTop: 4 }}>{badge.text}</div>
+              <Row label="Display name" value={manifest.data.manifest?.display_name ?? '—'} />
+              <Row label="Endpoint" value={manifest.data.manifest?.handshake_endpoint ?? '—'} />
+              <Row label="Expires" value={expiresIn(manifest.data.manifest?.expires_at)} />
+              <Row
+                label="Capabilities"
+                value={
+                  (manifest.data.manifest?.offered_capabilities?.length ?? 0) === 0
+                    ? 'none (registry + audit only)'
+                    : manifest.data.manifest!.offered_capabilities!.join(', ')
+                }
+              />
+            </div>
+          );
+        })()
       )}
 
       <div

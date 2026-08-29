@@ -6,7 +6,8 @@
  * Request natively, so the `node` environment is the right host here.
  */
 import { NextRequest } from 'next/server';
-import { proxyDelete, proxyGet, proxyPost, proxyPut, proxySse } from './proxy';
+import { proxyDelete, proxyGet, proxyGetVerified, proxyPost, proxyPut, proxySse } from './proxy';
+import type { Verdict } from '../types/cp';
 
 const ORIGINAL_FETCH = global.fetch;
 
@@ -315,6 +316,103 @@ describe('emptyBodyStatus handling', () => {
     expect(res.status).toBe(status);
     expect(res.body).toBeNull();
     await expect(res.text()).resolves.toBe('');
+  });
+});
+
+describe('proxyGetVerified', () => {
+  afterEach(() => {
+    global.fetch = ORIGINAL_FETCH;
+  });
+
+  it('splices the verdict onto the exact upstream bytes without reparsing them', async () => {
+    // Deliberately odd whitespace/key order -- if the wrapper round-tripped
+    // through JSON.parse/JSON.stringify this would come back normalized,
+    // which is exactly what "splice, don't reparse" is guarding against.
+    const upstreamBody = '{"manifest":{"aid":"aid:pubkey:x",   "weird_spacing":true}}';
+    global.fetch = (async () =>
+      new Response(upstreamBody, { status: 200 })) as unknown as typeof fetch;
+    const verify = jest.fn((): Verdict => ({ checked: true, ok: true }));
+
+    const req = asNextReq('http://localhost:3001/api/cp/well-known/aitp-manifest');
+    const res = await proxyGetVerified('cp', '/.well-known/aitp-manifest', req, verify);
+    const text = await res.text();
+
+    expect(verify).toHaveBeenCalledWith(upstreamBody);
+    expect(text).toBe(
+      '{"manifest":{"aid":"aid:pubkey:x",   "weird_spacing":true},"_verification":{"checked":true,"ok":true}}',
+    );
+    expect(JSON.parse(text)).toEqual({
+      manifest: { aid: 'aid:pubkey:x', weird_spacing: true },
+      _verification: { checked: true, ok: true },
+    });
+  });
+
+  it('attaches an ok:false verdict with the SDK code, still preserving the body', async () => {
+    global.fetch = (async () =>
+      new Response('{"manifest":{"aid":"aid:pubkey:x"}}', { status: 200 })) as unknown as typeof fetch;
+    const verify = (): Verdict => ({ checked: true, ok: false, code: 'signature_invalid' });
+
+    const req = asNextReq('http://localhost:3001/api/cp/well-known/aitp-manifest');
+    const res = await proxyGetVerified('cp', '/.well-known/aitp-manifest', req, verify);
+    const body = await res.json();
+
+    expect(body.manifest).toEqual({ aid: 'aid:pubkey:x' });
+    expect(body._verification).toEqual({ checked: true, ok: false, code: 'signature_invalid' });
+  });
+
+  it('attaches checked:false without calling it a verification failure', async () => {
+    global.fetch = (async () =>
+      new Response('{"manifest":{}}', { status: 200 })) as unknown as typeof fetch;
+    const verify = (): Verdict => ({ checked: false, reason: 'sdk_unavailable' });
+
+    const req = asNextReq('http://localhost:3001/api/cp/well-known/aitp-manifest');
+    const res = await proxyGetVerified('cp', '/.well-known/aitp-manifest', req, verify);
+
+    expect((await res.json())._verification).toEqual({ checked: false, reason: 'sdk_unavailable' });
+  });
+
+  it('wraps rather than drops the verdict when the upstream body is not a JSON object', async () => {
+    global.fetch = (async () =>
+      new Response('not json at all', { status: 200 })) as unknown as typeof fetch;
+    const verify = (): Verdict => ({ checked: true, ok: false, code: 'malformed' });
+
+    const req = asNextReq('http://localhost:3001/api/cp/well-known/aitp-manifest');
+    const res = await proxyGetVerified('cp', '/.well-known/aitp-manifest', req, verify);
+    const body = await res.json();
+
+    expect(body._verification).toEqual({ checked: true, ok: false, code: 'malformed' });
+    expect(body._raw).toBe('not json at all');
+  });
+
+  it('does not run verify at all on a non-2xx upstream -- connectivity, not a signature problem', async () => {
+    global.fetch = (async () =>
+      new Response('{"error":"down"}', { status: 503 })) as unknown as typeof fetch;
+    const verify = jest.fn();
+
+    const req = asNextReq('http://localhost:3001/api/cp/well-known/aitp-manifest');
+    const res = await proxyGetVerified('cp', '/.well-known/aitp-manifest', req, verify);
+
+    expect(res.status).toBe(503);
+    expect(verify).not.toHaveBeenCalled();
+    expect(await res.text()).toBe('{"error":"down"}');
+  });
+
+  it('502s with the sanitized envelope when the upstream is unreachable', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    global.fetch = (async () => {
+      throw new Error('econnrefused');
+    }) as unknown as typeof fetch;
+
+    const req = asNextReq('http://localhost:3001/api/cp/well-known/aitp-manifest');
+    const res = await proxyGetVerified('cp', '/.well-known/aitp-manifest', req, jest.fn());
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({
+      error: 'Upstream unreachable',
+      target: 'http://localhost:4000/.well-known/aitp-manifest',
+      upstream_status: 502,
+    });
+    errorSpy.mockRestore();
   });
 });
 

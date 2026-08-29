@@ -110,6 +110,17 @@ describe('CpIdentityCard manifest verdict', () => {
     });
   });
 
+  it('does not overclaim for a pre-signature code: version_unknown and malformed render as not-verified, not a failure', async () => {
+    for (const code of ['version_unknown', 'malformed']) {
+      wireApi(manifest({ checked: true, ok: false, code }), revocationList());
+      const { unmount } = renderWithClient(<CpIdentityCard />);
+      expect(await screen.findByText(`· NOT VERIFIED · signature not assessed (${code})`)).toHaveStyle({
+        color: C.amber,
+      });
+      unmount();
+    }
+  });
+
   it('renders checked:false as unchecked, not as a failure', async () => {
     wireApi(manifest({ checked: false, reason: 'sdk_unavailable' }), revocationList());
     renderWithClient(<CpIdentityCard />);
@@ -125,6 +136,8 @@ describe('CpIdentityCard manifest verdict', () => {
     const nonOkVerdicts: Verdict[] = [
       { checked: true, ok: false, code: 'expired' },
       { checked: true, ok: false, code: 'signature_invalid' },
+      { checked: true, ok: false, code: 'version_unknown' },
+      { checked: true, ok: false, code: 'malformed' },
       { checked: false, reason: 'sdk_unavailable' },
     ];
     for (const verification of nonOkVerdicts) {

@@ -45,6 +45,14 @@ export function RevocationView() {
 
   const entries = data?.revocation_list?.entries ?? [];
 
+  const badge = isLoading
+    ? { text: '· checking revocation list signature…', color: C.textMuted }
+    : error
+      ? { text: '· signature not checked — revocation list failed to load', color: C.amber }
+      : data
+        ? revocationVerdictBadge(data._verification)
+        : null;
+
   return (
     <Card style={{ padding: 0 }}>
       <div
@@ -185,16 +193,16 @@ export function RevocationView() {
         </div>
       )}
 
-      {data && (
+      {badge && (
         <div
           style={{
             padding: '8px 18px',
             fontSize: 10,
-            color: revocationVerdictBadge(data._verification).color,
+            color: badge.color,
             borderBottom: `1px solid ${C.border}`,
           }}
         >
-          {revocationVerdictBadge(data._verification).text}
+          {badge.text}
         </div>
       )}
 

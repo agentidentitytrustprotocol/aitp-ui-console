@@ -36,6 +36,27 @@ function list(verification: RevocationVerdict, entries: RevocationEntries = []):
 }
 
 describe('RevocationView badge placement', () => {
+  it('shows a neutral badge while the list is still loading', async () => {
+    getMock.mockImplementation(() => new Promise(() => {}));
+    renderWithClient(<RevocationView />);
+
+    expect(
+      await screen.findByText('· checking revocation list signature…'),
+    ).toBeInTheDocument();
+  });
+
+  it('shows a provenance line when the list fails to load, not just the empty badge slot', async () => {
+    getMock.mockImplementation(async () => {
+      throw new Error('network error');
+    });
+    renderWithClient(<RevocationView />);
+
+    await screen.findByText("Couldn't load revocation list");
+    expect(
+      screen.getByText('· signature not checked — revocation list failed to load'),
+    ).toBeInTheDocument();
+  });
+
   it('shows the badge above the empty-list state, not swallowed by it', async () => {
     wireApi(list({ checked: true, ok: true, tier: 'self-consistent' }, []));
     renderWithClient(<RevocationView />);

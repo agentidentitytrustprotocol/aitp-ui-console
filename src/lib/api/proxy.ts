@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { serverConfig } from '../config';
+import type { Verdict } from '../types/cp';
 
 export type Service = 'playground' | 'cp';
 
@@ -118,6 +119,75 @@ export async function proxyGet(
   const url = new URL(req.url);
   const target = `${serviceBase(service)}${path}${url.search}`;
   return runProxy('GET', target, service, req);
+}
+
+/** Splice a `_verification` key into a raw JSON object's text without
+ *  reparsing and re-emitting the rest of it. Verification runs on the
+ *  exact upstream bytes; the response the browser receives must embed
+ *  those same bytes, or the proxy would verify one byte sequence and
+ *  display another. `JSON.parse` → add key → `JSON.stringify` risks
+ *  reordering keys or changing whitespace even when semantically
+ *  equivalent — this string-splices onto the raw text instead.
+ *
+ *  Falls back to wrapping the raw text when it doesn't look like a JSON
+ *  object at all (e.g. a genuinely malformed upstream body) — there's
+ *  nothing to splice into, but the verdict must not be lost. */
+function spliceVerification(rawText: string, verdict: Verdict): string {
+  const trimmed = rawText.trim();
+  if (trimmed.endsWith('}')) {
+    return `${trimmed.slice(0, -1)},"_verification":${JSON.stringify(verdict)}}`;
+  }
+  return JSON.stringify({ _verification: verdict, _raw: rawText });
+}
+
+/**
+ * Like `proxyGet`, but for CP-signed artifacts: runs `verify` against the
+ * exact upstream response text and attaches the result as `_verification`,
+ * server-side, never in the browser (the browser is where an attacker who
+ * can serve the page can also serve a verifier that always returns true).
+ *
+ * Verification only applies to a successful fetch — a non-2xx or
+ * unreachable upstream is a connectivity problem, not a signature problem,
+ * and is proxied through exactly like `proxyGet` would.
+ */
+export async function proxyGetVerified(
+  service: Service,
+  path: string,
+  req: NextRequest,
+  verify: (bodyText: string) => Verdict,
+): Promise<Response> {
+  const url = new URL(req.url);
+  const target = `${serviceBase(service)}${path}${url.search}`;
+  const t = withTimeout(req);
+  try {
+    const res = await fetch(target, {
+      method: 'GET',
+      headers: serviceHeaders(service),
+      signal: t.signal,
+      cache: 'no-store',
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      return new Response(emptyBodyStatus(res.status) ? null : text, {
+        status: res.status,
+        headers: { 'Content-Type': res.headers.get('Content-Type') ?? 'application/json' },
+      });
+    }
+    const verdict = verify(text);
+    return new Response(spliceVerification(text, verdict), {
+      status: res.status,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (err) {
+    if (t.isTimeout()) {
+      logUpstreamError('GET', target, 'upstream timeout');
+      return makeError(504, 'Upstream timeout', target);
+    }
+    logUpstreamError('GET', target, err);
+    return makeError(502, 'Upstream unreachable', target);
+  } finally {
+    t.cancel();
+  }
 }
 
 export async function proxyPost(

@@ -6,6 +6,7 @@ import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { useAgentManifest } from '@/hooks/use-registry';
 import { C } from '@/lib/colors';
+import { manifestVerdictBadge } from '@/lib/verification-display';
 
 const HIGHLIGHTS: Record<string, string> = {
   aid: C.tealBright,
@@ -34,17 +35,25 @@ export function ManifestViewer({ aid }: { aid: string }) {
       ) : error || !data ? (
         <EmptyState title="No manifest available" description="The agent may have been deregistered." />
       ) : (
-        <div
-          style={{
-            background: C.bg3,
-            padding: 14,
-            borderRadius: 6,
-            maxHeight: 360,
-            overflow: 'auto',
-          }}
-        >
-          <JsonTree value={data} highlight={highlight} />
-        </div>
+        (() => {
+          const badge = manifestVerdictBadge(data._verification);
+          return (
+            <>
+              <div style={{ fontSize: 11, color: badge.color, marginBottom: 8 }}>{badge.text}</div>
+              <div
+                style={{
+                  background: C.bg3,
+                  padding: 14,
+                  borderRadius: 6,
+                  maxHeight: 360,
+                  overflow: 'auto',
+                }}
+              >
+                <JsonTree value={{ manifest: data.manifest }} highlight={highlight} />
+              </div>
+            </>
+          );
+        })()
       )}
     </Card>
   );

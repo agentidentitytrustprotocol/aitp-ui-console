@@ -7,7 +7,7 @@ import { Modal } from '@/components/shared/modal';
 import { useToast } from '@/components/shared/toast';
 import { useCreateEnrollmentToken } from '@/hooks/use-enrollment';
 import { C } from '@/lib/colors';
-import type { EnrollmentToken } from '@/lib/types/cp';
+import type { EnrollmentToken, ManifestEnvelope } from '@/lib/types/cp';
 
 export function EnrollmentModal({ onClose }: { onClose: () => void }) {
   const toast = useToast();
@@ -27,7 +27,7 @@ export function EnrollmentModal({ onClose }: { onClose: () => void }) {
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setParseError(null);
-    let parsed: { manifest?: unknown; signature?: string; proof_of_possession?: string };
+    let parsed: ManifestEnvelope;
     try {
       parsed = JSON.parse(json);
     } catch (err) {
@@ -39,11 +39,9 @@ export function EnrollmentModal({ onClose }: { onClose: () => void }) {
       return;
     }
     create.mutate(
-      {
-        manifest: parsed.manifest as never,
-        signature: parsed.signature,
-        proof_of_possession: parsed.proof_of_possession,
-      },
+      // Forwarded verbatim -- signature and proof_of_possession live
+      // *inside* `manifest` on the wire, never as siblings of it.
+      parsed,
       {
         onSuccess: (token) => {
           setIssued(token);
@@ -79,7 +77,9 @@ export function EnrollmentModal({ onClose }: { onClose: () => void }) {
               value={json}
               onChange={(e) => setJson(e.target.value)}
               required
-              placeholder={'{"manifest": { "aid": "aid:pubkey:..." }, "signature": "..."}'}
+              placeholder={
+                '{"manifest": { "aid": "aid:pubkey:...", "signature": "...", ... }}'
+              }
               spellCheck={false}
               rows={10}
               style={{

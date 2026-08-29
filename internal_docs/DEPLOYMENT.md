@@ -80,6 +80,31 @@ layer or the SSE hook. See [`TESTING.md`](./TESTING.md).
 - The middleware in `src/middleware.ts` runs on Vercel's edge runtime
   automatically.
 
+### Native dependencies
+
+`aitp` (`@agentidentitytrustprotocol/aitp`, aliased) is a native NAPI
+addon — the console's only one. Two things make it deployable here, both
+already applied in `next.config.ts` and confirmed live before this
+dependency was added for real (a throwaway branch proved the addon loads
+and runs inside an actual Vercel serverless function, `nodejs24.x`,
+`iad1` — see the (local, gitignored) `plans/cp-signed-artifact-verification.md`,
+Phase 2, for the full record):
+
+- `serverExternalPackages: ['aitp']` — required unconditionally, or
+  webpack tries to bundle the `.node` binary and fails the build.
+- `outputFileTracingIncludes` for the two Linux prebuild packages —
+  `@vercel/nft` only resolves the *build host's* platform, so without this
+  a Vercel deploy would ship only the darwin binary the build ran with
+  locally, absent on the deployed function's actual OS. **Unconditional**
+  here — unlike `aitp-control-plane`'s equivalent config, there is no
+  `output: 'standalone'` build in this repo to gate it behind.
+
+If `aitp` starts throwing `Failed to load native binding` in production:
+confirm both settings are still present and unconditional, and check
+whether `@vercel/nft` is tracing the addon to a hashed path
+(`vercel/next.js#88844`) instead of the expected unhashed
+`node_modules/aitp/...`.
+
 ### Networking
 
 The console makes server-to-server fetches to `PLAYGROUND_URL` and

@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",
+    "aitp": "npm:@agentidentitytrustprotocol/aitp@>=0.7.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.469.0",
     "next": "15.1.11",

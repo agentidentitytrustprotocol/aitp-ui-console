@@ -34,11 +34,20 @@ export function useSse<T>({
 
   const onMessageRef = useRef(onMessage);
   const onErrorRef = useRef(onError);
-  onMessageRef.current = onMessage;
-  onErrorRef.current = onError;
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+    onErrorRef.current = onError;
+  });
 
   useEffect(() => {
     if (!url) {
+      // Not a derived-state anti-pattern: this whole effect subscribes to
+      // an external system (EventSource, below) and only re-runs when
+      // `url` actually changes. This branch is the direct response to
+      // that dependency going away -- there's no subscription to set up,
+      // so reflect that in state and bail before anything else in the
+      // effect runs.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setState('closed');
       return;
     }

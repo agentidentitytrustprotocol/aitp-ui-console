@@ -8,7 +8,6 @@ import { ScenarioCard } from '@/components/scenarios/scenario-card';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { useScenarios } from '@/hooks/use-scenarios';
-import { C } from '@/lib/colors';
 
 const PACK_BOUNDARY: Record<string, string> = {
   'intra-org': 'intra_org',

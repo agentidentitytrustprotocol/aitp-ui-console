@@ -1,6 +1,6 @@
-/** Single source of truth for design tokens — mirrors tailwind.config.ts so
- *  inline-styled components can read the same palette without round-tripping
- *  through utility classes. */
+/** Single source of truth for design tokens — mirrors the @theme block in
+ *  src/app/globals.css so inline-styled components can read the same
+ *  palette without round-tripping through utility classes. */
 export const C = {
   bg0: '#080b12',
   bg1: '#0d1117',

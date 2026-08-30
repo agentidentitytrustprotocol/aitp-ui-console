@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ChevronDown, Play, AlertTriangle } from 'lucide-react';
 import { C } from '@/lib/colors';
 import { InlineSpinner } from '@/components/shared/loading-skeleton';
@@ -54,14 +54,18 @@ export function RunInputForm({ schema, templates, agents, loading, onSubmit }: P
   const [peerOffline, setPeerOffline] = useState<string[]>([]);
 
   // Reset stateful fields when the underlying schema reference changes
-  // (i.e. the parent switched scenarios).
-  useEffect(() => {
+  // (i.e. the parent switched scenarios). Adjusted during render rather
+  // than in an effect, per https://react.dev/learn/you-might-not-need-an-effect
+  // -- avoids the extra commit-then-reset render an effect would cause.
+  const [prevSchema, setPrevSchema] = useState(schema);
+  if (schema !== prevSchema) {
+    setPrevSchema(schema);
     setValues(initial);
     setRunLabel('');
     setTemplateName('');
     setManifest404([]);
     setPeerOffline([]);
-  }, [initial]);
+  }
 
   function update(key: string, val: unknown) {
     setValues((v) => ({ ...v, [key]: val }));

@@ -78,8 +78,9 @@ layer or the SSE hook. See [`TESTING.md`](./TESTING.md).
 - All pages that consume `useSearchParams` (via `useUrlState`) declare
   `dynamic = 'force-dynamic'`, and the layout wraps `{children}` in a
   `<Suspense>` so static generation succeeds without bailing.
-- The middleware in `src/middleware.ts` runs on Vercel's edge runtime
-  automatically.
+- The proxy in `src/proxy.ts` (renamed from `middleware.ts` in Next 16)
+  runs on the Node.js runtime — Next 16's `proxy.ts` convention doesn't
+  support an edge runtime option, unlike the old `middleware.ts`.
 
 ### Native dependencies
 

@@ -33,7 +33,7 @@ function originHost(origin: string | null): string | null {
   }
 }
 
-export function middleware(req: NextRequest): NextResponse {
+export function proxy(req: NextRequest): NextResponse {
   if (!MUTATION_METHODS.has(req.method)) return NextResponse.next();
 
   const origin = req.headers.get('origin');

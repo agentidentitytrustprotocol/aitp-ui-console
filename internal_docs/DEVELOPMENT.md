@@ -12,7 +12,7 @@ their own — this doc links out rather than duplicating it.
 
 ## Prerequisites
 
-- Node 20+ (Node 24 known-working)
+- Node 22.13+ (pinned via `.nvmrc`/`engines`; 24.x and 26.x also verified working locally)
 - For the sibling services: Docker (CP's Postgres) and `uv` (playground's
   Python deps). See their getting-started docs:
   [control plane](https://agentidentitytrustprotocol.io/control-plane) · [playground](https://agentidentitytrustprotocol.io/playground/getting-started).
@@ -64,7 +64,7 @@ because it doesn't touch the network.
 | Adding a new page | `src/app/<section>/page.tsx` + a sibling component |
 | Adding a new component | `src/components/<section>/<name>.tsx` + colocated `.test.tsx` |
 | Adding a new backend call | a new hook in `src/hooks/use-<resource>.ts` + a proxy route under `src/app/api/...` |
-| Changing the palette | `tailwind.config.ts` AND `src/lib/colors.ts` — keep them in sync |
+| Changing the palette | the `@theme` block in `src/app/globals.css` AND `src/lib/colors.ts` — keep them in sync |
 | Touching the SSE behavior | `src/hooks/use-sse.ts` + `src/hooks/use-sse.test.tsx` |
 | Touching the proxy contract | `src/lib/api/proxy.ts` + `src/lib/api/proxy.test.ts` + [PROXIES.md](../docs/PROXIES.md) |
 
@@ -72,7 +72,7 @@ because it doesn't touch the network.
 
 ```bash
 npm run typecheck        # strict tsc --noEmit
-npm run lint             # next lint (next/core-web-vitals ruleset)
+npm run lint             # eslint . (flat config: next/core-web-vitals + next/typescript)
 npm test                 # unit + component tests (~10s)
 npm run test:integration # route-handler tests (instant) + gated e2e suites
 npm run build            # production build (~30s)

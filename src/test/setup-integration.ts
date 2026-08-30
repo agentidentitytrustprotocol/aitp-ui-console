@@ -10,7 +10,6 @@ const PG_URL = process.env.PLAYGROUND_URL ?? 'http://localhost:8000';
 const CP_URL = process.env.CP_URL ?? 'http://localhost:4000';
 
 if (!RUN) {
-  // eslint-disable-next-line no-console
   console.warn(
     [
       '',
@@ -26,20 +25,12 @@ if (!RUN) {
   );
 }
 
-(globalThis as unknown as { __INTEGRATION__: typeof gates }).__INTEGRATION__ = {
+(globalThis as unknown as { __INTEGRATION__: unknown }).__INTEGRATION__ = {
   RUN,
   RUN_LLM,
   CONSOLE_URL,
   PG_URL,
   CP_URL,
-};
-
-const gates = (globalThis as unknown as { __INTEGRATION__: unknown }).__INTEGRATION__ as {
-  RUN: boolean;
-  RUN_LLM: boolean;
-  CONSOLE_URL: string;
-  PG_URL: string;
-  CP_URL: string;
 };
 
 export {};

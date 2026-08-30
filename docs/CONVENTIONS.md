@@ -44,7 +44,7 @@ imports from `hooks/` is wrong.
   and copies the full value on click.
 - Show relative times through `TimeAgo`. It re-renders once a second.
 - Don't hard-code colors. Source them from `src/lib/colors.ts` (which
-  mirrors `tailwind.config.ts`).
+  mirrors the `@theme` block in `src/app/globals.css`).
 
 ## BFF proxies
 

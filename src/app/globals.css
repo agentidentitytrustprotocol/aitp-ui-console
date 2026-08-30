@@ -1,8 +1,53 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import 'tailwindcss';
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Ported from the former tailwind.config.ts theme extension (Tailwind v4
+   moved theme config into CSS). None of these generate classes actually
+   used in src/ today -- all real styling here goes through inline styles
+   (src/lib/colors.ts) and the hand-written classes below -- but kept for
+   parity in case something starts consuming the Tailwind utilities later. */
+@theme {
+  --font-sans: Outfit, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --color-bg-0: #080b12;
+  --color-bg-1: #0d1117;
+  --color-bg-2: #111828;
+  --color-bg-3: #151d2e;
+  --color-bg-4: #1a2236;
+
+  --color-border: #1e2744;
+  --color-border-bright: #253050;
+
+  --color-brand: #0d9488;
+  --color-brand-light: #14b8a6;
+  --color-brand-dark: #0f766e;
+
+  --color-ink: #c8d3e8;
+  --color-ink-dim: #6b7fa8;
+  --color-ink-muted: #3d4f6a;
+
+  --color-boundary-intra_org: #3b82f6;
+  --color-boundary-cross_org: #f59e0b;
+  --color-boundary-cross_cloud: #8b5cf6;
+
+  --color-status-active: #22c55e;
+  --color-status-expired: #eab308;
+  --color-status-deregistered: #6b7280;
+  --color-status-pending: #94a3b8;
+  --color-status-running: #3b82f6;
+  --color-status-success: #22c55e;
+  --color-status-failed: #ef4444;
+  --color-status-cancelled: #6b7280;
+
+  /* Keyframes are the hand-written ones below -- same names as the former
+     tailwind.config.ts `keyframes` extension. */
+  --animate-pulse-dot: pulse-dot 2s ease-in-out infinite;
+  --animate-slide-in: slide-in 0.2s ease;
+  --animate-ticker-in: ticker-in 0.15s ease;
+}
 
 * { box-sizing: border-box; }
 

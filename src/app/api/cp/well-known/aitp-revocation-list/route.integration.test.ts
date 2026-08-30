@@ -24,9 +24,9 @@ import type { NextRequest } from 'next/server';
 let server: http.Server;
 let base: string;
 let manifestText = '';
-let manifestStatus = 200;
+const manifestStatus = 200;
 let revocationText = '';
-let revocationStatus = 200;
+const revocationStatus = 200;
 
 function makeRequest(): NextRequest {
   const { NextRequest } = require('next/server');

@@ -89,7 +89,7 @@ for what each tier actually proves.
 
 ### CSRF guard
 
-`src/middleware.ts` runs on every `/api/**` mutation (POST/PUT/PATCH/
+`src/proxy.ts` (renamed from `middleware.ts` in Next 16) runs on every `/api/**` mutation (POST/PUT/PATCH/
 DELETE) and rejects requests whose `Origin` doesn't match the request
 `Host` (or an entry in `TRUSTED_ORIGINS`). GETs and SSE are unguarded —
 they're not state-changing and `EventSource` can't attach headers. Absent
@@ -122,7 +122,7 @@ src/
 │   ├── types/
 │   │   ├── playground.ts     ← Playground response types
 │   │   └── cp.ts             ← Control plane response types
-│   ├── colors.ts             ← Design tokens (mirrors tailwind.config.ts)
+│   ├── colors.ts             ← Design tokens (mirrors the @theme block in globals.css)
 │   ├── config.ts             ← serverConfig (env), clientConfig
 │   ├── query-options.ts      ← Named refetch cadences (REFETCH.*)
 │   ├── export.ts             ← CSV / NDJSON download helpers
@@ -209,7 +209,7 @@ specific feature that needs it.
 - **A WebSocket lib** — `EventSource` handles everything we need.
 - **Server components / Server actions** — every page is client-side
   because they all subscribe to live data. The only server-side code is
-  the BFF route handlers, the middleware, and the routing layer in
+  the BFF route handlers, the proxy (`src/proxy.ts`), and the routing layer in
   `next.config.ts` (the bare-domain `/` → `/dashboard` redirect and the
   `X-Frame-Options` / `X-Content-Type-Options` security headers).
 - **A monorepo build tool** — the console builds independently. The

@@ -24,7 +24,7 @@ export function AgentDetail({ aid }: { aid: string }) {
   const router = useRouter();
   const toast = useToast();
   const { data: agent, isLoading, error } = useAgent(aid);
-  const manifest = useAgentManifest(aid);
+  const manifest = useAgentManifest(agent?.aid ?? aid);
   const sessions = useSessions({ aid, limit: 10 });
   const deregister = useDeregisterAgent();
   const aidBadge = manifest.isLoading

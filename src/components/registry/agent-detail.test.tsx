@@ -94,6 +94,15 @@ function aidNode() {
   return screen.getAllByText(AID)[0];
 }
 
+// ManifestViewer, rendered as a sibling below AgentDetail's own card, computes
+// its own badge from the same manifest verdict and can render identical text
+// for the ok:true/ok:false cases -- scope to AgentDetail's own (first-rendered)
+// occurrence the same way aidNode() does. The loading/error/no-data fallback
+// strings are component-local to AgentDetail and never duplicated.
+function provenanceNode(text: string) {
+  return screen.getAllByText(text)[0];
+}
+
 describe('AgentDetail AID provenance', () => {
   it('renders the AID in the verified teal only when the manifest verdict is ok:true', () => {
     setAgent();
@@ -101,6 +110,7 @@ describe('AgentDetail AID provenance', () => {
     renderWithClient(<AgentDetail aid={AID} />);
 
     expect(aidNode()).toHaveStyle({ color: C.tealBright });
+    expect(provenanceNode('· verified · signed by the key bound to this AID')).toBeInTheDocument();
   });
 
   it('renders the AID muted when the manifest verdict is ok:false (any failure code)', () => {
@@ -110,6 +120,7 @@ describe('AgentDetail AID provenance', () => {
 
     expect(aidNode()).toHaveStyle({ color: C.textMuted });
     expect(aidNode()).not.toHaveStyle({ color: C.tealBright });
+    expect(provenanceNode('· VERIFICATION FAILED (signature_invalid)')).toBeInTheDocument();
   });
 
   it('renders the AID muted while the manifest query is loading', () => {
@@ -118,6 +129,7 @@ describe('AgentDetail AID provenance', () => {
     renderWithClient(<AgentDetail aid={AID} />);
 
     expect(aidNode()).toHaveStyle({ color: C.textMuted });
+    expect(screen.getByText('· checking manifest…')).toBeInTheDocument();
   });
 
   it('renders the AID muted when the manifest query errors', () => {
@@ -126,6 +138,7 @@ describe('AgentDetail AID provenance', () => {
     renderWithClient(<AgentDetail aid={AID} />);
 
     expect(aidNode()).toHaveStyle({ color: C.textMuted });
+    expect(screen.getByText('· manifest unavailable')).toBeInTheDocument();
   });
 
   it('renders the AID muted when the manifest query has no data', () => {
@@ -134,6 +147,7 @@ describe('AgentDetail AID provenance', () => {
     renderWithClient(<AgentDetail aid={AID} />);
 
     expect(aidNode()).toHaveStyle({ color: C.textMuted });
+    expect(screen.getByText('· manifest unavailable')).toBeInTheDocument();
   });
 });
 

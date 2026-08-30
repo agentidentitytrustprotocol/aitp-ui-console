@@ -37,6 +37,16 @@ const recorded: RecordedRequest[] = [];
 let server: http.Server;
 let base: string;
 
+// Mutable per-test fixtures for the two verified `.well-known` CP routes
+// (aitp-manifest, aitp-revocation-list) — unlike the other mock-upstream
+// branches below (which return a fixed shape per path), these two need a
+// distinct signed body per test case, so each test sets these before
+// calling the route.
+let manifestUpstreamText = '';
+let manifestUpstreamStatus = 200;
+let revocationUpstreamText = '';
+let revocationUpstreamStatus = 200;
+
 /** The last request the mock upstream saw. */
 function lastRequest(): RecordedRequest {
   if (recorded.length === 0) throw new Error('mock upstream saw no requests');
@@ -100,6 +110,12 @@ beforeAll(async () => {
       } else if (url.startsWith('/api/registry/agents/') && req.method === 'DELETE') {
         res.writeHead(204);
         res.end();
+      } else if (url.startsWith('/.well-known/aitp-manifest')) {
+        res.writeHead(manifestUpstreamStatus, { 'Content-Type': 'application/json' });
+        res.end(manifestUpstreamText);
+      } else if (url.startsWith('/.well-known/aitp-revocation-list')) {
+        res.writeHead(revocationUpstreamStatus, { 'Content-Type': 'application/json' });
+        res.end(revocationUpstreamText);
       } else if (url.startsWith('/api/events/stream')) {
         if (url.includes('full=1')) {
           res.writeHead(503, { 'Content-Type': 'application/json' });
@@ -285,6 +301,76 @@ describe('BFF route handlers against a mock upstream', () => {
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ result: body });
     expect(lastRequest().url).toBe('/hosted-agents/h1/invoke');
+  });
+
+  // docs/PROXIES.md step 6 requires a mock-upstream hit here for every
+  // proxied route, including the two verifying ones. The deep
+  // verification-logic matrix (signature tampering, expiry, pinned vs.
+  // self-consistent tiers, ...) already lives in each route's own
+  // route.integration.test.ts — these two cases only prove the wiring:
+  // GET -> proxyGetVerified -> verify fn -> a `_verification` field
+  // attached to the response.
+  it('GET /api/cp/well-known/aitp-manifest attaches a well-formed _verification for a validly-signed envelope', async () => {
+    const { AitpAgent } = require('aitp');
+    const agent = AitpAgent.generate();
+    manifestUpstreamStatus = 200;
+    manifestUpstreamText = agent.buildManifest({
+      displayName: 'Mock CP',
+      handshakeEndpoint: 'https://cp.example/handshake',
+      offeredCaps: [],
+      ttlSecs: 3600,
+    });
+
+    const route: RouteModule = require('@/app/api/cp/well-known/aitp-manifest/route');
+    const res = await route.GET!(
+      makeRequest('http://localhost:3001/api/cp/well-known/aitp-manifest'),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body._verification).toEqual({ checked: true, ok: true });
+    expect(body.manifest.aid).toBe(agent.aid);
+    expect(lastRequest().url).toBe('/.well-known/aitp-manifest');
+  });
+
+  it('GET /api/cp/well-known/aitp-manifest reports checked:true, ok:false for a malformed upstream body', async () => {
+    manifestUpstreamStatus = 200;
+    manifestUpstreamText = 'not json at all';
+
+    const route: RouteModule = require('@/app/api/cp/well-known/aitp-manifest/route');
+    const res = await route.GET!(
+      makeRequest('http://localhost:3001/api/cp/well-known/aitp-manifest'),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body._verification).toEqual({ checked: true, ok: false, code: 'malformed' });
+  });
+
+  it('GET /api/cp/well-known/aitp-revocation-list attaches a well-formed _verification for a validly-signed envelope', async () => {
+    const { AitpAgent } = require('aitp');
+    const cp = AitpAgent.generate();
+    manifestUpstreamStatus = 200;
+    manifestUpstreamText = cp.buildManifest({
+      displayName: 'Mock CP',
+      handshakeEndpoint: 'https://cp.example/handshake',
+      offeredCaps: [],
+      ttlSecs: 3600,
+    });
+    revocationUpstreamStatus = 200;
+    revocationUpstreamText = cp.signRevocationList([], 3600);
+
+    // No CP_AID is set anywhere in this file, so this exercises the Tier 1
+    // ("self-consistent") path, which itself proves the route also fetches
+    // the co-served manifest through the same mock upstream.
+    const route: RouteModule = require('@/app/api/cp/well-known/aitp-revocation-list/route');
+    const res = await route.GET!(
+      makeRequest('http://localhost:3001/api/cp/well-known/aitp-revocation-list'),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body._verification).toEqual({ checked: true, ok: true, tier: 'self-consistent' });
   });
 
   it('SSE route streams upstream frames with event-stream headers', async () => {

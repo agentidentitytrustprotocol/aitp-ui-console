@@ -65,21 +65,27 @@ Every console route's upstream mapping lives in [PROXIES.md](https://agentidenti
 
 ### What the BFF verifies
 
-The two routes serving CP-signed artifacts (`well-known/aitp-manifest` and
-the per-agent manifest route) do more than hide credentials — they run the
-artifact through the `aitp` SDK's `verifyManifestJson` server-side before
-the browser ever sees it, and attach the result as `_verification` (see
-[PROXIES.md](https://agentidentitytrustprotocol.io/console/proxies)). This is deliberately server-side, never client-side:
-the browser is where an attacker who can serve the page can also serve a
-verifier that always returns true, and the native addon that does the
-actual check cannot ship to a client bundle anyway.
+The three routes serving CP-signed artifacts (`well-known/aitp-manifest`,
+the per-agent manifest route, and `well-known/aitp-revocation-list`) do
+more than hide credentials — they run the artifact through the `aitp` SDK
+server-side before the browser ever sees it, and attach the result as
+`_verification` (see [PROXIES.md](https://agentidentitytrustprotocol.io/console/proxies)).
+This is deliberately server-side, never client-side: the browser is where
+an attacker who can serve the page can also serve a verifier that always
+returns true, and the native addon that does the actual check cannot ship
+to a client bundle anyway.
 
 This is the console's one exception to "the BFF is credential-hiding and
 CORS-avoiding only, no business logic." Rendering a value copied out of an
 unauthenticated fetch as though it had been checked is a defect, not a
 layering purity question — see `plans/cp-signed-artifact-verification.md`
-(local, not tracked in this repo) for the fuller argument. The revocation
-snapshot is not yet covered the same way.
+(local, not tracked in this repo) for the fuller argument. The manifest
+routes verify a signature directly (`verifyManifestJson`); the revocation
+route verifies in one of two honest tiers — self-consistently against the
+CP's own co-served manifest by default, or against a pinned `CP_AID` when
+one is configured — never against the snapshot's own self-declared issuer.
+See the "Trust" section of [FEATURES.md](https://agentidentitytrustprotocol.io/console/features)
+for what each tier actually proves.
 
 ### CSRF guard
 

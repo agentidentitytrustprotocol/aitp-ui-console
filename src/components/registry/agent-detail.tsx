@@ -12,19 +12,26 @@ import { TimeAgo } from '@/components/shared/time-ago';
 import { EmptyState } from '@/components/shared/empty-state';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { ManifestViewer } from './manifest-viewer';
-import { useAgent } from '@/hooks/use-registry';
+import { useAgent, useAgentManifest } from '@/hooks/use-registry';
 import { useDeregisterAgent } from '@/hooks/use-enrollment';
 import { useSessions } from '@/hooks/use-sessions';
 import { useToast } from '@/components/shared/toast';
 import { C } from '@/lib/colors';
 import { shortId } from '@/lib/utils';
+import { manifestVerdictBadge } from '@/lib/verification-display';
 
 export function AgentDetail({ aid }: { aid: string }) {
   const router = useRouter();
   const toast = useToast();
   const { data: agent, isLoading, error } = useAgent(aid);
+  const manifest = useAgentManifest(aid);
   const sessions = useSessions({ aid, limit: 10 });
   const deregister = useDeregisterAgent();
+  const aidBadge = manifest.isLoading
+    ? { text: '· checking manifest…', color: C.textMuted, aidColor: C.textMuted }
+    : manifest.error || !manifest.data
+    ? { text: '· manifest unavailable', color: C.textMuted, aidColor: C.textMuted }
+    : manifestVerdictBadge(manifest.data._verification);
 
   function handleDeregister() {
     if (!confirm(`Deregister ${aid}? Active sessions will not be affected.`)) return;
@@ -117,10 +124,11 @@ export function AgentDetail({ aid }: { aid: string }) {
                 <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 4 }}>AID</div>
                 <div
                   className="mono"
-                  style={{ fontSize: 11, color: C.tealBright, wordBreak: 'break-all', lineHeight: 1.5 }}
+                  style={{ fontSize: 11, color: aidBadge.aidColor, wordBreak: 'break-all', lineHeight: 1.5 }}
                 >
                   {agent.aid}
                 </div>
+                <div style={{ fontSize: 10, color: aidBadge.color, marginTop: 4 }}>{aidBadge.text}</div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <Row label="Status" value={<StatusBadge status={agent.status} />} />

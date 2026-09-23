@@ -136,13 +136,13 @@ describe('RevocationView verdict rendering', () => {
     expect(screen.queryByText(/verified/)).not.toBeInTheDocument();
   });
 
-  it('names the upstream cause when the manifest could not be verified', async () => {
+  it('states what it observed about the manifest, without attributing a cause, when no trusted issuer is available', async () => {
     wireApi(list({ checked: false, reason: 'no_trusted_issuer', manifestCode: 'expired' }));
     renderWithClient(<RevocationView />);
 
     expect(
       await screen.findByText(
-        "· signature not checked · the CP's manifest has expired, so no trusted issuer is available (aitp-control-plane defect)",
+        "· signature not checked · the CP's manifest has expired, so no trusted issuer is available",
       ),
     ).toBeInTheDocument();
   });

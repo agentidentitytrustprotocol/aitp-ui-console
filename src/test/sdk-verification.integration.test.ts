@@ -201,7 +201,7 @@ describe('aitp SDK floor — Tier 2: the two false rejections 0.12.0 fixes', () 
     ).not.toThrow();
   });
 
-  it('DELTA: an authentic manifest signed WITH a wire-present `"extensions":{}` verifies (0.10.0 threw `signature_invalid` — a RED "VERIFICATION FAILED" badge on an authentic artifact)', () => {
+  it('DELTA: an authentic manifest signed WITH a wire-present `"extensions":{}` verifies (0.10.0 threw `signature_invalid` — a RED "SIGNATURE INVALID" badge on an authentic artifact)', () => {
     const { verifyManifestJson } = require('aitp');
     expect(() =>
       verifyManifestJson(JSON.stringify(EXTENSIONS_PRESENT_BUT_EMPTY), PINNED_NOW_UNIX_SECS),

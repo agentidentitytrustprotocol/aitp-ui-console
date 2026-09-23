@@ -208,7 +208,7 @@ export const ACCEPTED_SIGNATURE_ALGORITHMS = {
  * with that literal shape failed verification." The fix (`b78e608`) made it
  * `Option<ExtensionsMap>` at `types.rs:93`. On 0.10.0 this authentic manifest
  * throws `signature_invalid`, which this console renders as a RED
- * "VERIFICATION FAILED" badge.
+ * "SIGNATURE INVALID" badge.
  */
 export const EXTENSIONS_PRESENT_BUT_EMPTY = {
   manifest: {

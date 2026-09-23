@@ -595,7 +595,7 @@ _(appended by `/implement` as phases land)_
 | Phase | Status |
 | --- | --- |
 | 1 — Dependency refresh and a documented SDK floor at `^0.12.0` | DONE |
-| 2 — `verification-display.ts`: post-signature gap, stale CP attribution, shared export | NOT STARTED |
+| 2 — `verification-display.ts`: post-signature gap, stale CP attribution, shared export | DONE |
 | 3 — Absorb playground's trust-event vocabulary (5 typed cards) | NOT STARTED |
 | 4 — Settle the run-event timestamp unit mismatch | NOT STARTED |
 | 5 — Federation handshake error fidelity | NOT STARTED |
@@ -625,3 +625,27 @@ _(appended by `/implement` as phases land)_
   `.d.ts` diffing, which both prior planning rounds showed is a trap for this SDK.
 - **What's next:** Phase 2 (`verification-display.ts` post-signature gap + stale CP
   attribution + shared classification export). No blockers.
+
+### Phase 2 — 2026-09-23 — DONE
+
+- **Verdict:** PASS on round 1. Verifier tier: Opus (fresh agent, independent, re-traced
+  the SDK check order itself against `aitp-rs` source rather than trusting the plan or
+  executor's retelling — this phase's whole basis is a claim about check *order*, so that
+  independent re-trace is exactly what an Opus gate should spend its effort on).
+- **Rounds:** 1.
+- **Files touched:** `src/lib/verification-display.ts` (all 3 fixes),
+  `src/lib/verification-display.test.ts` (+300 lines), `src/components/config/cp-identity.test.tsx`,
+  `src/components/registry/agent-detail.test.tsx`, `src/components/trust/revocation.test.tsx`
+  (pinned-literal updates), `docs/FEATURES.md` (one sentence), `plans/cp-signed-artifact-verification.md`
+  (RESOLVED the tracked cross-repo follow-up, gitignored so not part of the git commit),
+  plus two Phase-1-owned test/fixture files corrected for a badge-name reference Phase 2
+  itself falsified (logged in `ASSUMPTIONS.md`).
+- **Two logged assumptions**, both verified sound by the reviewer: `Object.hasOwn` over
+  the plan's literal suggestion (closes a real prototype-pollution-shaped gap the plan's
+  own edge-case guidance missed), and the two-word prose fix in Phase 1's files.
+- **Carried forward to Phase 3, not fixed here (out of Phase 2's scope, both confirmed
+  non-live today):** `revocationVerdictBadge`'s catch-all renders an unrecognized code as
+  `SIGNATURE INVALID` rather than the manifest side's safer generic failure text; the
+  `isUnassessedRevocationCode` doc names one post-signature example (`malformed_body`)
+  but not the pre-signature one (`no_expected_issuer`).
+- **What's next:** Phase 3 (absorb playground's trust-event vocabulary). No blockers.

@@ -242,7 +242,12 @@ Operational settings and health, split across two columns.
   is coloured as verified only when its manifest's signature actually
   checked out; an expired manifest renders as its own distinct state that
   claims nothing about authenticity either way, never as a softer
-  "verified". The revocation snapshot verifies in one of two tiers: against
+  "verified". A manifest whose signature checked out but which then fails a
+  later proof-of-possession or identity-hint check is shown as rejected
+  *and* as having had a valid signature — never as a signature failure,
+  because it demonstrably wasn't one, and never as verified, because a
+  manifest that fails any step is still discarded. The revocation snapshot
+  verifies in one of two tiers: against
   the CP's own manifest by default (proves one key signed both artifacts,
   not that the origin is authentic — never rendered as "verified"), or
   against a pinned `CP_AID` if configured (a real authentication claim).

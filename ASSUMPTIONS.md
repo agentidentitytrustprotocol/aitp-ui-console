@@ -95,3 +95,74 @@ clean, that is a standalone formatting commit (and probably a `printWidth` corre
 independent of this plan and best done when no phase has the same files open.
 
 **Status:** UNCONFIRMED
+
+## Phase 2 corrects two badge-name references inside Phase 1's files
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** Phase 2's Files section names six edit sites and its acceptance criterion 11 names
+four pinned literals. It does not mention `src/test/sdk-verification.integration.test.ts` or
+`src/test/fixtures/minted-manifests.ts`, and the executor brief says not to touch Phase 1's
+files. But both contain **prose** describing the badge that `signature_invalid` renders as —
+`it('DELTA: … a RED "VERIFICATION FAILED" badge on an authentic artifact')`
+(`sdk-verification.integration.test.ts:204`) and "throws `signature_invalid`, which this console
+renders as a RED \"VERIFICATION FAILED\" badge" (`minted-manifests.ts:210-211`). Phase 2 makes
+both statements **false**: `signature_invalid` now renders `· SIGNATURE INVALID
+(signature_invalid)`. The plan is silent on who fixes prose that this phase itself invalidates.
+
+**Chose:** Fix both, minimally — swap the quoted badge headline `"VERIFICATION FAILED"` →
+`"SIGNATURE INVALID"` in each, and nothing else. No assertion, fixture, measurement or test
+behaviour changed; both edits are inside a string that is documentation. Reason: the whole point
+of this phase is that the console must not state things it has not established, and leaving a
+freshly-falsified claim in the repo — in the very files that are Phase 1's evidence of honesty —
+would be the same failure mode one layer up. A future auditor reading
+`minted-manifests.ts:210` would be told `signature_invalid` renders as VERIFICATION FAILED and
+could reasonably conclude Phase 2 was reverted.
+
+**Alternatives:** Leave both stale and note them for Phase 7's documentation sweep (rejected —
+Phase 7 is four phases away, and a claim that is false the moment this commit lands should not
+survive four commits; also, neither file is in Phase 7's named doc list, so nothing guarantees
+anyone would look). Widen the prose to something version-neutral like "a red badge" (rejected —
+it throws away the specific, checkable fact, and this repo's convention is to name badge strings
+exactly so drift breaks something). Leave them and relax the brief's "don't touch Phase 1's
+files" by asking first (rejected — a two-word prose correction in a comment is not a one-way
+door or a cross-repo write).
+
+**Blast radius if wrong:** Nil functionally — both edits are inside a doc comment and an `it`
+title. If a verifier prefers Phase 1's files untouched, reverting is two one-line edits and the
+only cost is that the two stale sentences come back.
+
+**Status:** UNCONFIRMED
+
+## Phase 2's `Record` membership test uses `Object.hasOwn`, not `in`
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** Phase 2's "Edge cases & failure modes" calls the `Record<string, string>` lookup a
+typing trap and prescribes "Membership-test it (`code in MAP`, or `const detail = MAP[code]; if
+(detail !== undefined)`), never truthiness-test the result". Both suggested forms close the
+`undefined`-in-the-badge hole the plan is worried about. Neither closes a second one the plan did
+not consider: `verdict.code` is an arbitrary SDK string, and **both** forms match inherited
+members — `'toString' in MAP` is `true`, and `MAP['toString']` is a function, not `undefined`. A
+code of `toString` or `constructor` would render a stringified function into the badge.
+
+**Chose:** `Object.hasOwn(MANIFEST_POST_SIGNATURE_DETAIL, verdict.code)`. It is a membership test
+(so it satisfies the plan's instruction as written), it is a single ES2022 call available under
+this repo's `target: "ES2022"` and Node `>=22.13.0` floor, and it is own-property-only, so an
+inherited member falls through to the generic catch-all like any other unmodelled code. Pinned by
+an `it.each(['toString', 'constructor', 'hasOwnProperty'])` case asserting exactly that, plus a
+`__proto__` case on the predicates.
+
+**Alternatives:** `code in MAP` verbatim as the plan's first suggestion (rejected — reintroduces
+the prototype hole; the codes are snake_case today, but "today's SDK only emits snake_case" is
+precisely the kind of assumption this plan's forward-compat discipline forbids relying on).
+`const detail = MAP[code]; if (detail !== undefined)` (rejected for the same reason — an
+inherited function is not `undefined`). Switch the container to a `Map`, which has no prototype
+chain (rejected — the plan explicitly specifies a `Record`, and `Object.hasOwn` gets the same
+safety without deviating from the named data structure; a `Map` would also read as a silent
+disagreement with the plan rather than a hardening of it).
+
+**Blast radius if wrong:** Nil. If a reviewer prefers the literal `in`, it is a one-token change
+and the two prototype-chain test cases are the only thing that would have to be deleted with it.
+
+**Status:** UNCONFIRMED

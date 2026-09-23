@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { renderWithClient } from '@/test/test-utils';
 import { C } from '@/lib/colors';
 import type {
@@ -102,9 +102,24 @@ describe('CpIdentityCard manifest verdict', () => {
 
     const aid = await screen.findByText('aid:pubkey:test');
     expect(aid).toHaveStyle({ color: C.textMuted });
-    expect(screen.getByText('· VERIFICATION FAILED (signature_invalid)')).toHaveStyle({
+    expect(screen.getByText('· SIGNATURE INVALID (signature_invalid)')).toHaveStyle({
       color: C.red,
     });
+  });
+
+  it('renders a post-signature rejection in red with the AID still muted, naming the signature as verified', async () => {
+    // `verify_manifest` reaches PoP only after the outer signature has already
+    // verified, so this badge must not read as a signature failure -- and the
+    // AID must stay muted anyway, because RFC-AITP-0003 §5 requires discarding
+    // a manifest that fails any step.
+    wireApi(manifest({ checked: true, ok: false, code: 'pop_failed' }), revocationList());
+    renderWithClient(<CpIdentityCard />);
+
+    const aid = await screen.findByText('aid:pubkey:test');
+    expect(aid).toHaveStyle({ color: C.textMuted });
+    expect(
+      screen.getByText('· REJECTED · signature verified · proof-of-possession did not (pop_failed)'),
+    ).toHaveStyle({ color: C.red });
   });
 
   it('does not overclaim for a pre-signature code: version_unknown and malformed render as not-verified, not a failure', async () => {
@@ -135,6 +150,10 @@ describe('CpIdentityCard manifest verdict', () => {
       { checked: true, ok: false, code: 'signature_invalid' },
       { checked: true, ok: false, code: 'version_unknown' },
       { checked: true, ok: false, code: 'malformed' },
+      // Post-signature codes: the outer signature verified, and that is still
+      // not a licence to colour the AID as a checked fact.
+      { checked: true, ok: false, code: 'pop_failed' },
+      { checked: true, ok: false, code: 'identity_hint_malformed' },
       { checked: false, reason: 'sdk_unavailable' },
     ];
     for (const verification of nonOkVerdicts) {
@@ -181,13 +200,17 @@ describe('CpIdentityCard revocation verdict', () => {
     );
     renderWithClient(<CpIdentityCard />);
 
-    expect(await screen.findByText('· ISSUER MISMATCH (issuer_mismatch)')).toHaveStyle({
-      color: C.red,
-    });
-    expect(screen.queryByText(/SIGNATURE INVALID/)).not.toBeInTheDocument();
+    const revocationBadge = await screen.findByText('· ISSUER MISMATCH (issuer_mismatch)');
+    expect(revocationBadge).toHaveStyle({ color: C.red });
+    // Scoped to the revocation row on purpose. `SIGNATURE INVALID` stopped
+    // being a revocation-only string when the manifest badge gained its own
+    // `signature_invalid` row, so an unscoped `queryByText` here would still
+    // pass while guaranteeing strictly less than it used to.
+    const revocationRow = revocationBadge.parentElement as HTMLElement;
+    expect(within(revocationRow).queryByText(/SIGNATURE INVALID/)).not.toBeInTheDocument();
   });
 
-  it('names the upstream cause when the manifest is unverifiable', async () => {
+  it('states what it observed about the manifest, without attributing a cause, when no trusted issuer is available', async () => {
     wireApi(
       manifest({ checked: true, ok: true }),
       revocationList({
@@ -200,7 +223,7 @@ describe('CpIdentityCard revocation verdict', () => {
 
     expect(
       await screen.findByText(
-        "· signature not checked · the CP's manifest has expired, so no trusted issuer is available (aitp-control-plane defect)",
+        "· signature not checked · the CP's manifest has expired, so no trusted issuer is available",
       ),
     ).toBeInTheDocument();
   });

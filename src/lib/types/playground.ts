@@ -125,6 +125,24 @@ export interface RunList {
   runs: RunSummary[];
 }
 
+/** One SSE frame from `GET /runs/{id}/events`.
+ *
+ *  The stream is a **union of two producers**, which is why the field names
+ *  below differ per event type rather than sharing one vocabulary:
+ *
+ *  - Orchestrator events are playground's own pydantic `RunEvent`
+ *    (`runner/context.py:11-38`) dumped with `model_dump()` and **no**
+ *    `exclude_none` (`:55`), so every field that model declares is present
+ *    on every such frame, carrying JSON `null` when unset.
+ *  - Agent-subprocess events are the raw body POSTed to
+ *    `/internal/telemetry` and appended unvalidated (`api/telemetry.py:13-22`),
+ *    so their key set is whatever the emit site passed, wrapped in
+ *    `{type, run_id, agent_id, ts, ...fields}` by `agents/base/telemetry.py:15-21`.
+ *
+ *  Hence `| null` on the trust-event fields below: `null` is a value this wire
+ *  really carries, not a modelling flourish, and every consumer must treat it
+ *  and `undefined` identically. (The older fields above the trust block keep
+ *  their bare-optional typing; widening them is not this change's business.) */
 export interface RunEvent {
   type: string;
   ts: number;
@@ -145,6 +163,64 @@ export interface RunEvent {
   scenario_ref?: string;
   notes?: string;
   payload?: Record<string, unknown>;
+
+  // --- playground's trust-event vocabulary -------------------------------
+  // One comment per field naming the event type that carries it and the emit
+  // site it was read from, mirroring how playground's own model documents the
+  // same fields at `runner/context.py:34-37`. Every name below was confirmed
+  // against a literal captured `/internal/telemetry` frame, not inferred from
+  // the `emit()` kwargs — see `event-cards.test.tsx`'s CAPTURED_FRAMES.
+
+  /** `manifest.verify_failed` (`runner/engine.py:641-645`;
+   *  `agents/base/agent_admin.py:127-132`) and `revocation.verify_failed`
+   *  (`agents/base/revocation_refresh.py:104-106`). Two different producers
+   *  with two different vocabularies behind one name — see
+   *  `manifestVerifyFailedVerdict` / `revocationVerifyFailedVerdict`. */
+  cause?: string | null;
+  /** `manifest.verify_failed` — whose manifest failed
+   *  (`engine.py:644`, `agent_admin.py:131`). */
+  source_url?: string | null;
+  /** `revocation.verify_failed` — free text from the discard site
+   *  (`revocation_refresh.py:105`). Not on playground's pydantic model; this
+   *  field exists only on the agent-POSTed channel. */
+  detail?: string | null;
+  /** `revocation.degraded_serve` (`agents/base/aitp_server.py:341-346`).
+   *  This event carries **no** `cause`. */
+  reason?: string | null;
+  /** `revocation.degraded_serve` — the ordinal of this degraded serve, not a
+   *  total: the event is emitted on the 1st and every 100th occurrence only
+   *  (sampling guard, `aitp_server.py:340`). */
+  serves?: number | null;
+  /** `revocation.degraded_serve` — the configured Axis-B mode
+   *  (`aitp_server.py:345`); the event only fires under `soft_fail`. */
+  fail_mode?: string | null;
+  /** `delegation.redeemed` **site 1** (issuer side,
+   *  `agents/base/aitp_server.py:616-621`), alongside `grants` and
+   *  `role: "issuer"`. Also on `delegation.issued`
+   *  (`agent_admin.py:572-580`). */
+  delegatee_aid?: string | null;
+  /** `delegation.redeemed` site 1 only (`aitp_server.py:620`), the literal
+   *  `"issuer"`. Typed open rather than as that literal: one emit site sets it
+   *  today and a second would not be a type error upstream. */
+  role?: string | null;
+  /** `delegation.redeemed` **site 2** (delegatee happy path,
+   *  `agent_admin.py:625`), read from the fresh TCT's `iss` claim via
+   *  `claims.get("iss")` — so it can legitimately be `null`. */
+  peer_aid?: string | null;
+  /** `delegation.redeemed` **site 3** (`agent_admin.py:631`) — the *only*
+   *  field that site carries. Distinct from `port` above, which is
+   *  `agent.ready`'s own listen port. */
+  peer_port?: number | null;
+  /** `delegation.redeemed` site 2 (`agent_admin.py:624`) and
+   *  `delegation.issued` (`agent_admin.py:579`), both via `tct_event()`
+   *  (`agents/base/tct_claims.py:52-65`). An **object**, never a string. Its
+   *  `claims` is deliberately `{}` on a decode failure "so the event is never
+   *  dropped", so an empty claims map is a legitimate state and not evidence
+   *  of anything. */
+  tct?: { token: string; claims: Record<string, unknown> } | null;
+  /** `delegation.issued` (`agent_admin.py:580`) — the delegated capability
+   *  list, named `scope` there rather than `grants`. */
+  scope?: string[] | null;
 }
 
 export interface RunResponse {

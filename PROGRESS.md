@@ -596,7 +596,7 @@ _(appended by `/implement` as phases land)_
 | --- | --- |
 | 1 — Dependency refresh and a documented SDK floor at `^0.12.0` | DONE |
 | 2 — `verification-display.ts`: post-signature gap, stale CP attribution, shared export | DONE |
-| 3 — Absorb playground's trust-event vocabulary (5 typed cards) | NOT STARTED |
+| 3 — Absorb playground's trust-event vocabulary (5 typed cards) | DONE |
 | 4 — Settle the run-event timestamp unit mismatch | NOT STARTED |
 | 5 — Federation handshake error fidelity | NOT STARTED |
 | 6 — Declarative accuracy: Draft-spec copy and the `CpEventType` catalogue | NOT STARTED |
@@ -649,3 +649,27 @@ _(appended by `/implement` as phases land)_
   `isUnassessedRevocationCode` doc names one post-signature example (`malformed_body`)
   but not the pre-signature one (`no_expected_issuer`).
 - **What's next:** Phase 3 (absorb playground's trust-event vocabulary). No blockers.
+
+### Phase 3 — 2026-09-23 — DONE
+
+- **Verdict:** PASS on round 2 (round 1: GAPS, 5 citation typos + 1 plan-text undercount,
+  all minor; round 2 confirmed 4/5 code fixes converged, caught 1 that hadn't actually
+  landed + 1 adjacent inconsistency, fixed directly by the orchestrator and reconfirmed
+  manually rather than spending a 3rd full agent round on an already-cross-verified
+  single-line comment fix). Verifier tier: Opus, both rounds — this phase's central claim
+  is an empirical one (real wire frames from running playground's code), which only an
+  independent agent re-running the capture itself can actually check.
+- **Rounds:** 2.
+- **Files touched:** `src/lib/types/playground.ts` (RunEvent extended), `src/components/runs/event-cards.tsx`
+  (6 new typed cards + 2 verdict functions + shared helpers), `src/components/runs/event-cards.test.tsx`
+  (captured wire frames + exhaustiveness mirror + 79 new tests), `ASSUMPTIONS.md` (4 new entries).
+- **What was independently verified, not just argued:** the round-2 verifier re-ran the
+  wire-capture recipe from scratch against playground's live source and got byte-identical
+  frames; separately confirmed two captured tokens carry valid Ed25519 signatures and
+  correct JWK thumbprints, which rules out fabrication (a fabricated-but-plausible JSON
+  frame cannot carry a real signature over its own claimed content).
+- **Carried forward, tracked, not fixed here:** the `pop_failed`/`identity_hint_malformed`
+  generic-red deferral (see plan Phase 3 note above); 8 other trust-adjacent event types
+  (`trust.failed`, `tct.revoked`, etc.) still hit the grey default, correctly per this
+  phase's explicit scope boundary.
+- **What's next:** Phase 4 (run-event timestamp unit mismatch). No blockers.

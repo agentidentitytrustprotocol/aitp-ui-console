@@ -166,3 +166,162 @@ disagreement with the plan rather than a hardening of it).
 and the two prototype-chain test cases are the only thing that would have to be deleted with it.
 
 **Status:** UNCONFIRMED
+
+## Phase 3 types the new trust fields `T | null`, not bare-optional
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** Phase 3's type list says "Keep them optional and flat, matching the existing style",
+and every one of `RunEvent`'s twenty pre-existing fields is bare-optional (`error?: string`). But
+the same phase's Edge cases say "`cause` may arrive as `null`, not absent — cards must handle
+`null` and `undefined` identically", which bare-optional typing cannot express. The plan does not
+say which of the two instructions wins.
+
+**Chose:** `?: T | null` for all eleven new trust fields (`cause`, `source_url`, `detail`,
+`reason`, `serves`, `fail_mode`, `delegatee_aid`, `role`, `peer_aid`, `peer_port`, `tct`), and the
+twenty pre-existing fields left exactly as they were. Reading "optional and flat" as the
+instruction it is contrasted against in the plan's own next sentence — *"**Do not** invent a
+shared `cause` alias over `reason`/`error`/`detail`"* — i.e. flat-and-per-producer rather than
+nested-or-aliased, not a rule about nullability. Three measured reasons for the `| null`:
+(a) `null` is a value this wire demonstrably carries — `cause`/`source_url` are declared on
+playground's pydantic `RunEvent` and `runner/context.py:55` dumps with `model_dump()` and no
+`exclude_none`, so an orchestrator frame that sets neither carries both as JSON `null`, and
+`delegation.redeemed` site 2 reads `peer_aid`/`jti`/`grants` from `claims.get(...)`
+(`agent_admin.py:625-627`), which returns `None` on a token lacking them; (b) this file already
+uses the form (`RunSummary.created_at: number | null`, `RunCreated.run_label?: string | null`), so
+it is *an* existing style, not a new one; (c) it makes the tests the plan mandates —
+"`cause` explicitly `null`" — expressible without a cast, so the null path is actually type-checked
+rather than cast past. The one place a cast remained is the `delegation.rejected` `error: null`
+case, because `error` is pre-existing and was deliberately not widened; that cast carries a comment
+saying so.
+
+**Alternatives:** Bare-optional for the new fields too, with `as unknown as RunEvent` casts in every
+null test (rejected — the null-handling requirement is the honesty-relevant part of this phase, and
+a cast is the one construct that makes a type stop checking it; it would also read as agreement
+with a shape the wire contradicts). Widen all twenty pre-existing fields for uniformity (rejected —
+outside this phase's Files, and it would bury eleven additions inside a thirty-one-field churn on a
+diff whose whole value is auditability). Model the two channels as separate interfaces (rejected —
+a much larger change than Phase 3 authorises, and `run-timeline.tsx` consumes one flat list).
+
+**Blast radius if wrong:** Contained and mechanical. Every consumer reads these fields through a
+truthiness or `!== null && !== undefined` guard, so dropping `| null` is a find-and-replace in one
+interface plus casts in the null test cases; no card logic or copy changes either way.
+
+**Status:** UNCONFIRMED
+
+## Phase 3 takes the discretionary `delegation.issued` / `delegation.redeeming` extension
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** Phase 3 offers a "Discretionary in-phase extension" — cards for `delegation.issued`
+and `delegation.redeeming`, so the flow does not read issued (grey) → redeeming (grey) → redeemed
+(card) — and calls it "Recommended if cheap, not required". It says to note the decision in the
+commit message *if skipped*, and says nothing about how to record taking it. It also does not list
+`scope`, the one field `delegation.issued` needs and that no other event in the phase carries.
+
+**Chose:** Take it, and add `scope?: string[] | null` alongside the eleven fields the plan lists.
+It was cheap exactly as the plan predicted: `delegation.redeeming` is orchestrator-side and reuses
+the already-modelled `initiator`/`target` (`runner/engine.py:441-443`), so it needed no new field
+and no capture — it goes through the pydantic model, the channel the plan says needs no further
+confirmation. `delegation.issued` needed one field and one more literal frame capture, which cost
+about thirty lines on a harness that was already standing up real agents for the `delegation.redeemed`
+captures. Recording the decision here rather than in a commit message because this executor pass
+does not commit, and the plan's "note it so it reads as a decision rather than an oversight" is the
+actual requirement — the commit message was only its suggested venue.
+
+Also chosen, and deliberately narrow: `delegation.issued`'s `tct` is rendered with the labels
+`TOKEN`/`CLAIMS`, not `TCT`. Playground puts a *delegation* envelope through the same `tct_event()`
+helper (`agent_admin.py:579`), and the captured frame's token carries `"typ":"aitp-delegation+jwt"`,
+so calling it a TCT on that card would be a small fresh overclaim of precisely this plan's class.
+The shared `TokenClaims` component therefore names neither, and a test pins that
+`delegation.issued` renders no `/tct/i` at all.
+
+**Alternatives:** Skip both and note it (rejected — the plan recommends taking it, the cost was
+measured rather than estimated, and the asymmetric grey-grey-card sequence is a real
+readability defect an operator meets on every delegation scenario). Take `delegation.redeeming`
+only, since it is free (rejected — it closes the cheaper half and leaves the more informative event
+grey, which is the asymmetry the extension exists to remove, just moved one step). Take
+`delegation.issued` without capturing a frame for it, on the strength of its `emit()` kwargs
+(rejected — it is an agent-channel event, so it is exactly the class the plan forbids inferring
+from kwargs; capturing it also turned up that its `scope` claim name differs from `grants`, which a
+kwargs read would have shown but a shape assumption would not).
+
+**Blast radius if wrong:** Two components, one interface field and four tests, all additive. Reverting
+is a deletion: no other card, type or test depends on either addition, and `delegation.issued` /
+`delegation.redeeming` would simply return to the grey default row they occupied before.
+
+**Status:** UNCONFIRMED
+
+## Phase 3's captured frames live in `event-cards.test.tsx`, not a fixtures module
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** Phase 3's acceptance criterion 1 requires "a literal captured example frame for each
+of the four agent-side event types — and one per `delegation.redeemed` emit site, three in total"
+to be "recorded in the commit message or a test fixture". This executor pass is explicitly told not
+to commit, which removes one of the two venues; and the phase's Files section names only
+`playground.ts`, `event-cards.tsx` and `event-cards.test.tsx`, so it does not contemplate a
+`src/test/fixtures/` module the way Phase 1 did.
+
+**Chose:** A `CAPTURED_FRAMES` constant at the top of the new section of `event-cards.test.tsx`,
+carrying eleven verbatim frames, a provenance header giving the reproduction recipe per frame, and
+two tests over it: every key of every frame must be a declared `RunEvent` key (via a
+`Record<keyof RunEvent, true>` mirror that TypeScript rejects if it drifts from the interface in
+either direction), and every frame must render a typed card rather than the grey default. Reasons:
+the frames are evidence *for these cards*, so welding them to the cards' own test file is what makes
+a future reader of either find the other; and a fixture that only sits there proves nothing, whereas
+the exhaustive-key mirror turns "the TypeScript field names match them exactly" from a claim in a
+commit message into a check that fails on a typo.
+
+**Alternatives:** A new `src/test/fixtures/playground-trust-events.ts` mirroring Phase 1's
+`minted-manifests.ts` (rejected — Phase 3's Files section does not name it, and the frames have
+exactly one consumer, so a second file buys separation this evidence does not need). Record them in
+the commit message only (rejected — not available to this pass, and a commit message cannot be
+re-run; the field-name claim would become unfalsifiable the moment upstream changed). Store them as
+`.json` (rejected for the same reason Phase 1 rejected it — JSON cannot carry the provenance header,
+and the recipe is half the evidence).
+
+**Blast radius if wrong:** Test-only. If a reviewer prefers the fixtures in `src/test/fixtures/`,
+the constant and its header move verbatim and the two tests import it instead of declaring it;
+nothing under `src/` outside this one test file reads it.
+
+**Status:** UNCONFIRMED
+
+## Phase 3's manifest card leaves `pop_failed` / `identity_hint_malformed` to the generic red wording
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** Phase 3 requires the `manifest.verify_failed` card to route severity through Phase 2's
+`isUnassessedManifestCode`, decide `unknown` explicitly, and never assert a signature verdict the
+cause does not support. It is silent on the two manifest codes Phase 2 established are reachable
+*only after* the outer signature verified — `pop_failed` and `identity_hint_malformed` — both of
+which `_classify_manifest_verify_failure` will happily pass through as `getattr(exc, "code")`. Phase
+2 gave those their own post-signature wording on the CP badge but exported only the *unassessed*
+predicates, not `MANIFEST_POST_SIGNATURE_DETAIL`.
+
+**Chose:** Do not refine them on the card. They take the generic red branch, whose wording is
+`verification failed (pop_failed)` — which names the producer's cause and asserts nothing about a
+signature, so it is honest, just less specific than the badge. The reason is the phase's own
+criterion: the only way to word them as post-signature here is to restate that map's key list in
+`src/components/`, and "**never** a second copy of the code list" / "`grep` shows no second copy of
+either code list in `src/components/`" is the constraint Phase 3 is most explicit about. A
+duplicated list that drifts is a worse failure than a true-but-vaguer sentence. This is recorded in
+a comment on `manifestVerifyFailedVerdict` so the next reader sees it as a decision, and the
+revocation side's `malformed_body` — which the plan *does* mandate as post-signature — is
+unaffected, because that literal is playground's own and is enumerated here rather than borrowed
+from Phase 2.
+
+**Alternatives:** Copy the two keys into `event-cards.tsx` with the post-signature wording (rejected
+— directly violates the criterion, and two copies of a two-entry map is exactly how the eight-code
+taxonomy drifted in the first place). Export `MANIFEST_POST_SIGNATURE_DETAIL` (or a
+`manifestPostSignatureDetail(code)` predicate) from `verification-display.ts` and reuse it (rejected
+here, not on the merits — it is the *right* long-term shape, but `verification-display.ts` is Phase
+2's file, this brief says not to touch Phase 2's files beyond what Phase 3's spec requires, and
+Phase 3's spec does not require it). Widen the red wording to mention that some causes are
+post-signature (rejected — it would be true of two codes and misleading about the other six).
+
+**Blast radius if wrong:** One branch and one test. If a later phase exports a post-signature
+predicate, the manifest card gains a fourth branch above the generic red one and nothing else moves;
+no copy currently exists to delete.
+
+**Status:** UNCONFIRMED

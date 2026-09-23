@@ -1,6 +1,13 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { EventCard, StepOutputCard, TrustFlowCard } from './event-cards';
+import {
+  EventCard,
+  StepOutputCard,
+  TrustFlowCard,
+  manifestVerifyFailedVerdict,
+  revocationVerifyFailedVerdict,
+} from './event-cards';
+import { C } from '@/lib/colors';
 import type { RunEvent } from '@/lib/types/playground';
 
 const aid = 'aid:pubkey:A7mK9xP2nR4vQ8sL3tW6uY1jC5bE0fH';
@@ -238,5 +245,587 @@ describe('TrustFlowCard', () => {
     );
     expect(screen.getByText('none')).toBeInTheDocument();
     expect(screen.queryByText('JTI')).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Playground's trust-event vocabulary
+// ---------------------------------------------------------------------------
+
+/**
+ * LITERAL captured `/internal/telemetry` frames — the wire-shape gate for the
+ * four event types that bypass playground's pydantic `RunEvent` entirely and
+ * whose key sets are therefore guaranteed only by their Python call sites.
+ *
+ * **Provenance.** Each object below is the verbatim JSON body that
+ * `agents/base/telemetry.py:15-21` POSTs (`{type, run_id, agent_id, ts,
+ * ...fields}`), captured by running playground's own code with only
+ * `telemetry.httpx` replaced by a recorder. The key sets were NOT inferred
+ * from the `emit()` kwargs. Reproduce with, against `aitp-playground` at
+ * `agents/base` + `tests/unit` on `sys.path` and its `.venv`:
+ *
+ *   1. `revocation.verify_failed` ×4 — call the real
+ *      `revocation_refresh.refresh_revocations(revocation=RevocationState(),
+ *      bootstrap={...}, emit=telemetry.emit_event)` with `revocation_refresh.httpx`
+ *      stubbed to return the snapshot body, once per `_discard` site: no `cp.aid`
+ *      (`no_expected_issuer`), `del aitp.verify_revocation_list`
+ *      (`sdk_cannot_verify`), a garbage envelope through the REAL SDK (an SDK
+ *      `.code`), and `verify_revocation_list` stubbed to succeed over a body with
+ *      no `published_at` (`malformed_body` — the one cause that requires the
+ *      signature to have passed).
+ *   2. `revocation.degraded_serve` — `AitpServer._enforce_revocation_freshness`
+ *      bound to a stub whose `revocation.posture()` is `"degraded"` and
+ *      `revocation_fail_mode` is `"soft_fail"`, then awaiting the task
+ *      `_emit_soon` schedules.
+ *   3. `delegation.rejected` and `delegation.redeemed` site 1 — the real
+ *      `/aitp/delegation/redeem` route via `tests/unit/test_delegation_revocation.py`'s
+ *      `_server` / `_delegation_for` / `_redeem` harness, once clean and once with
+ *      the source jti revoked.
+ *   4. `delegation.redeemed` site 2 — a real `build_admin_router`
+ *      `/admin/redeem-delegation` with `agent_admin.httpx` pointed by
+ *      `httpx.ASGITransport` at the peer above, so a real TCT comes back.
+ *   5. `delegation.redeemed` site 3 — the same route with the peer answering
+ *      2xx and `{"grant_voucher": "vouch"}`, taking the `except (ValueError,
+ *      KeyError)` arm at `agent_admin.py:629`.
+ *   6. `delegation.issued` — `/admin/delegate` with a real grant voucher from a
+ *      completed handshake and `agent_admin.httpx` serving the delegatee's real
+ *      manifest.
+ *   7. `manifest.verify_failed` (agent channel) — the same route with the
+ *      delegatee manifest replaced by `{"not": "a manifest"}`.
+ *
+ * Site 1 was captured twice, in two independent runs with different keys, with
+ * identical key sets both times. `ts` is `time.time()` — float epoch SECONDS on
+ * this channel, which is a separate (out-of-scope here) concern from this
+ * console's `formatOffset`.
+ */
+const CAPTURED_FRAMES: Record<string, Record<string, unknown>> = {
+  revocation_verify_failed_no_expected_issuer: {"agent_id": "writer", "cause": "no_expected_issuer", "detail": "no CP AID pinned (set CP_AID) — refusing to apply an unverifiable revocation snapshot", "run_id": "run-7f3c", "ts": 1790199933.127181, "type": "revocation.verify_failed"},
+  revocation_verify_failed_sdk_cannot_verify: {"agent_id": "writer", "cause": "sdk_cannot_verify", "detail": "installed aitp-sdk has no verify_revocation_list (needs >=0.6.0) — refusing to apply an unverified snapshot", "run_id": "run-7f3c", "ts": 1790199933.1274319, "type": "revocation.verify_failed"},
+  revocation_verify_failed_sdk_code: {"agent_id": "writer", "cause": "malformed", "detail": "invalid revocation envelope JSON: missing field `version` at line 1 column 33", "run_id": "run-7f3c", "ts": 1790199933.127628, "type": "revocation.verify_failed"},
+  revocation_verify_failed_malformed_body: {"agent_id": "writer", "cause": "malformed_body", "detail": "'published_at'", "run_id": "run-7f3c", "ts": 1790199933.127785, "type": "revocation.verify_failed"},
+  revocation_degraded_serve: {"agent_id": "writer", "fail_mode": "soft_fail", "reason": "snapshot_stale", "run_id": "run-7f3c", "serves": 1, "ts": 1790199933.1338491, "type": "revocation.degraded_serve"},
+  delegation_rejected: {"agent_id": "writer", "error": "delegation verification failed: source TCT has been revoked", "run_id": "run-7f3c", "ts": 1790199933.192322, "type": "delegation.rejected"},
+  delegation_redeemed_site1: {"agent_id": "writer", "delegatee_aid": "aid:pubkey:HYKwtlrXMWrR8JYLWx_fpoKku1W-YSg4-fJMJUBdhSY", "grants": ["demo.write"], "role": "issuer", "run_id": "run-7f3c", "ts": 1790199933.189941, "type": "delegation.redeemed"},
+  delegation_redeemed_site2: {"agent_id": "writer", "grants": ["demo.write"], "jti": "e60c9eb3-1376-4106-9f9e-175e9411a047", "peer_aid": "aid:pubkey:sJnYjcKKOREshszqllQruT9uzMs7GGRtUcGNryVxtL8", "run_id": "run-7f3c", "tct": {"claims": {"aud": "aid:pubkey:0Hhe28FMapk2TBbOe5a89ZciPhnF0sIp2In3cRrc4Ts", "cnf": {"jkt": "oEZ1e_0EZjKZccZoLfVnhym8bnECoUsL6STMnI36lLw"}, "exp": 1790203533, "grants": ["demo.write"], "iat": 1790199933, "iss": "aid:pubkey:sJnYjcKKOREshszqllQruT9uzMs7GGRtUcGNryVxtL8", "jti": "e60c9eb3-1376-4106-9f9e-175e9411a047", "sub": "aid:pubkey:0Hhe28FMapk2TBbOe5a89ZciPhnF0sIp2In3cRrc4Ts", "ver": "aitp/0.2"}, "token": "eyJhbGciOiJFZERTQSIsInR5cCI6ImFpdHAtdGN0K2p3dCJ9.eyJhdWQiOiJhaWQ6cHVia2V5OjBIaGUyOEZNYXBrMlRCYk9lNWE4OVpjaVBobkYwc0lwMkluM2NScmM0VHMiLCJjbmYiOnsiamt0Ijoib0VaMWVfMEVaaktaY2Nab0xmVm5oeW04Ym5FQ29Vc0w2U1RNbkkzNmxMdyJ9LCJleHAiOjE3OTAyMDM1MzMsImdyYW50cyI6WyJkZW1vLndyaXRlIl0sImlhdCI6MTc5MDE5OTkzMywiaXNzIjoiYWlkOnB1YmtleTpzSm5ZamNLS09SRXNoc3pxbGxRcnVUOXV6TXM3R0dSdFVjR05yeVZ4dEw4IiwianRpIjoiZTYwYzllYjMtMTM3Ni00MTA2LTlmOWUtMTc1ZTk0MTFhMDQ3Iiwic3ViIjoiYWlkOnB1YmtleTowSGhlMjhGTWFwazJUQmJPZTVhODlaY2lQaG5GMHNJcDJJbjNjUnJjNFRzIiwidmVyIjoiYWl0cC8wLjIifQ.jcNsq-NfvYmK5OPD2OeLCtOaznHz_BWyE56kPx7oZ06s-WxBu1nErWQB2Ug_q2TdDZavO2-RO8lpRHLprWxFDQ"}, "ts": 1790199933.210742, "type": "delegation.redeemed"},
+  delegation_redeemed_site3: {"agent_id": "writer", "peer_port": 9, "run_id": "run-7f3c", "ts": 1790199933.21171, "type": "delegation.redeemed"},
+  delegation_issued: {"agent_id": "writer", "delegatee_aid": "aid:pubkey:s116fD4_6iA_LRrxfbloIOiYKPHAz7_tfbxC3ym5AmA", "run_id": "run-7f3c", "scope": ["demo.write"], "tct": {"claims": {"aud": "aid:pubkey:EpxW9B59Kv4Xsfa-8tvnW07avwwKDmvohS-bf2m5d3E", "cnf": {"jkt": "EFbUJicZyueHazzZUvn-YaHEZmYTIP28N2e0Mcr1nyc"}, "exp": 1790203610, "iss": "aid:pubkey:snRpQkxsJ4ylh8iSVaXq6qfEpxv6NHFaE194JCXXX5A", "scope": ["demo.write"], "sub": "aid:pubkey:s116fD4_6iA_LRrxfbloIOiYKPHAz7_tfbxC3ym5AmA", "ver": "aitp/0.2", "voucher": "eyJhbGciOiJFZERTQSIsInR5cCI6ImFpdHAtZ3JhbnQrand0In0.eyJleHAiOjE3OTAyMDM2MTAsImdyYW50cyI6WyJkZW1vLndyaXRlIl0sImlhdCI6MTc5MDIwMDAxMCwiaXNzIjoiYWlkOnB1YmtleTpFcHhXOUI1OUt2NFhzZmEtOHR2blcwN2F2d3dLRG12b2hTLWJmMm01ZDNFIiwic3JjX2p0aSI6IjBkZGMzYjBmLTIxOTYtNDU5Ni05ZGVjLWQ3ZTIzNGVjMjJiMiIsInN1YiI6ImFpZDpwdWJrZXk6c25ScFFreHNKNHlsaDhpU1ZhWHE2cWZFcHh2Nk5IRmFFMTk0SkNYWFg1QSIsInZlciI6ImFpdHAvMC4yIn0.cZCCiBvEcWej7wh0ej9zRFnLHYL2nO0x_R6LG6wcJJfdd5uRQzQe5C3Trl4xDkL771bca7JksNNeNdwe-3GgAQ"}, "token": "eyJhbGciOiJFZERTQSIsInR5cCI6ImFpdHAtZGVsZWdhdGlvbitqd3QifQ.eyJhdWQiOiJhaWQ6cHVia2V5OkVweFc5QjU5S3Y0WHNmYS04dHZuVzA3YXZ3d0tEbXZvaFMtYmYybTVkM0UiLCJjbmYiOnsiamt0IjoiRUZiVUppY1p5dWVIYXp6WlV2bi1ZYUhFWm1ZVElQMjhOMmUwTWNyMW55YyJ9LCJleHAiOjE3OTAyMDM2MTAsImlzcyI6ImFpZDpwdWJrZXk6c25ScFFreHNKNHlsaDhpU1ZhWHE2cWZFcHh2Nk5IRmFFMTk0SkNYWFg1QSIsInNjb3BlIjpbImRlbW8ud3JpdGUiXSwic3ViIjoiYWlkOnB1YmtleTpzMTE2ZkQ0XzZpQV9MUnJ4ZmJsb0lPaVlLUEhBejdfdGZieEMzeW01QW1BIiwidmVyIjoiYWl0cC8wLjIiLCJ2b3VjaGVyIjoiZXlKaGJHY2lPaUpGWkVSVFFTSXNJblI1Y0NJNkltRnBkSEF0WjNKaGJuUXJhbmQwSW4wLmV5SmxlSEFpT2pFM09UQXlNRE0yTVRBc0ltZHlZVzUwY3lJNld5SmtaVzF2TG5keWFYUmxJbDBzSW1saGRDSTZNVGM1TURJd01EQXhNQ3dpYVhOeklqb2lZV2xrT25CMVltdGxlVHBGY0hoWE9VSTFPVXQyTkZoelptRXRPSFIyYmxjd04yRjJkM2RMUkcxMmIyaFRMV0ptTW0wMVpETkZJaXdpYzNKalgycDBhU0k2SWpCa1pHTXpZakJtTFRJeE9UWXRORFU1TmkwNVpHVmpMV1EzWlRJek5HVmpNakppTWlJc0luTjFZaUk2SW1GcFpEcHdkV0pyWlhrNmMyNVNjRkZyZUhOS05IbHNhRGhwVTFaaFdIRTJjV1pGY0hoMk5rNUlSbUZGTVRrMFNrTllXRmcxUVNJc0luWmxjaUk2SW1GcGRIQXZNQzR5SW4wLmNaQ0NpQnZFY1dlajd3aDBlajl6UkZuTEhZTDJuTzB4X1I2TEc2d2NKSmZkZDV1UlF6UWU1QzNUcmw0eERrTDc3MWJjYTdKa3NOTmVOZHdlLTNHZ0FRIn0.0gtNeSPirCLtz6KNSX-Xr6LJGKClS_ujRShWSjhIRtO55JPRkmfl31pObsczO06yTwZhMmfHFRHN1PXEVkWkBw"}, "ts": 1790200010.383384, "type": "delegation.issued"},
+  manifest_verify_failed_agent: {"agent_id": "writer", "cause": "malformed", "run_id": "run-7f3c", "source_url": "http://localhost:11/.well-known/aitp-manifest", "ts": 1790200028.6396348, "type": "manifest.verify_failed"},
+};
+
+/** A compile-time-exhaustive mirror of `RunEvent`'s keys: TypeScript rejects
+ *  this object if a key is missing *or* unknown, so it cannot drift from the
+ *  interface, and it gives the wire-shape test a runtime key list an interface
+ *  cannot provide on its own. */
+const RUN_EVENT_KEYS: Record<keyof RunEvent, true> = {
+  type: true, ts: true, run_id: true, agent_id: true, agent: true, aid: true,
+  port: true, step_id: true, capability: true, initiator: true, target: true,
+  grants: true, peers: true, result: true, error: true, jti: true,
+  scenario_ref: true, notes: true, payload: true, cause: true,
+  source_url: true, detail: true, reason: true, serves: true, fail_mode: true,
+  delegatee_aid: true, role: true, peer_aid: true, peer_port: true, tct: true,
+  scope: true,
+};
+
+describe('captured wire shapes', () => {
+  it.each(Object.keys(CAPTURED_FRAMES))('%s: every key is modelled on RunEvent', (name) => {
+    const unmodelled = Object.keys(CAPTURED_FRAMES[name]).filter(
+      (k) => !Object.hasOwn(RUN_EVENT_KEYS, k),
+    );
+    expect(unmodelled).toEqual([]);
+  });
+
+  it.each(Object.keys(CAPTURED_FRAMES))('%s: renders a typed card, not the grey default', (name) => {
+    const frame = CAPTURED_FRAMES[name] as unknown as RunEvent;
+    const { container } = render(<EventCard evt={frame} />);
+    // The grey default is the ONLY place the raw type string is rendered.
+    expect(container).not.toHaveTextContent(frame.type);
+    expect(container.textContent).not.toBe('');
+  });
+});
+
+describe('manifestVerifyFailedVerdict', () => {
+  it.each([
+    // `unknown` is the classifier's own "I could not classify this" — amber by
+    // an explicit named branch, never by the predicate returning false.
+    ['unknown', C.amber, 'the SDK raised an error carrying no code — signature not assessed (unknown)'],
+    // SDK codes that never reach the signature check, via Phase 2's predicate.
+    ['malformed', C.amber, 'signature not assessed (malformed)'],
+    ['version_unknown', C.amber, 'signature not assessed (version_unknown)'],
+    // Everything else: honest red that names the cause and claims no verdict.
+    ['expired', C.red, 'verification failed (expired)'],
+    ['signature_invalid', C.red, 'verification failed (signature_invalid)'],
+    ['pop_failed', C.red, 'verification failed (pop_failed)'],
+    ['a_future_sdk_code', C.red, 'verification failed (a_future_sdk_code)'],
+  ])('cause %s -> %s / %s', (cause, color, text) => {
+    expect(manifestVerifyFailedVerdict(cause)).toMatchObject({ color, text });
+  });
+
+  it.each([[undefined], [null]])('treats a %s cause identically', (cause) => {
+    expect(manifestVerifyFailedVerdict(cause)).toEqual({
+      color: C.red,
+      headline: 'MANIFEST REJECTED',
+      text: 'verification failed · this event reported no cause',
+    });
+  });
+});
+
+describe('revocationVerifyFailedVerdict', () => {
+  it.each([
+    // The three playground-authored literals, each an explicit named branch.
+    ['no_expected_issuer', C.amber, 'no CP AID pinned — nothing was checked (no_expected_issuer)'],
+    [
+      'sdk_cannot_verify',
+      C.amber,
+      'the installed SDK cannot verify revocation lists — nothing was checked (sdk_cannot_verify)',
+    ],
+    ['malformed_body', C.red, 'signature verified · snapshot body is malformed (malformed_body)'],
+    // SDK codes, via Phase 2's predicate.
+    ['malformed', C.amber, 'signature not assessed (malformed)'],
+    ['version_unknown', C.amber, 'signature not assessed (version_unknown)'],
+    ['signature_invalid', C.red, 'verification failed (signature_invalid)'],
+    ['issuer_mismatch', C.red, 'verification failed (issuer_mismatch)'],
+    // The set is OPEN: any future code flows through revocation_refresh.py:130
+    // untouched, so an unrecognised cause must be named and nothing claimed.
+    ['kid_unknown', C.red, 'verification failed (kid_unknown)'],
+  ])('cause %s -> %s / %s', (cause, color, text) => {
+    expect(revocationVerifyFailedVerdict(cause)).toMatchObject({ color, text });
+  });
+
+  it.each([[undefined], [null]])('treats a %s cause identically', (cause) => {
+    expect(revocationVerifyFailedVerdict(cause)).toEqual({
+      color: C.red,
+      headline: 'SNAPSHOT DISCARDED',
+      text: 'verification failed · this event reported no cause',
+    });
+  });
+
+  it('never routes no_expected_issuer or sdk_cannot_verify through the predicate', () => {
+    // Regression pin: both are red-by-fallthrough if their branches are deleted,
+    // because the predicate only knows SDK codes. Amber here proves the branches.
+    expect(revocationVerifyFailedVerdict('no_expected_issuer').color).toBe(C.amber);
+    expect(revocationVerifyFailedVerdict('sdk_cannot_verify').color).toBe(C.amber);
+  });
+});
+
+describe('manifest.verify_failed card', () => {
+  it('renders the cause, the source url and the engine-side step/agent', () => {
+    const { container } = render(
+      <EventCard
+        evt={evt({
+          type: 'manifest.verify_failed',
+          cause: 'signature_invalid',
+          source_url: 'http://localhost:8102/.well-known/aitp-manifest',
+          step_id: 'draft',
+          agent_id: 'writer',
+        })}
+      />,
+    );
+    expect(screen.getByText('MANIFEST REJECTED')).toHaveStyle({ color: C.red });
+    expect(container).toHaveTextContent('verification failed (signature_invalid)');
+    expect(screen.getByText('http://localhost:8102/.well-known/aitp-manifest')).toBeInTheDocument();
+    expect(screen.getByText('step draft')).toBeInTheDocument();
+    expect(container.querySelector('svg[data-icon="ShieldX"]')).not.toBeNull();
+  });
+
+  it('renders the agent-channel frame that carries no step or agent', () => {
+    const { container } = render(
+      <EventCard
+        evt={evt({ type: 'manifest.verify_failed', cause: 'malformed', source_url: 'http://p/m' })}
+      />,
+    );
+    expect(screen.getByText('MANIFEST NOT VERIFIED')).toHaveStyle({ color: C.amber });
+    expect(container).not.toHaveTextContent('WHERE');
+    expect(container.querySelector('svg[data-icon="ShieldAlert"]')).not.toBeNull();
+  });
+
+  it.each([[undefined], [null]])(
+    'still renders the card when cause is %s, omitting the cause rather than falling through',
+    (cause) => {
+      const { container } = render(
+        <EventCard evt={evt({ type: 'manifest.verify_failed', cause })} />,
+      );
+      expect(screen.getByText('MANIFEST REJECTED')).toBeInTheDocument();
+      expect(container).toHaveTextContent('this event reported no cause');
+      expect(container).not.toHaveTextContent('manifest.verify_failed'); // not the grey default
+    },
+  );
+
+  it.each(['expired', 'version_unknown'])(
+    'a pre-signature cause (%s) never reads as a signature verdict',
+    (cause) => {
+      const { container } = render(
+        <EventCard evt={evt({ type: 'manifest.verify_failed', cause })} />,
+      );
+      expect(container).not.toHaveTextContent(/invalid signature/i);
+      expect(container).not.toHaveTextContent(/forged/i);
+    },
+  );
+
+  it('cause "unknown" is amber and asserts no verdict at all', () => {
+    const { container } = render(
+      <EventCard evt={evt({ type: 'manifest.verify_failed', cause: 'unknown' })} />,
+    );
+    expect(screen.getByText('MANIFEST NOT VERIFIED')).toHaveStyle({ color: C.amber });
+    expect(container).toHaveTextContent('signature not assessed (unknown)');
+    expect(container).not.toHaveTextContent(/failed to verify/i);
+    expect(container).not.toHaveTextContent(/invalid/i);
+  });
+});
+
+describe('revocation.verify_failed card', () => {
+  it('renders the cause prominently and the detail as secondary text', () => {
+    const { container } = render(
+      <EventCard
+        evt={evt({
+          type: 'revocation.verify_failed',
+          cause: 'no_expected_issuer',
+          detail: 'no CP AID pinned (set CP_AID) — refusing to apply an unverifiable snapshot',
+        })}
+      />,
+    );
+    expect(screen.getByText('SNAPSHOT NOT VERIFIED')).toHaveStyle({ color: C.amber });
+    expect(container).toHaveTextContent('nothing was checked (no_expected_issuer)');
+    expect(
+      screen.getByText('no CP AID pinned (set CP_AID) — refusing to apply an unverifiable snapshot'),
+    ).toBeInTheDocument();
+  });
+
+  it('malformed_body renders as post-signature, not as a signature failure', () => {
+    const { container } = render(
+      <EventCard
+        evt={evt({ type: 'revocation.verify_failed', cause: 'malformed_body', detail: "'published_at'" })}
+      />,
+    );
+    expect(screen.getByText('SNAPSHOT DISCARDED')).toHaveStyle({ color: C.red });
+    expect(container).toHaveTextContent('signature verified · snapshot body is malformed');
+    // The whole point: an authentically-signed snapshot must never read as a
+    // signature failure just because its body would not parse.
+    expect(container).not.toHaveTextContent(/signature invalid/i);
+    expect(container).not.toHaveTextContent(/not verified/i);
+    expect(container).not.toHaveTextContent(/forged/i);
+  });
+
+  it('sdk_cannot_verify is amber and says nothing was checked', () => {
+    const { container } = render(
+      <EventCard evt={evt({ type: 'revocation.verify_failed', cause: 'sdk_cannot_verify' })} />,
+    );
+    expect(screen.getByText('SNAPSHOT NOT VERIFIED')).toHaveStyle({ color: C.amber });
+    expect(container).toHaveTextContent('nothing was checked (sdk_cannot_verify)');
+  });
+
+  it('signature_invalid is red', () => {
+    render(<EventCard evt={evt({ type: 'revocation.verify_failed', cause: 'signature_invalid' })} />);
+    expect(screen.getByText('SNAPSHOT DISCARDED')).toHaveStyle({ color: C.red });
+  });
+
+  it('an unrecognised cause is named and nothing is claimed about it', () => {
+    const { container } = render(
+      <EventCard evt={evt({ type: 'revocation.verify_failed', cause: 'some_future_code' })} />,
+    );
+    expect(container).toHaveTextContent('verification failed (some_future_code)');
+    expect(container).not.toHaveTextContent(/signature invalid/i);
+  });
+
+  it.each([[undefined], [null]])('renders with cause %s and no detail', (cause) => {
+    const { container } = render(
+      <EventCard evt={evt({ type: 'revocation.verify_failed', cause, detail: cause })} />,
+    );
+    expect(screen.getByText('SNAPSHOT DISCARDED')).toBeInTheDocument();
+    expect(container).not.toHaveTextContent('DETAIL');
+    expect(container).not.toHaveTextContent('revocation.verify_failed');
+  });
+});
+
+describe('revocation.degraded_serve card', () => {
+  it('renders reason, fail_mode and serves without calling serves a total', () => {
+    const { container } = render(
+      <EventCard
+        evt={evt({
+          type: 'revocation.degraded_serve',
+          reason: 'snapshot_stale',
+          serves: 300,
+          fail_mode: 'soft_fail',
+        })}
+      />,
+    );
+    expect(screen.getByText('SERVED WITHOUT CURRENT REVOCATION DATA')).toHaveStyle({
+      color: C.amber,
+    });
+    expect(container).toHaveTextContent('a call was answered on the last verified deny-set');
+    expect(screen.getByText('snapshot_stale')).toBeInTheDocument();
+    expect(screen.getByText('soft_fail')).toBeInTheDocument();
+    expect(container).toHaveTextContent('occurrence #300');
+    expect(container).toHaveTextContent('not a count of how many there have been');
+    // `serves` is a sample (1st, then every 100th), never a total.
+    expect(container).not.toHaveTextContent(/total/i);
+    expect(container).not.toHaveTextContent(/300 degraded serves/);
+    // Neither a failure nor a success.
+    expect(container).not.toHaveTextContent(/failed/i);
+    expect(container).not.toHaveTextContent(/verified ·/);
+  });
+
+  it.each([[undefined], [null]])('still renders when reason is %s', (reason) => {
+    const { container } = render(
+      <EventCard evt={evt({ type: 'revocation.degraded_serve', reason, serves: reason })} />,
+    );
+    expect(screen.getByText('SERVED WITHOUT CURRENT REVOCATION DATA')).toBeInTheDocument();
+    expect(container).not.toHaveTextContent('REASON');
+    expect(container).not.toHaveTextContent('SAMPLED');
+    expect(container).not.toHaveTextContent('revocation.degraded_serve');
+  });
+
+  it('renders serves=0 rather than dropping it as falsy', () => {
+    const { container } = render(
+      <EventCard evt={evt({ type: 'revocation.degraded_serve', serves: 0 })} />,
+    );
+    expect(container).toHaveTextContent('occurrence #0');
+  });
+});
+
+describe('delegation.rejected card', () => {
+  it('renders the stringified exception as-is without parsing a code out of it', () => {
+    const error = 'delegation verification failed: source TCT has been revoked';
+    const { container } = render(<EventCard evt={evt({ type: 'delegation.rejected', error })} />);
+    expect(screen.getByText('DELEGATION REJECTED')).toHaveStyle({ color: C.red });
+    expect(screen.getByText(error)).toBeInTheDocument();
+    expect(container.querySelector('svg[data-icon="XCircle"]')).not.toBeNull();
+  });
+
+  it.each([[undefined], [null]])('still renders when error is %s', (error) => {
+    // `error` is declared on playground's own pydantic `RunEvent`
+    // (`runner/context.py:30`), so the orchestrator channel really does deliver
+    // `error: null`. This console types the field `string | undefined` — a
+    // pre-existing shape this change deliberately leaves alone — so the null
+    // case needs a cast to reach the card, which must treat it as absent.
+    const { container } = render(
+      <EventCard evt={evt({ type: 'delegation.rejected', error: error as string | undefined })} />,
+    );
+    expect(screen.getByText('DELEGATION REJECTED')).toBeInTheDocument();
+    expect(container).not.toHaveTextContent('ERROR');
+    expect(container).not.toHaveTextContent('delegation.rejected');
+  });
+});
+
+describe('delegation.redeemed card — one shape per emit site', () => {
+  it('site 1 (issuer) names the delegatee and the grants', () => {
+    const { container } = render(
+      <EventCard
+        evt={evt({
+          type: 'delegation.redeemed',
+          role: 'issuer',
+          delegatee_aid: aid,
+          grants: ['demo.write'],
+        })}
+      />,
+    );
+    expect(screen.getByText('DELEGATION REDEEMED')).toHaveStyle({ color: C.blue });
+    expect(container).toHaveTextContent('an agent issued a fresh TCT to a delegatee');
+    expect(screen.getByTitle(aid)).toBeInTheDocument();
+    expect(screen.getByText('demo.write')).toBeInTheDocument();
+    // Never the `verified` teal this repo reserves for checked facts: this
+    // console verified nothing, it is relaying a self-reported milestone.
+    expect(screen.getByText('DELEGATION REDEEMED')).not.toHaveStyle({ color: C.tealBright });
+    expect(container).not.toHaveTextContent(/verified/i);
+  });
+
+  it('site 2 (delegatee) names the peer, the jti and the claim names', () => {
+    const peer = 'aid:pubkey:sJnYjcKKOREshszqllQruT9uzMs7GGRtUcGNryVxtL8';
+    const { container } = render(
+      <EventCard
+        evt={evt({
+          type: 'delegation.redeemed',
+          peer_aid: peer,
+          jti: 'e60c9eb3-1376-4106-9f9e-175e9411a047',
+          grants: ['demo.write'],
+          tct: {
+            token: 'eyJhbGciOiJFZERTQSJ9.eyJqdGkiOiJ4In0.sig',
+            claims: { iss: peer, grants: ['demo.write'] },
+          },
+        })}
+      />,
+    );
+    expect(container).toHaveTextContent('a delegatee redeemed a delegation and holds a fresh TCT');
+    expect(screen.getByTitle(peer)).toBeInTheDocument();
+    expect(container).toHaveTextContent('e60c9eb3-1376-4106…');
+    expect(screen.getByText('iss')).toBeInTheDocument();
+    expect(screen.getByText('grants')).toBeInTheDocument();
+    expect(screen.getByText('eyJhbGciOiJFZERTQSJ9.eyJ…')).toBeInTheDocument();
+  });
+
+  it('site 3 (peer_port only) asserts nothing about a TCT it never saw', () => {
+    const { container } = render(
+      <EventCard evt={evt({ type: 'delegation.redeemed', peer_port: 8102 })} />,
+    );
+    expect(screen.getByText('DELEGATION REDEEMED')).toBeInTheDocument();
+    expect(container).toHaveTextContent('redemption completed against port 8102');
+    expect(container).toHaveTextContent(
+      'this event carried no claims and no peer identity — nothing further is asserted',
+    );
+    // The honesty core of this phase: no TCT, no claims, no verified
+    // delegation, and equally no claim that the peer returned a non-TCT —
+    // `agent_admin.py:629` also catches a decode failure on a token that WAS
+    // present.
+    expect(container).not.toHaveTextContent(/tct/i);
+    expect(container).not.toHaveTextContent(/fresh/i);
+    expect(container).not.toHaveTextContent(/verified/i);
+    expect(container).not.toHaveTextContent(/jti/i);
+    expect(container).not.toHaveTextContent(/grants/i);
+    expect(container).not.toHaveTextContent(/not a tct/i);
+    expect(container).not.toHaveTextContent(/delegation.redeemed/);
+  });
+
+  it('renders the card even when every optional field is absent', () => {
+    const { container } = render(<EventCard evt={evt({ type: 'delegation.redeemed' })} />);
+    expect(screen.getByText('DELEGATION REDEEMED')).toBeInTheDocument();
+    expect(container).toHaveTextContent('a redemption completed');
+    expect(container).not.toHaveTextContent('delegation.redeemed');
+  });
+
+  it('survives a grants value that is not an array', () => {
+    // site 2's `grants` is `claims.get("grants")` on a decoded peer JWS — no
+    // validation upstream, so a malformed peer token reaches this card.
+    render(
+      <EventCard
+        evt={evt({
+          type: 'delegation.redeemed',
+          peer_aid: aid,
+          grants: 'demo.write' as unknown as string[],
+        })}
+      />,
+    );
+    expect(screen.getByText('DELEGATION REDEEMED')).toBeInTheDocument();
+    expect(screen.getByText('"demo.write"')).toBeInTheDocument();
+  });
+
+  it('survives a grants value that is an object', () => {
+    const { container } = render(
+      <EventCard
+        evt={evt({
+          type: 'delegation.redeemed',
+          peer_aid: aid,
+          grants: { write: true } as unknown as string[],
+        })}
+      />,
+    );
+    expect(container).toHaveTextContent('DELEGATION REDEEMED');
+    expect(screen.getByText('{"write":true}')).toBeInTheDocument();
+  });
+
+  it('renders an empty grants array as "none" rather than omitting the row', () => {
+    render(
+      <EventCard evt={evt({ type: 'delegation.redeemed', role: 'issuer', grants: [] })} />,
+    );
+    expect(screen.getByText('GRANTS')).toBeInTheDocument();
+    expect(screen.getByText('none')).toBeInTheDocument();
+  });
+
+  it('renders empty tct.claims honestly, not as an absence to be suspicious of', () => {
+    // `tct_event()` deliberately emits `claims: {}` on a decode failure "so the
+    // event is never dropped" — a legitimate state, so it gets neutral muted
+    // text and no severity colour.
+    const { container } = render(
+      <EventCard
+        evt={evt({ type: 'delegation.redeemed', tct: { token: 'a.b.c', claims: {} } })}
+      />,
+    );
+    const note = screen.getByText('no claims decoded from the token');
+    expect(note).toBeInTheDocument();
+    expect(note).toHaveStyle({ color: C.textDim });
+    expect(note).not.toHaveStyle({ color: C.red });
+    expect(note).not.toHaveStyle({ color: C.amber });
+    expect(container).not.toHaveTextContent(/missing/i);
+  });
+
+  it('survives a tct whose claims is not an object', () => {
+    render(
+      <EventCard
+        evt={evt({
+          type: 'delegation.redeemed',
+          peer_aid: aid,
+          tct: { token: 'a.b.c', claims: 'nope' as unknown as Record<string, unknown> },
+        })}
+      />,
+    );
+    expect(screen.getByText('no claims decoded from the token')).toBeInTheDocument();
+  });
+
+  it('survives a tct that is a bare string rather than the {token, claims} object', () => {
+    // `tct` is an object at every emit site (`tct_event()` builds it), but the
+    // agent channel is unvalidated, so the card must not assume the shape.
+    const { container } = render(
+      <EventCard
+        evt={evt({
+          type: 'delegation.redeemed',
+          peer_aid: aid,
+          tct: 'a.b.c' as unknown as RunEvent['tct'],
+        })}
+      />,
+    );
+    expect(screen.getByText('DELEGATION REDEEMED')).toBeInTheDocument();
+    expect(container).not.toHaveTextContent('CLAIMS');
+  });
+
+  it('treats a delegatee_aid without role as the issuer shape', () => {
+    // `role` is the site-1 marker, but nothing upstream guarantees it: a
+    // `delegatee_aid` with no token is still unambiguously the issuer side.
+    const { container } = render(
+      <EventCard evt={evt({ type: 'delegation.redeemed', delegatee_aid: aid })} />,
+    );
+    expect(container).toHaveTextContent('an agent issued a fresh TCT to a delegatee');
+    expect(screen.getByText('DELEGATEE')).toBeInTheDocument();
+  });
+});
+
+describe('the discretionary delegation.issued / delegation.redeeming pair', () => {
+  it('delegation.issued names the delegatee, the scope and the token claims', () => {
+    const { container } = render(
+      <EventCard
+        evt={evt({
+          type: 'delegation.issued',
+          delegatee_aid: aid,
+          scope: ['demo.write'],
+          tct: { token: 'header.payload.signature', claims: { scope: ['demo.write'], sub: aid } },
+        })}
+      />,
+    );
+    expect(screen.getByText('DELEGATION ISSUED')).toHaveStyle({ color: C.blue });
+    expect(container).toHaveTextContent('an agent signed a delegation for a delegatee');
+    expect(screen.getByText('SCOPE')).toBeInTheDocument();
+    expect(screen.getByText('demo.write')).toBeInTheDocument();
+    expect(screen.getByText('sub')).toBeInTheDocument();
+    // `delegation.issued`'s token is a DELEGATION envelope, not a TCT, even
+    // though playground puts it through the same `tct_event()` helper.
+    expect(container).not.toHaveTextContent(/tct/i);
+    expect(container).not.toHaveTextContent(/verified/i);
+  });
+
+  it('delegation.issued still renders with neither scope nor token', () => {
+    const { container } = render(<EventCard evt={evt({ type: 'delegation.issued' })} />);
+    expect(screen.getByText('DELEGATION ISSUED')).toBeInTheDocument();
+    expect(container).not.toHaveTextContent('SCOPE');
+    expect(container).not.toHaveTextContent('CLAIMS');
+    expect(container).not.toHaveTextContent('delegation.issued');
+  });
+
+  it('delegation.redeeming names both parties with a pulsing dot', () => {
+    const { container } = render(
+      <EventCard evt={evt({ type: 'delegation.redeeming', initiator: 'writer', target: 'editor' })} />,
+    );
+    expect(container).toHaveTextContent('writer ⇒ editor: redeeming delegation…');
+    expect(container.querySelector('.pulse')).not.toBeNull();
+  });
+});
+
+describe('unmodelled trust event types', () => {
+  it.each([
+    'trust.something_new',
+    'delegation.something_new',
+    'revocation.list_fetched',
+    'revocation.refresh_failed',
+  ])('%s still falls through to the grey default', (type) => {
+    render(<EventCard evt={evt({ type })} />);
+    const row = screen.getByText(type);
+    expect(row).toBeInTheDocument();
+    expect(row).toHaveClass('mono');
   });
 });

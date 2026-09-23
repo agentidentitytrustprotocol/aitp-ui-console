@@ -164,3 +164,93 @@ describe('revocationVerdictBadge', () => {
     expect(badge.text).toContain('native addon failed to load');
   });
 });
+
+/**
+ * The unmodelled-code seam.
+ *
+ * `Verdict.code` is typed `string`, not a union (`types/cp.ts:137`) — the SDK's
+ * codes are deliberately opaque here, per the forward-compat discipline
+ * `verify-manifest.ts:12-15` states and `aitp-control-plane/src/lib/registry/
+ * enrollment.test.ts:26-43` documents. So every Rust error this console has
+ * never heard of — a code added in a future SDK minor, or one of the
+ * binding's documented-but-currently-unreachable causes — arrives at exactly
+ * one place: each badge function's final `checked` catch-all.
+ *
+ * Added with the `0.10.0 -> ^0.12.0` floor bump, whose whole risk profile is
+ * "the SDK's error vocabulary may move underneath us". Pinning the default
+ * is what makes that movement visible instead of silent. The cases below
+ * deliberately use codes NO phase of this plan models, so they pin the
+ * default rather than any particular classification: adding a named branch
+ * for a specific code (which Phase 2 does) must not change what happens to
+ * codes that still have none.
+ */
+describe('unmodelled SDK codes — the default seam', () => {
+  const unmodelled = [
+    // A code from a hypothetical future SDK minor.
+    'a_code_this_console_has_never_seen',
+    // Real, in the Node binding's documented 8-code taxonomy
+    // (`bindings/aitp-node/src/lib.rs:62-66`), but not constructible through
+    // `verify_manifest_json` today — `check_identity_type_compatibility`
+    // (`crates/aitp-manifest/src/verifier.rs:213`) has no `#[napi]`-exported
+    // caller. Exactly the shape of thing a future release could start
+    // emitting without any `.d.ts` change to warn us.
+    'incompatible_identity_type',
+  ];
+
+  it.each(unmodelled)(
+    'manifest, checked:true, ok:false, unmodelled code %s → red VERIFICATION FAILED carrying the raw code',
+    (code) => {
+      const badge = manifestVerdictBadge({ checked: true, ok: false, code });
+      expect(badge.color).toBe(C.red);
+      expect(badge.aidColor).toBe(C.textMuted);
+      expect(badge.text).toContain('VERIFICATION FAILED');
+      // The raw code must survive into the badge: an unmodelled failure the
+      // operator cannot name is an unmodelled failure they cannot report.
+      expect(badge.text).toContain(code);
+      expect(badge.text).not.toContain('verified');
+    },
+  );
+
+  it.each(unmodelled)(
+    'revocation, checked:true, ok:false, unmodelled code %s → red SIGNATURE INVALID carrying the raw code',
+    (code) => {
+      const badge = revocationVerdictBadge({ checked: true, ok: false, code, tier: 'pinned' });
+      expect(badge.color).toBe(C.red);
+      expect(badge.entriesGreyed).toBe(true);
+      expect(badge.text).toContain('SIGNATURE INVALID');
+      expect(badge.text).toContain(code);
+      expect(badge.text).not.toContain('verified');
+    },
+  );
+
+  // `malformed` is the code an unknown top-level member produces, on 0.10.0
+  // and on 0.12.0 alike — measured on both while raising the floor, and
+  // pinned end-to-end through the real addon in
+  // `src/test/sdk-verification.integration.test.ts`. It must stay on the
+  // amber side of this seam: a parse failure establishes nothing about
+  // authenticity in either direction.
+  it("manifest, code:'malformed' → amber and never claims 'verified'", () => {
+    const badge = manifestVerdictBadge({ checked: true, ok: false, code: 'malformed' });
+    expect(badge.color).toBe(C.amber);
+    expect(badge.aidColor).toBe(C.textMuted);
+    expect(badge.text).toContain('signature not assessed');
+    // Case-sensitive: lowercase "verified" is the claim, "NOT VERIFIED" is
+    // the honest negative. Same invariant as line 72 above.
+    expect(badge.text).not.toContain('verified');
+    expect(badge.text).not.toContain('VERIFICATION FAILED');
+  });
+
+  it("revocation, code:'malformed' → amber and never claims 'verified'", () => {
+    const badge = revocationVerdictBadge({
+      checked: true,
+      ok: false,
+      code: 'malformed',
+      tier: 'pinned',
+    });
+    expect(badge.color).toBe(C.amber);
+    expect(badge.entriesGreyed).toBe(true);
+    expect(badge.text).toContain('signature not assessed');
+    expect(badge.text).not.toContain('verified');
+    expect(badge.text).not.toContain('SIGNATURE INVALID');
+  });
+});

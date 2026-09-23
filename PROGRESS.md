@@ -597,7 +597,7 @@ _(appended by `/implement` as phases land)_
 | 1 — Dependency refresh and a documented SDK floor at `^0.12.0` | DONE |
 | 2 — `verification-display.ts`: post-signature gap, stale CP attribution, shared export | DONE |
 | 3 — Absorb playground's trust-event vocabulary (5 typed cards) | DONE |
-| 4 — Settle the run-event timestamp unit mismatch | NOT STARTED |
+| 4 — Settle the run-event timestamp unit mismatch | DONE |
 | 5 — Federation handshake error fidelity | NOT STARTED |
 | 6 — Declarative accuracy: Draft-spec copy and the `CpEventType` catalogue | NOT STARTED |
 | 7 — Documentation sweep, `PROGRESS.md` refresh, full regression | NOT STARTED |
@@ -673,3 +673,25 @@ _(appended by `/implement` as phases land)_
   (`trust.failed`, `tct.revoked`, etc.) still hit the grey default, correctly per this
   phase's explicit scope boundary.
 - **What's next:** Phase 4 (run-event timestamp unit mismatch). No blockers.
+
+### Phase 4 — 2026-09-23 — DONE
+
+- **Verdict:** PASS on round 2 (round 1: GAPS, 6 non-blocking items — 4 closed by a
+  targeted fixer pass, 2 resolved naturally at commit/tracking time). Verifier tier: Opus,
+  both rounds. Round 2 mutation-tested the run-identity-keying fix directly (removed
+  `key={runId}`, confirmed the test catches it; restored, confirmed green).
+- **Rounds:** 2.
+- **Files touched:** `src/lib/utils.ts` (new `runOffsetMs`), `src/hooks/use-run-time-base.ts`
+  (new), `src/components/runs/event-cards.tsx`, `run-timeline.tsx`, `run-summary.tsx`,
+  `run-detail.tsx`, `src/app/runs/[id]/page.tsx` (the `key={runId}` fix, outside the
+  plan's original Files list — logged), plus new/updated tests in all of the above.
+- **What was independently verified, not just argued:** the bug was reproduced against a
+  real in-process playground service (actual SSE stream, actual `ts` ≈ 1.79e9); the
+  regression tests were confirmed to actually fail against the old broken code (reverted
+  and re-run); the ref→state pivot was confirmed forced by direct lint testing, not
+  preference.
+- **Deferred, tracked in `ASSUMPTIONS.md`, not fixed here:** `run-deliveries.tsx:119`
+  (third instance of the same unit bug, different tab); 7 event types that render no
+  timestamp at all (unaffected by this phase either way). Both flagged as Phase 7 or
+  follow-up candidates.
+- **What's next:** Phase 5 (federation handshake error fidelity). No blockers.

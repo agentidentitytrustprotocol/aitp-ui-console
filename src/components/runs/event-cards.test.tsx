@@ -12,29 +12,137 @@ import type { RunEvent } from '@/lib/types/playground';
 
 const aid = 'aid:pubkey:A7mK9xP2nR4vQ8sL3tW6uY1jC5bE0fH';
 
+/** A run's time base, in the shape the wire actually uses: playground stamps
+ *  every `ts` as **epoch seconds** (a `time.time()` float), so every fixture
+ *  in this file is an absolute second-scale value and every offset is a delta
+ *  against a base. `1_774_000_000` is 2026-03-20T09:46:40Z — the same order of
+ *  magnitude as the values `CAPTURED_FRAMES` below carries off a live run.
+ *  Millisecond-shaped fixtures (`ts: 1_500`) are what hid the unit bug: they
+ *  render plausibly under *either* reading. */
+const BASE_TS = 1_774_000_000;
+
 function evt(overrides: Partial<RunEvent> & { type: string }): RunEvent {
-  return { ts: 1_500, ...overrides };
+  return { ts: BASE_TS + 1.5, ...overrides };
 }
 
 describe('formatOffset (via the rendered timestamp)', () => {
   // agent.ready is the simplest card that shows the offset in the line.
   it.each([
     [0, '+0ms'],
-    [999, '+999ms'],
-    [1_000, '+1.0s'],
-    [59_999, '+60.0s'],
-    [60_000, '+1.0m'],
-    [90_000, '+1.5m'],
-  ])('renders ts=%i as %s', (ts, expected) => {
-    render(<EventCard evt={evt({ type: 'agent.ready', ts, agent_id: 'a' })} />);
+    [0.999, '+999ms'],
+    [1, '+1.0s'],
+    [59.999, '+60.0s'],
+    [60, '+1.0m'],
+    [90, '+1.5m'],
+    // Negative deltas are real, not defensive padding: the orchestrator and
+    // the agent subprocesses each stamp `time.time()` in their own process,
+    // so skew can place an agent event just before the run's first event.
+    // Rendered with a sign rather than flipped or clamped.
+    [-0.012, '-12ms'],
+    [-1.5, '-1.5s'],
+    [-90, '-1.5m'],
+  ])('renders an event %f seconds from the base as %s', (delta, expected) => {
+    render(
+      <EventCard
+        evt={evt({ type: 'agent.ready', ts: BASE_TS + delta, agent_id: 'a' })}
+        baseTs={BASE_TS}
+      />,
+    );
     expect(screen.getByText(expected)).toBeInTheDocument();
+  });
+
+  it('renders no offset at all when the base is not known yet', () => {
+    const { container } = render(
+      <EventCard evt={evt({ type: 'agent.ready', agent_id: 'a' })} />,
+    );
+    expect(screen.getByText('a')).toBeInTheDocument();
+    expect(container).not.toHaveTextContent(/[+-]\d/);
+    expect(container).not.toHaveTextContent('NaN');
+  });
+
+  it('rounds a hair-under-a-second delta to a four-digit `+1000ms`, not `+1.0s`', () => {
+    // The sub-second branch is chosen on the *unrounded* delta and only then
+    // rounded, so the 0.5ms-wide window [999.5ms, 1000ms) prints `+1000ms`.
+    // Pinned deliberately rather than "fixed": the string is truthful (the
+    // event really is 1000ms from the base, to the precision shown), and the
+    // two ways to make it roll over both cost more than the tidiness is worth
+    // — rounding before the comparison would make `+1.0s` claim a precision
+    // the branch thresholds no longer match, and a special case for one
+    // half-millisecond window is code nobody can maintain a reason for. If a
+    // reviewer prefers the rollover, this test is the one line to change.
+    render(
+      <EventCard
+        evt={evt({ type: 'agent.ready', ts: BASE_TS + 0.9996, agent_id: 'a' })}
+        baseTs={BASE_TS}
+      />,
+    );
+    expect(screen.getByText('+1000ms')).toBeInTheDocument();
+  });
+
+  it('renders a sub-millisecond negative delta as `-0ms`, keeping the sign', () => {
+    // 120µs of skew — under half a millisecond, so the magnitude rounds to 0,
+    // but `sign` is taken from the raw delta and survives. Any negative delta
+    // in (-0.5ms, 0) prints this.
+    //
+    // Pinned as correct, not tolerated: the ordering *was* inverted, by less
+    // than the display can resolve, and deriving the sign from the rounded
+    // magnitude instead (which would print `+0ms`) would quietly assert an
+    // ordering the wire did not report. `-0ms` is also how a reader tells
+    // "skew too small to show" from "exactly simultaneous".
+    render(
+      <EventCard
+        evt={evt({ type: 'agent.ready', ts: BASE_TS - 0.00012, agent_id: 'a' })}
+        baseTs={BASE_TS}
+      />,
+    );
+    expect(screen.getByText('-0ms')).toBeInTheDocument();
+  });
+});
+
+describe('run-relative offsets (regression: `ts` is epoch seconds, not ms-since-start)', () => {
+  // This is the test that would have caught the original bug. `formatOffset`
+  // used to be called with the raw `evt.ts`, i.e. it read playground's
+  // absolute epoch stamp as "milliseconds since the run started".
+  it('derives the offset from a realistic epoch-second pair', () => {
+    const { container } = render(
+      <EventCard
+        evt={evt({ type: 'agent.ready', ts: BASE_TS + 1.5, agent_id: 'researcher' })}
+        baseTs={BASE_TS}
+      />,
+    );
+    expect(screen.getByText('+1.5s')).toBeInTheDocument();
+    // What the pre-fix code rendered for exactly this frame.
+    expect(container).not.toHaveTextContent('+29566.7m');
+  });
+
+  it('gives two real captured frames from one run two different, run-scale offsets', () => {
+    // Real values, same run (`run-7f3c`), from CAPTURED_FRAMES below.
+    const base = 1790199933.127181; // revocation.verify_failed, the earliest
+    for (const [ts, expected] of [
+      [1790199933.21171, '+85ms'], // delegation.redeemed (site 3)
+      [1790200010.383384, '+1.3m'], // delegation.issued
+      [1790200028.6396348, '+1.6m'], // manifest.verify_failed
+    ] as const) {
+      const { unmount } = render(
+        <EventCard evt={evt({ type: 'agent.ready', ts, agent_id: 'a' })} baseTs={base} />,
+      );
+      expect(screen.getByText(expected)).toBeInTheDocument();
+      // The pre-fix reading collapsed all three of these — and every other
+      // event in that run — onto the same string, because an epoch stamp read
+      // as milliseconds is ~20.7 days no matter when in the run it was taken.
+      expect(screen.queryByText('+29836.7m')).not.toBeInTheDocument();
+      unmount();
+    }
   });
 });
 
 describe('EventCard type switch', () => {
   it('run.started shows the scenario ref badge', () => {
     const { container } = render(
-      <EventCard evt={evt({ type: 'run.started', scenario_ref: 'demo/hello@1' })} />,
+      // A base IS supplied here, so the "no offset on this card" assertion
+      // below stays a real one rather than passing because nothing could
+      // render an offset.
+      <EventCard evt={evt({ type: 'run.started', scenario_ref: 'demo/hello@1' })} baseTs={BASE_TS} />,
     );
     expect(screen.getByText('Scenario run started')).toBeInTheDocument();
     expect(screen.getByText('demo/hello@1')).toBeInTheDocument();
@@ -182,10 +290,20 @@ describe('EventCard type switch', () => {
     expect(screen.getByText(/STEP COMPLETE ·/)).toBeInTheDocument();
   });
 
-  it('run.complete shows total elapsed seconds', () => {
-    const { container } = render(<EventCard evt={evt({ type: 'run.complete', ts: 5_000 })} />);
+  it('run.complete shows total elapsed seconds, measured from the run base', () => {
+    const { container } = render(
+      <EventCard evt={evt({ type: 'run.complete', ts: BASE_TS + 5 })} baseTs={BASE_TS} />,
+    );
     expect(screen.getByText('Run complete')).toBeInTheDocument();
     expect(container).toHaveTextContent('Total elapsed: 5.0s');
+    // Pre-fix this was `evt.ts / 1000` — 1774000.0s for this frame.
+    expect(container).not.toHaveTextContent('1774000.0s');
+  });
+
+  it('run.complete says the elapsed time is unknown rather than inventing one', () => {
+    const { container } = render(<EventCard evt={evt({ type: 'run.complete' })} />);
+    expect(container).toHaveTextContent('Total elapsed: —');
+    expect(container).not.toHaveTextContent('NaN');
   });
 
   it('run.failed shows the error text', () => {
@@ -195,7 +313,7 @@ describe('EventCard type switch', () => {
   });
 
   it('unknown event types fall back to the generic mono row instead of being dropped', () => {
-    render(<EventCard evt={evt({ type: 'cp.webhook.delivered' })} />);
+    render(<EventCard evt={evt({ type: 'cp.webhook.delivered' })} baseTs={BASE_TS} />);
     const row = screen.getByText('cp.webhook.delivered');
     expect(row).toBeInTheDocument();
     expect(row).toHaveClass('mono');
@@ -204,7 +322,7 @@ describe('EventCard type switch', () => {
 });
 
 describe('StepOutputCard', () => {
-  const base = { type: 'step.complete', ts: 2_000, step_id: 'draft', agent: 'writer' };
+  const base = { type: 'step.complete', ts: BASE_TS + 2, step_id: 'draft', agent: 'writer' };
 
   it('renders nothing when there is no result', () => {
     const { container } = render(<StepOutputCard evt={{ ...base, result: undefined }} />);
@@ -241,7 +359,9 @@ describe('StepOutputCard', () => {
 describe('TrustFlowCard', () => {
   it('falls back to "none" when the event carries no grants', () => {
     render(
-      <TrustFlowCard evt={{ type: 'trust.established', ts: 100, initiator: 'a', target: 'b' }} />,
+      <TrustFlowCard
+        evt={{ type: 'trust.established', ts: BASE_TS + 0.1, initiator: 'a', target: 'b' }}
+      />,
     );
     expect(screen.getByText('none')).toBeInTheDocument();
     expect(screen.queryByText('JTI')).not.toBeInTheDocument();
@@ -295,8 +415,10 @@ describe('TrustFlowCard', () => {
  *
  * Site 1 was captured twice, in two independent runs with different keys, with
  * identical key sets both times. `ts` is `time.time()` — float epoch SECONDS on
- * this channel, which is a separate (out-of-scope here) concern from this
- * console's `formatOffset`.
+ * this channel (and on the orchestrator channel, whose `RunEvent.ts` defaults
+ * to the same call). That observation is what settled the offset question:
+ * these frames are now also the fixtures for the run-relative-offset
+ * regression test above, and `formatOffset` is never handed a raw `ts`.
  */
 const CAPTURED_FRAMES: Record<string, Record<string, unknown>> = {
   revocation_verify_failed_no_expected_issuer: {"agent_id": "writer", "cause": "no_expected_issuer", "detail": "no CP AID pinned (set CP_AID) — refusing to apply an unverifiable revocation snapshot", "run_id": "run-7f3c", "ts": 1790199933.127181, "type": "revocation.verify_failed"},

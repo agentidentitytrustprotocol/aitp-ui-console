@@ -17,21 +17,36 @@ import { Card } from '@/components/shared/card';
 import { AidCell } from '@/components/shared/aid-cell';
 import { CapabilityBadge, Tag } from '@/components/shared/capability-badge';
 import { C } from '@/lib/colors';
-import { shortId } from '@/lib/utils';
+import { runOffsetMs, shortId } from '@/lib/utils';
 import {
   isUnassessedManifestCode,
   isUnassessedRevocationCode,
 } from '@/lib/verification-display';
 import type { RunEvent } from '@/lib/types/playground';
 
+/** Render a run-relative offset in milliseconds.
+ *
+ *  `ms` is always a **delta** (`runOffsetMs(evt.ts, baseTs)`), never a raw
+ *  `evt.ts` — playground stamps `ts` as epoch seconds, so a raw `ts` here
+ *  renders as tens of millions of minutes. The sign is explicit because the
+ *  delta can genuinely be negative: the orchestrator and the agent
+ *  subprocesses stamp `time.time()` in different processes, so clock skew
+ *  can place an agent event just before the run's first orchestrator event.
+ *  Showing `-12ms` is honest; unsigned formatting would show `+12ms` and
+ *  quietly invent an ordering. */
 function formatOffset(ms: number): string {
-  if (ms < 1_000) return `+${ms}ms`;
-  if (ms < 60_000) return `+${(ms / 1_000).toFixed(1)}s`;
-  return `+${(ms / 60_000).toFixed(1)}m`;
+  const sign = ms < 0 ? '-' : '+';
+  const abs = Math.abs(ms);
+  if (abs < 1_000) return `${sign}${Math.round(abs)}ms`;
+  if (abs < 60_000) return `${sign}${(abs / 1_000).toFixed(1)}s`;
+  return `${sign}${(abs / 60_000).toFixed(1)}m`;
 }
 
-export function EventCard({ evt }: { evt: RunEvent }) {
-  const offset = formatOffset(evt.ts);
+/** `baseTs` is the run's time base (the earliest `ts` seen — see
+ *  `useRunTimeBase`). It is optional and `undefined` until the first event
+ *  arrives, in which case the card renders no offset rather than `NaN`. */
+export function EventCard({ evt, baseTs }: { evt: RunEvent; baseTs?: number }) {
+  const offset = baseTs === undefined ? undefined : formatOffset(runOffsetMs(evt.ts, baseTs));
 
   switch (evt.type) {
     case 'run.started':
@@ -179,7 +194,10 @@ export function EventCard({ evt }: { evt: RunEvent }) {
             </span>
           </div>
           <div style={{ fontSize: 12, color: C.textDim }}>
-            Total elapsed: {(evt.ts / 1000).toFixed(1)}s
+            Total elapsed:{' '}
+            {baseTs === undefined
+              ? '—'
+              : `${(runOffsetMs(evt.ts, baseTs) / 1_000).toFixed(1)}s`}
           </div>
         </Card>
       );

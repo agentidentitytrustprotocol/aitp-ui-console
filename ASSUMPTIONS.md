@@ -325,3 +325,288 @@ predicate, the manifest card gains a fourth branch above the generic red one and
 no copy currently exists to delete.
 
 **Status:** UNCONFIRMED
+
+## Phase 4's run-relative base is a shared hook called once in `run-detail.tsx`
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** Phase 4's Approach names two homes for the base timestamp — "computed once in
+`run-timeline.tsx` (which already maps over the full `events` array at `:100`) and passed down,
+or derived in `use-run-events.ts` where the array is owned" — and separately requires (edge
+cases 2 and 3) that the base survive **both** the live buffer's front-drop **and**
+`mergeRunEvents`' live→persisted source swap, via a monotonically-lowering hold. It does not
+reconcile the two: neither named home can satisfy the requirement for both consumers.
+`use-run-events.ts` owns only the live buffer and never sees the persisted array, so it cannot
+see the swap at all; `run-timeline.tsx` does see the merged array but is a *sibling* of
+`run-summary.tsx` under `run-detail.tsx`, so a base held there is unreachable by the duration
+figure, which needs the same value and has the same eviction problem.
+
+**Chose:** A third home — a new `src/hooks/use-run-time-base.ts` (`useRunTimeBase`) called
+**once in `run-detail.tsx`**, immediately after the `mergeRunEvents` `useMemo`, and threaded
+into both surfaces as an optional `baseTs` prop (`RunTimeline` → `EventCard`, and `RunSummary`).
+`run-detail.tsx` is the only place that sees both event sources, which is exactly where a value
+that must be stable *across* the two belongs. Keeping it a prop rather than having each
+component call the hook means there is one base per run, not two independently-converging ones,
+and keeps the plan's own "prefer passing a `baseTs` prop over mutating events in the hook"
+intact — nothing translates the wire shape. The unit fact itself lives in exactly one place,
+`runOffsetMs` in `src/lib/utils.ts`, with the live-captured `ts` values in its doc comment.
+
+**Alternatives:** Hold it in `run-timeline.tsx` per the plan's first suggestion (rejected —
+`run-summary.tsx:12` is the plan's *own* second fix site and could not reach it; it would have
+had to re-derive a base from `events[0]`, reintroducing the eviction bug in the duration figure
+alone). Derive it in `use-run-events.ts` (rejected — it cannot observe the swap, which the plan
+itself establishes is the case where a too-late base turns every offset negative). Call
+`useRunTimeBase` separately in both components (rejected — two refs converge to the same value
+in practice, but "in practice" is doing load-bearing work there, and a reader has to prove it;
+one call site needs no proof).
+
+**Blast radius if wrong:** One new hook file, one `useMemo`-adjacent line in `run-detail.tsx`,
+and one optional prop on each of two components. The prop is optional and defaults to "render no
+offset", so moving the hold elsewhere is a matter of deleting the two prop threadings; no data
+shape, no wire type and no other component changes.
+
+**Status:** UNCONFIRMED
+
+## The monotone base is held in state, not the ref the plan specifies
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** Phase 4's edge-case 3 states the rule as "a **monotonically-lowering base** held in
+a ref: `base = base === undefined ? events[0].ts : Math.min(base, events[0].ts)`". A `useRef`
+implementation of exactly that was written first — and **`npm run lint` rejected it with four
+`react-hooks/refs` errors** ("Cannot update ref during render", "Cannot access ref value during
+render"). That rule is on in this repo's flat config, so the plan's literal instruction cannot
+be followed and still pass the phase's own "lint green" acceptance criterion.
+
+**Chose:** React's documented *adjusting-state-during-render* pattern instead — `useState` plus
+a guarded render-time `setBase`, returning the freshly-computed `next` rather than the state
+variable. The **rule the plan cares about is unchanged**: it is still
+`base === undefined ? first : Math.min(base, first)`, still monotonically lowering, still held
+across re-renders. Only the storage cell differs. Returning `next` (not `base`) preserves the
+one property a ref had and naive `setState` would lose — the correct base is available in the
+*first* render pass, so a timeline never paints a frame of offset-less rows. The `setBase` call
+is guarded on `next !== base`, so it fires once per genuine lowering and cannot loop; a
+StrictMode double-render test pins that down.
+
+**Alternatives:** Keep the ref and add an `eslint-disable` (rejected — the rule is not a style
+nit: a ref read during render is genuinely unsound under the React compiler, and silencing a
+correctness lint to match a plan's incidental word choice inverts which of the two is the
+authority on React). Compute the base inside an effect and store it in state (rejected — it
+lands one render late, so every timeline would paint once with no offsets and then reflow).
+Recompute from `events[0]` each render with no hold at all (rejected — it is the bug the edge
+case exists to prevent).
+
+**Blast radius if wrong:** One hook body, ~8 lines, fully covered by `use-run-time-base.test.tsx`
+including the eviction, swap and StrictMode cases. Swapping the storage cell back to a ref (if a
+future lint config drops the rule) is a local edit that no caller can observe.
+
+**Status:** UNCONFIRMED
+
+## Phase 4's "offsets unchanged across the swap" test is split in two, because it cannot hold in general
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** Phase 4's Tests section asks for "a `mergeRunEvents` source-swap case: render with a
+truncated live buffer, then re-render with the full persisted array, and assert offsets are
+non-negative **and unchanged for the events common to both**." Those two assertions contradict
+each other under the phase's own mandated rule whenever the buffer *has* truncated: if the
+persisted array reveals an earlier first event, `Math.min` lowers the base, and lowering the base
+necessarily **moves** the common events' offsets (by exactly the amount that was missing). The
+only way to leave them unchanged is to keep the too-late base — which is precisely what makes the
+earlier persisted events render negative, the other half of the same sentence.
+
+**Chose:** Split it into the two cases the sentence conflates, in a new
+`src/components/runs/run-timeline.test.tsx` whose harness mirrors `run-detail.tsx`'s composition
+exactly (`mergeRunEvents` → `useRunTimeBase` → `RunTimeline`). (1) **No eviction** — the live
+buffer still holds the true first event, the terminal swap adds the final frame and the common
+events' offsets are asserted *unchanged*; this is the ordinary case and the plan's literal
+assertion. (2) **After eviction** — the persisted array starts 40s earlier, offsets are asserted
+**non-negative** and re-anchored on the true run start, with a comment stating explicitly that
+this case must *not* preserve the earlier offsets and why. A third case pins that a later
+truncated array cannot push the base back up.
+
+**Alternatives:** Assert only the non-negative half and drop "unchanged" (rejected — the
+unchanged property is real and worth pinning in the case where it holds; that is the case a
+reader will hit on nearly every real run). Assert both on one render pair (rejected — impossible;
+one of the two assertions would have to be written false). Put the swap case in
+`run-detail.test.ts` next to the existing `mergeRunEvents` unit tests (rejected — that file is
+`.ts`, so a rendering test would force renaming it, and the assertion is about rendered offsets,
+not about which array `mergeRunEvents` returns).
+
+**Blast radius if wrong:** Test-only, one new file. `run-summary.test.tsx` is likewise new (the
+plan's Files section says "edit", but no such file existed); if a reviewer wants these cases
+elsewhere, both files move wholesale with no source change.
+
+**Status:** UNCONFIRMED
+
+## Negative offsets render with a sign rather than being clamped to `+0ms`
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** Phase 4's clock-skew edge case leaves the choice open: "Render a negative offset
+honestly (**or clamp to `+0ms`**) rather than showing an absurd positive via unsigned
+formatting." Both are permitted; the phase does not pick one, and the choice is user-visible
+copy on every card in the timeline.
+
+**Chose:** Render the sign — `-12ms`, `-1.5s`, `-1.5m`. `formatOffset` now derives `sign` from
+the input and formats `Math.abs(ms)`, so the ordering it displays is the ordering the wire
+actually reported. Reason: a clamp would present two events stamped 12ms apart as simultaneous,
+and the skew it would be hiding is real information — it is the visible symptom of the two emit
+channels (`runner/context.py`'s orchestrator model and `agents/base/telemetry.py`'s subprocess
+POST) stamping `time.time()` in different processes. This console's whole discipline in this plan
+is to not present a derived value as more settled than its inputs. `RunSummary`'s duration is
+left unclamped for the same reason. Sub-second offsets are rounded (`Math.round`) rather than
+truncated, because epoch-second floats otherwise render as `+294.31100010871887ms`.
+
+**Alternatives:** Clamp to `+0ms` (rejected on the above; it is the option that makes the display
+*look* tidier by discarding the one fact it had). Render negatives as `~0ms` or similar hedge
+(rejected — invents a third vocabulary for a value that is simply negative). Leave sub-second
+values unrounded (rejected — the float noise is an artifact of subtracting two ~1.79e9 doubles,
+not a measurement).
+
+**Blast radius if wrong:** One function, `formatOffset`, and three table rows in
+`event-cards.test.tsx`. Clamping later is a one-line change (`Math.max(0, ms)` at the call site)
+that no other code reads.
+
+**Status:** UNCONFIRMED
+
+## A third instance of the same unit bug, `run-deliveries.tsx:119`, is reported but NOT fixed in Phase 4
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** Phase 4's Files section names five source files (`event-cards.tsx`,
+`run-summary.tsx`, `run-timeline.tsx`, `run-detail.tsx`, `lib/utils.ts`) and its acceptance
+criteria are scoped to `formatOffset`'s single call site and `RunSummary`'s duration. While
+sweeping `src/` for any other place that converts a run `ts` (`grep -rn "/ 1000\|/ 1_000" src/`),
+a **third site with the identical defect** turned up that no plan round names:
+`src/components/runs/run-deliveries.tsx:119` renders `` `+${(ts / 1000).toFixed(1)}s` `` for
+every row of the run-detail **Deliveries** tab.
+
+It is the same bug, confirmed the same way and not inferred: those rows are
+`cp.webhook.delivered` events (`api/runs.py:222-225` filters the run's event list by that type)
+and playground stamps them `"ts": time.time()` at `api/webhooks.py:91` — epoch seconds. So that
+column reads `+1790199933.1s` today, and after this phase the same run's Timeline tab and its
+Deliveries tab disagree about what a timestamp means.
+
+**Chose:** Report it; do not fix it here. The phase brief is "implement exactly Phase 4, no
+scope creep", the file is in none of the plan's Files sections, and the phase's acceptance
+criteria neither mention nor would detect it — so fixing it would be an unreviewed, untracked
+change riding in a phase commit. The fix is small and fully unblocked by this phase's work
+(`RunDetail` now holds `baseTs`; `<RunDeliveries runId={runId} />` gains a `baseTs` prop and the
+cell becomes `formatOffset(runOffsetMs(ts, baseTs))`, reusing what this phase already built), so
+the cost of deferring is one follow-up commit, not a re-derivation.
+
+**Alternatives:** Fix it in this phase (rejected — out of the phase's stated Files and criteria;
+the same reasoning that kept Phase 2 from refining `pop_failed` wording that Phase 3 owned).
+Say nothing and leave it for a docs sweep to notice (rejected — this plan's whole subject is
+drift that went unnoticed because nobody swept for the second instance).
+
+**Blast radius if wrong:** None to this phase's code. The consequence of deferring is that one
+tab of the run-detail view keeps rendering an absolute epoch as an offset until a follow-up
+lands — visibly wrong, but wrong in exactly the way it already was, not a regression this phase
+introduces.
+
+**Status:** UNCONFIRMED
+
+## Phase 4's "Depends on" premise is false: seven event types render no time at all, and still do
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** Phase 4's **Depends on** (plan `:1657-1659`) is the phase's stated reason it needs
+to do nothing further about Phase 3's work: "Phase 3's new cards use the existing `formatOffset`
+unchanged and therefore inherit whatever this phase settles, introducing no new divergence."
+
+**Chose:** Record that the premise's first clause is **false** — and change nothing on the
+strength of it. Measured, not inferred: `EventCard` computes `offset` once
+(`event-cards.tsx:49`) and threads it **only** into the `<Line ts={offset}>` wrapper. Seven
+`case`s bypass `Line` entirely and render **no time at all** — `run.failed` (`:205-214`),
+`manifest.verify_failed` (`:216`), `revocation.verify_failed` (`:219`),
+`revocation.degraded_serve` (`:222`), `delegation.issued` (`:225`), `delegation.redeemed`
+(`:238`) and `delegation.rejected` (`:241`). The six trust cards are `Card`-shaped components
+that receive `evt` only; `baseTs` never reaches them, so none of them has **ever** called
+`formatOffset`, before this phase or after it. (Two near neighbours do, which is what makes the
+list exact rather than a guess: `delegation.redeeming` `:230` renders an offset through `Line`,
+and `run.complete` `:193,200` renders both the offset and the total-elapsed figure.)
+
+So the premise's *conclusion* survives by accident — there is indeed "no new divergence",
+because there is no timestamp to diverge — while its reason is wrong. This is **not a regression
+Phase 4 introduces**: those seven cards rendered no time before this phase and render no time
+after it, and no behaviour changed for them in either direction.
+
+Not fixed here, for the same reason `run-deliveries.tsx:119` above is not: **scope**. Phase 4's
+Files section names five source files (`event-cards.tsx`, `run-summary.tsx`, `run-timeline.tsx`,
+`run-detail.tsx`, `lib/utils.ts`) and its acceptance criteria are scoped to `formatOffset`'s
+single call site and `RunSummary`'s duration; none of them mentions, or would detect, a card that
+renders no timestamp. And giving seven cards a timestamp they never had is a **feature addition**,
+not a unit fix — it needs a design decision this plan never took (does a bordered `Card`-shaped
+trust event carry its offset in the header row like `run.complete` does, or not at all? the six
+trust cards were deliberately given a different visual weight from the `Line` rows in Phase 3),
+plus a `baseTs` prop on six components and tests for each. That does not belong in a commit whose
+subject is "`ts` is epoch seconds".
+
+**Flagged as a candidate** for **Phase 7's documentation sweep** (which already owns
+`docs/FEATURES.md`'s "Live timeline behaviour", the one place a reader could be told which events
+carry a time) **or a follow-up phase** alongside the `run-deliveries.tsx:119` deferral — the two
+are the same shape of leftover and are cheapest done together, since both are now fully unblocked
+by this phase: `RunDetail` holds `baseTs`, and each site needs only the prop plus
+`formatOffset(runOffsetMs(ts, baseTs))`.
+
+**Alternatives:** Give the seven cards a timestamp in this phase (rejected — out of the phase's
+stated Files and criteria, and a design decision rather than a bug fix; it is also the larger of
+the two changes this phase has now deferred, and would ride in unreviewed). Silently correct the
+plan's "Depends on" sentence (rejected — this executor pass does not edit the plan, and the
+premise being wrong is exactly the kind of fact that should be logged rather than quietly
+overwritten; a reader of the plan alone would otherwise still believe those cards inherit the
+fix). Assert the gap in a test so it cannot be forgotten (rejected — a test pinning "these seven
+cards render no time" reads as a *decision* that they should not, which is precisely the claim
+this entry declines to make either way).
+
+**Blast radius if wrong:** None to code — nothing was changed. The consequence of deferring is
+that an operator reading a timeline sees offsets on the `Line` rows and none on the six trust
+cards or `run.failed`, exactly as before this phase. If a reviewer decides the timestamps are
+in scope after all, the work is additive (one prop, six components) and no part of this phase's
+`baseTs` threading has to be redone to accommodate it.
+
+**Status:** UNCONFIRMED
+
+## Phase 4's run-identity reset lands in `src/app/runs/[id]/page.tsx`, outside the phase's Files
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** Phase 4's edge case 3 states the base rule entirely in terms of **one** run's event
+array (buffer eviction, the `mergeRunEvents` source swap) and never considers a **second** run.
+The monotonically-lowering hold it mandates is correct within a run and unsafe across two: the
+base can only ever fall, so if the component holding it ever re-rendered for a *different* run
+without unmounting, run A's earlier start would persist into run B and permanently shift every
+one of its offsets. `useRunTimeBase` takes only `events`, so it cannot see run identity and
+cannot fix this itself; the plan's Files section names no file above `run-detail.tsx`.
+
+**Chose:** `key={runId}` on `<RunDetail>` in the route segment, `src/app/runs/[id]/page.tsx:19`
+— a file outside Phase 4's Files list, logged here for that reason. That segment is the only
+place run identity is known *above* the hook, so it is the only level at which a run change can
+be made a remount rather than a re-render. Stated honestly: the hazard is **currently
+unreachable** — `RunDetail`'s only navigation is its `Link href="/runs"` back to the list, which
+unmounts the subtree, so no in-place run swap exists today. It is closed anyway because the hook
+is brand-new code in this phase, the cost is one JSX attribute, and the failure mode (every
+offset in a run silently shifted, no error, no visual tell) is the class of bug this whole plan
+exists to remove. Pinned by three cases in `run-timeline.test.tsx`: the keyed subtree re-anchors
+on the new run, the unkeyed one demonstrably does not, and the route segment really does emit the
+key — with the *decoded* id, the same value the prop carries, so an encoded run id keys once
+rather than under two spellings.
+
+**Alternatives:** Give `useRunTimeBase` a `runId` argument and reset when it changes (rejected —
+an API change to the hook plus a second piece of identity state inside it, to reproduce what
+React's own remount already does for free; the plan's rule stays a pure function of the event
+array this way). Extract the `baseTs`-holding part of `RunDetail` into an inner component keyed
+on `runId` (rejected — identical effect with more moving parts, and it puts the key further from
+where the id actually enters the app). Leave it, since it is unreachable (rejected — "unreachable"
+here is a property of today's routing, not of the hook; the next person to add a run-switcher
+inside the detail view would reintroduce it with no test to catch them).
+
+**Blast radius if wrong:** One JSX attribute. Removing it restores the previous behaviour
+exactly. The only cost of keeping it is that a hypothetical in-place run navigation remounts
+`RunDetail` instead of re-rendering it — which changes nothing observable, because every hook in
+that subtree (`useRun`, `useRunEvents`) is already keyed on `runId` and would restart anyway, and
+the tab is read from the URL rather than held in state.
+
+**Status:** UNCONFIRMED

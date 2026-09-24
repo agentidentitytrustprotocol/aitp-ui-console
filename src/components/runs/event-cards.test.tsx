@@ -432,13 +432,26 @@ describe('TrustFlowCard', () => {
  * to the same call). That observation is what settled the offset question:
  * these frames are now also the fixtures for the run-relative-offset
  * regression test above, and `formatOffset` is never handed a raw `ts`.
+ *
+ * Exception to "verbatim capture": `revocation_degraded_serve.reason` is
+ * hand-authored, not read off the capture in step 2 above -- the capture
+ * setup there only stubs `revocation.posture()`, not `degraded_reason()`, so
+ * its actual reason string depends on the stub's snapshot state and wasn't
+ * recorded. The value here is one of the three literal strings
+ * `degraded_reason()` (`agents/base/revocation_state.py:192-211`) can
+ * actually produce -- confirmed by reading that function, not guessed --
+ * chosen to match a stub with no snapshot configured. A prior version of
+ * this fixture used `"snapshot_stale"`, which appears nowhere in
+ * aitp-playground's source; that the wire-shape tests below never caught it
+ * is exactly why `RevocationDegradedServeCard` could hardcode an overclaim
+ * ("...on the last verified deny-set") that this exact reason contradicts.
  */
 const CAPTURED_FRAMES: Record<string, Record<string, unknown>> = {
   revocation_verify_failed_no_expected_issuer: {"agent_id": "writer", "cause": "no_expected_issuer", "detail": "no CP AID pinned (set CP_AID) — refusing to apply an unverifiable revocation snapshot", "run_id": "run-7f3c", "ts": 1790199933.127181, "type": "revocation.verify_failed"},
   revocation_verify_failed_sdk_cannot_verify: {"agent_id": "writer", "cause": "sdk_cannot_verify", "detail": "installed aitp-sdk has no verify_revocation_list (needs >=0.6.0) — refusing to apply an unverified snapshot", "run_id": "run-7f3c", "ts": 1790199933.1274319, "type": "revocation.verify_failed"},
   revocation_verify_failed_sdk_code: {"agent_id": "writer", "cause": "malformed", "detail": "invalid revocation envelope JSON: missing field `version` at line 1 column 33", "run_id": "run-7f3c", "ts": 1790199933.127628, "type": "revocation.verify_failed"},
   revocation_verify_failed_malformed_body: {"agent_id": "writer", "cause": "malformed_body", "detail": "'published_at'", "run_id": "run-7f3c", "ts": 1790199933.127785, "type": "revocation.verify_failed"},
-  revocation_degraded_serve: {"agent_id": "writer", "fail_mode": "soft_fail", "reason": "snapshot_stale", "run_id": "run-7f3c", "serves": 1, "ts": 1790199933.1338491, "type": "revocation.degraded_serve"},
+  revocation_degraded_serve: {"agent_id": "writer", "fail_mode": "soft_fail", "reason": "no verified snapshot has ever been applied", "run_id": "run-7f3c", "serves": 1, "ts": 1790199933.1338491, "type": "revocation.degraded_serve"},
   delegation_rejected: {"agent_id": "writer", "error": "delegation verification failed: source TCT has been revoked", "run_id": "run-7f3c", "ts": 1790199933.192322, "type": "delegation.rejected"},
   delegation_redeemed_site1: {"agent_id": "writer", "delegatee_aid": "aid:pubkey:HYKwtlrXMWrR8JYLWx_fpoKku1W-YSg4-fJMJUBdhSY", "grants": ["demo.write"], "role": "issuer", "run_id": "run-7f3c", "ts": 1790199933.189941, "type": "delegation.redeemed"},
   delegation_redeemed_site2: {"agent_id": "writer", "grants": ["demo.write"], "jti": "e60c9eb3-1376-4106-9f9e-175e9411a047", "peer_aid": "aid:pubkey:sJnYjcKKOREshszqllQruT9uzMs7GGRtUcGNryVxtL8", "run_id": "run-7f3c", "tct": {"claims": {"aud": "aid:pubkey:0Hhe28FMapk2TBbOe5a89ZciPhnF0sIp2In3cRrc4Ts", "cnf": {"jkt": "oEZ1e_0EZjKZccZoLfVnhym8bnECoUsL6STMnI36lLw"}, "exp": 1790203533, "grants": ["demo.write"], "iat": 1790199933, "iss": "aid:pubkey:sJnYjcKKOREshszqllQruT9uzMs7GGRtUcGNryVxtL8", "jti": "e60c9eb3-1376-4106-9f9e-175e9411a047", "sub": "aid:pubkey:0Hhe28FMapk2TBbOe5a89ZciPhnF0sIp2In3cRrc4Ts", "ver": "aitp/0.2"}, "token": "eyJhbGciOiJFZERTQSIsInR5cCI6ImFpdHAtdGN0K2p3dCJ9.eyJhdWQiOiJhaWQ6cHVia2V5OjBIaGUyOEZNYXBrMlRCYk9lNWE4OVpjaVBobkYwc0lwMkluM2NScmM0VHMiLCJjbmYiOnsiamt0Ijoib0VaMWVfMEVaaktaY2Nab0xmVm5oeW04Ym5FQ29Vc0w2U1RNbkkzNmxMdyJ9LCJleHAiOjE3OTAyMDM1MzMsImdyYW50cyI6WyJkZW1vLndyaXRlIl0sImlhdCI6MTc5MDE5OTkzMywiaXNzIjoiYWlkOnB1YmtleTpzSm5ZamNLS09SRXNoc3pxbGxRcnVUOXV6TXM3R0dSdFVjR05yeVZ4dEw4IiwianRpIjoiZTYwYzllYjMtMTM3Ni00MTA2LTlmOWUtMTc1ZTk0MTFhMDQ3Iiwic3ViIjoiYWlkOnB1YmtleTowSGhlMjhGTWFwazJUQmJPZTVhODlaY2lQaG5GMHNJcDJJbjNjUnJjNFRzIiwidmVyIjoiYWl0cC8wLjIifQ.jcNsq-NfvYmK5OPD2OeLCtOaznHz_BWyE56kPx7oZ06s-WxBu1nErWQB2Ug_q2TdDZavO2-RO8lpRHLprWxFDQ"}, "ts": 1790199933.210742, "type": "delegation.redeemed"},
@@ -755,7 +768,7 @@ describe('revocation.degraded_serve card', () => {
       <EventCard
         evt={evt({
           type: 'revocation.degraded_serve',
-          reason: 'snapshot_stale',
+          reason: 'the last verified snapshot is 187s old, over the 60s staleness budget',
           serves: 300,
           fail_mode: 'soft_fail',
         })}
@@ -764,8 +777,12 @@ describe('revocation.degraded_serve card', () => {
     expect(screen.getByText('SERVED WITHOUT CURRENT REVOCATION DATA')).toHaveStyle({
       color: C.amber,
     });
-    expect(container).toHaveTextContent('a call was answered on the last verified deny-set');
-    expect(screen.getByText('snapshot_stale')).toBeInTheDocument();
+    expect(container).toHaveTextContent(
+      'a call was answered while revocation checking was degraded',
+    );
+    expect(
+      screen.getByText('the last verified snapshot is 187s old, over the 60s staleness budget'),
+    ).toBeInTheDocument();
     expect(screen.getByText('soft_fail')).toBeInTheDocument();
     expect(container).toHaveTextContent('occurrence #300');
     expect(container).toHaveTextContent('not a count of how many there have been');
@@ -775,6 +792,25 @@ describe('revocation.degraded_serve card', () => {
     // Neither a failure nor a success.
     expect(container).not.toHaveTextContent(/failed/i);
     expect(container).not.toHaveTextContent(/verified ·/);
+  });
+
+  it('never claims a "last verified deny-set" when no snapshot was ever verified', () => {
+    // `degraded_reason()` (revocation_state.py:203-204) returns this exact
+    // sentence only when `self.snapshot is None` -- there has never been a
+    // verified deny-set to point back to, only whatever local revocations
+    // exist. The old hardcoded headline text ("a call was answered on the
+    // last verified deny-set") directly contradicted this reason.
+    const { container } = render(
+      <EventCard
+        evt={evt({
+          type: 'revocation.degraded_serve',
+          reason: 'no verified snapshot has ever been applied',
+          fail_mode: 'soft_fail',
+        })}
+      />,
+    );
+    expect(container).not.toHaveTextContent(/last verified deny-set/);
+    expect(screen.getByText('no verified snapshot has ever been applied')).toBeInTheDocument();
   });
 
   it.each([[undefined], [null]])('still renders when reason is %s', (reason) => {

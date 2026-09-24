@@ -2,6 +2,7 @@ import { C } from './colors';
 import {
   isUnassessedManifestCode,
   isUnassessedRevocationCode,
+  manifestPostSignatureDetail,
   manifestVerdictBadge,
   revocationVerdictBadge,
 } from './verification-display';
@@ -428,6 +429,50 @@ describe('unassessed-code predicates', () => {
       isUnassessedManifestCode(code),
     );
   });
+
+  // `manifestPostSignatureDetail` is the export other surfaces (playground's
+  // `manifest.verify_failed` run-timeline card) reuse instead of a second copy
+  // of `MANIFEST_POST_SIGNATURE_DETAIL`'s two-entry map.
+  it.each([
+    ['pop_failed', 'proof-of-possession did not'],
+    ['identity_hint_malformed', 'identity hint is malformed'],
+  ])('manifestPostSignatureDetail(%s) → %s', (code, detail) => {
+    expect(manifestPostSignatureDetail(code)).toBe(detail);
+  });
+
+  it.each([
+    'version_unknown',
+    'malformed',
+    'signature_invalid',
+    'expired',
+    'aid_mismatch',
+    'a_code_this_console_has_never_seen',
+    '',
+  ])('manifestPostSignatureDetail(%p) → undefined', (code) => {
+    expect(manifestPostSignatureDetail(code)).toBeUndefined();
+  });
+
+  // Same prototype-chain hazard `Object.hasOwn` in the predicates above
+  // guards against — an inherited member must fall through to `undefined`,
+  // not resolve to a function.
+  it.each(['toString', 'constructor', 'hasOwnProperty', '__proto__'])(
+    'manifestPostSignatureDetail(%s) does not report a prototype-chain member',
+    (code) => {
+      expect(manifestPostSignatureDetail(code)).toBeUndefined();
+    },
+  );
+
+  // The card and the badge must never disagree about which codes are
+  // post-signature: same export, same result.
+  it.each(['pop_failed', 'identity_hint_malformed'])(
+    'manifestVerdictBadge and manifestPostSignatureDetail agree for %s',
+    (code) => {
+      const badge = manifestVerdictBadge({ checked: true, ok: false, code });
+      const detail = manifestPostSignatureDetail(code);
+      expect(detail).toBeDefined();
+      expect(badge.text).toContain(`signature verified · ${detail} (${code})`);
+    },
+  );
 
   it.each([
     'version_unknown',

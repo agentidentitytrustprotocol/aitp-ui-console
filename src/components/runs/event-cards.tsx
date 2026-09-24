@@ -17,30 +17,13 @@ import { Card } from '@/components/shared/card';
 import { AidCell } from '@/components/shared/aid-cell';
 import { CapabilityBadge, Tag } from '@/components/shared/capability-badge';
 import { C } from '@/lib/colors';
-import { runOffsetMs, shortId } from '@/lib/utils';
+import { formatOffset, runOffsetMs, shortId } from '@/lib/utils';
 import {
   isUnassessedManifestCode,
   isUnassessedRevocationCode,
+  manifestPostSignatureDetail,
 } from '@/lib/verification-display';
 import type { RunEvent } from '@/lib/types/playground';
-
-/** Render a run-relative offset in milliseconds.
- *
- *  `ms` is always a **delta** (`runOffsetMs(evt.ts, baseTs)`), never a raw
- *  `evt.ts` — playground stamps `ts` as epoch seconds, so a raw `ts` here
- *  renders as tens of millions of minutes. The sign is explicit because the
- *  delta can genuinely be negative: the orchestrator and the agent
- *  subprocesses stamp `time.time()` in different processes, so clock skew
- *  can place an agent event just before the run's first orchestrator event.
- *  Showing `-12ms` is honest; unsigned formatting would show `+12ms` and
- *  quietly invent an ordering. */
-function formatOffset(ms: number): string {
-  const sign = ms < 0 ? '-' : '+';
-  const abs = Math.abs(ms);
-  if (abs < 1_000) return `${sign}${Math.round(abs)}ms`;
-  if (abs < 60_000) return `${sign}${(abs / 1_000).toFixed(1)}s`;
-  return `${sign}${(abs / 60_000).toFixed(1)}m`;
-}
 
 /** `baseTs` is the run's time base (the earliest `ts` seen — see
  *  `useRunTimeBase`). It is optional and `undefined` until the first event
@@ -309,13 +292,12 @@ export interface TrustVerdict {
  *   predicate already classifies it amber (a parse failure reaches no
  *   signature check).
  *
- * Deliberately **not** refined: `pop_failed` / `identity_hint_malformed`,
- * which `verify_manifest` can only construct after the outer signature
- * verified. `verification-display.ts` words those specially for the CP badge
- * but does not export that map, and duplicating its key list here is exactly
- * the drift this module is forbidden from introducing. The generic red
- * wording below stays honest for them — it says verification failed and names
- * the cause; it never says the signature was the thing that failed.
+ * `pop_failed` / `identity_hint_malformed` — the two codes `verify_manifest`
+ * can only construct *after* the outer signature has verified — get the same
+ * post-signature-aware wording the CP badge already uses, via
+ * `verification-display.ts`'s exported `manifestPostSignatureDetail`. That
+ * keeps the two-entry map to exactly one copy rather than one per surface,
+ * closing the gap this card used to leave to the generic red branch below.
  */
 export function manifestVerifyFailedVerdict(cause?: string | null): TrustVerdict {
   if (cause === 'unknown') {
@@ -333,6 +315,14 @@ export function manifestVerifyFailedVerdict(cause?: string | null): TrustVerdict
     };
   }
   if (cause) {
+    const postSignatureDetail = manifestPostSignatureDetail(cause);
+    if (postSignatureDetail !== undefined) {
+      return {
+        color: C.red,
+        headline: 'MANIFEST REJECTED',
+        text: `signature verified · ${postSignatureDetail} (${cause})`,
+      };
+    }
     return {
       color: C.red,
       headline: 'MANIFEST REJECTED',

@@ -476,8 +476,17 @@ describe('manifestVerifyFailedVerdict', () => {
     // Everything else: honest red that names the cause and claims no verdict.
     ['expired', C.red, 'verification failed (expired)'],
     ['signature_invalid', C.red, 'verification failed (signature_invalid)'],
-    ['pop_failed', C.red, 'verification failed (pop_failed)'],
     ['a_future_sdk_code', C.red, 'verification failed (a_future_sdk_code)'],
+    // The two codes `verify_manifest` can only construct *after* the outer
+    // signature verified — same post-signature-aware wording as the CP badge
+    // (`verification-display.ts`'s `MANIFEST_POST_SIGNATURE_DETAIL`), reused
+    // via the exported `manifestPostSignatureDetail`, not a second copy.
+    ['pop_failed', C.red, 'signature verified · proof-of-possession did not (pop_failed)'],
+    [
+      'identity_hint_malformed',
+      C.red,
+      'signature verified · identity hint is malformed (identity_hint_malformed)',
+    ],
   ])('cause %s -> %s / %s', (cause, color, text) => {
     expect(manifestVerifyFailedVerdict(cause)).toMatchObject({ color, text });
   });
@@ -489,6 +498,19 @@ describe('manifestVerifyFailedVerdict', () => {
       text: 'verification failed · this event reported no cause',
     });
   });
+
+  it.each(['pop_failed', 'identity_hint_malformed'])(
+    '%s never reads as a signature failure, matching the CP badge',
+    (cause) => {
+      // The whole point, mirrored from the revocation side's `malformed_body`
+      // pin below: a manifest whose outer signature verified must never be
+      // told apart from a forged one by an operator skimming the card.
+      const { text } = manifestVerifyFailedVerdict(cause);
+      expect(text).toMatch(/^signature verified/);
+      expect(text).not.toMatch(/signature invalid/i);
+      expect(text).not.toMatch(/forged/i);
+    },
+  );
 });
 
 describe('revocationVerifyFailedVerdict', () => {
@@ -592,6 +614,26 @@ describe('manifest.verify_failed card', () => {
     expect(container).not.toHaveTextContent(/failed to verify/i);
     expect(container).not.toHaveTextContent(/invalid/i);
   });
+
+  it.each([
+    ['pop_failed', 'proof-of-possession did not'],
+    ['identity_hint_malformed', 'identity hint is malformed'],
+  ])(
+    '%s renders as post-signature, not as a signature failure — same wording as the CP badge',
+    (cause, detail) => {
+      const { container } = render(
+        <EventCard evt={evt({ type: 'manifest.verify_failed', cause })} />,
+      );
+      expect(screen.getByText('MANIFEST REJECTED')).toHaveStyle({ color: C.red });
+      expect(container).toHaveTextContent(`signature verified · ${detail} (${cause})`);
+      // The whole point: a manifest whose outer signature verified must never
+      // be told apart from a forged one by an operator skimming the card —
+      // the same property the revocation side's `malformed_body` pins.
+      expect(container).not.toHaveTextContent(/signature invalid/i);
+      expect(container).not.toHaveTextContent(/not verified/i);
+      expect(container).not.toHaveTextContent(/forged/i);
+    },
+  );
 });
 
 describe('revocation.verify_failed card', () => {

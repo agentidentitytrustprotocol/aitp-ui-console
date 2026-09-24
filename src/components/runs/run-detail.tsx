@@ -192,7 +192,7 @@ export function RunDetail({ runId }: { runId: string }) {
             {tab === 'narrate' && <RunNarrate runId={runId} />}
             {tab === 'cp-audit' && <RunCpAudit runId={runId} />}
             {tab === 'cp-sessions' && <RunCpSessions runId={runId} />}
-            {tab === 'deliveries' && <RunDeliveries runId={runId} />}
+            {tab === 'deliveries' && <RunDeliveries runId={runId} baseTs={baseTs} />}
           </div>
         </div>
       )}

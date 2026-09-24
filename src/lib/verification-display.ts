@@ -114,6 +114,21 @@ const MANIFEST_POST_SIGNATURE_DETAIL: Record<string, string> = {
   identity_hint_malformed: 'identity hint is malformed',
 };
 
+/** What check failed for a manifest code reachable only *after* the outer
+ *  signature verified, or `undefined` for any other code — exported so other
+ *  surfaces (playground's `manifest.verify_failed` run-timeline card) reuse
+ *  this *mapping* rather than a second copy of the two-entry list that could
+ *  drift from it. The `Record` itself stays module-private; this function is
+ *  the only way in, membership-tested via `Object.hasOwn` for the same
+ *  prototype-chain reason as `isUnassessedManifestCode` above — `code` is an
+ *  arbitrary producer string, and `'toString' in MANIFEST_POST_SIGNATURE_DETAIL`
+ *  would otherwise test `true`. */
+export function manifestPostSignatureDetail(code: string): string | undefined {
+  return Object.hasOwn(MANIFEST_POST_SIGNATURE_DETAIL, code)
+    ? MANIFEST_POST_SIGNATURE_DETAIL[code]
+    : undefined;
+}
+
 /**
  * Render a manifest verification verdict. One row per thing the verifier
  * can actually establish, not a refinement of three:

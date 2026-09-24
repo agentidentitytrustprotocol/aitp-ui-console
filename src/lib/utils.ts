@@ -71,6 +71,28 @@ export function runOffsetMs(ts: number, baseTs: number): number {
   return (ts - baseTs) * 1_000;
 }
 
+/** Render a run-relative offset in milliseconds.
+ *
+ *  `ms` is always a **delta** (`runOffsetMs(ts, baseTs)`), never a raw `ts` —
+ *  playground stamps `ts` as epoch seconds, so a raw `ts` here renders as
+ *  tens of millions of minutes. The sign is explicit because the delta can
+ *  genuinely be negative: the orchestrator and the agent subprocesses (and,
+ *  for `cp.webhook.delivered` rows, the CP's own webhook dispatcher) each
+ *  stamp `time.time()` in their own process, so clock skew can place an
+ *  event just before the run's first orchestrator event. Showing `-12ms` is
+ *  honest; unsigned formatting would show `+12ms` and quietly invent an
+ *  ordering. Shared by every surface that renders a run-relative offset
+ *  (`EventCard`'s timeline rows, `RunSummary`'s duration, `RunDeliveries`'
+ *  "When" column) so the unit fact and its formatting live in exactly one
+ *  place. */
+export function formatOffset(ms: number): string {
+  const sign = ms < 0 ? '-' : '+';
+  const abs = Math.abs(ms);
+  if (abs < 1_000) return `${sign}${Math.round(abs)}ms`;
+  if (abs < 60_000) return `${sign}${(abs / 1_000).toFixed(1)}s`;
+  return `${sign}${(abs / 60_000).toFixed(1)}m`;
+}
+
 export function shortId(id: string | null | undefined, len = 8): string {
   if (!id) return '';
   return id.length > len ? `${id.slice(0, len)}…` : id;

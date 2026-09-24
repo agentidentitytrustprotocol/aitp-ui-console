@@ -1,4 +1,4 @@
-import { cn, formatAid, formatGrants, runOffsetMs, shortId, timeAgo } from './utils';
+import { cn, formatAid, formatGrants, formatOffset, runOffsetMs, shortId, timeAgo } from './utils';
 
 describe('cn', () => {
   it('joins classnames and de-duplicates Tailwind conflicts', () => {
@@ -35,6 +35,29 @@ describe('runOffsetMs', () => {
     // any run longer than ~11.5 days of offset and would hide the unit
     // question rather than answer it.
     expect(runOffsetMs(2, 1)).toBe(1_000);
+  });
+});
+
+describe('formatOffset', () => {
+  // Exported here (moved from `event-cards.tsx`) once `run-deliveries.tsx`
+  // needed the exact same rendering for its "When" column — see
+  // `event-cards.test.tsx`'s "formatOffset (via the rendered timestamp)" for
+  // the original, still-passing render-level pins of this same behaviour.
+  it.each([
+    [0, '+0ms'],
+    [999, '+999ms'],
+    [1_000, '+1.0s'],
+    [59_999, '+60.0s'],
+    [60_000, '+1.0m'],
+    [-12, '-12ms'],
+    [-1_500, '-1.5s'],
+    [-90_000, '-1.5m'],
+  ])('formats %dms as %s', (ms, expected) => {
+    expect(formatOffset(ms)).toBe(expected);
+  });
+
+  it('rounds sub-second float noise rather than truncating it', () => {
+    expect(formatOffset(294.31100010871887)).toBe('+294ms');
   });
 });
 

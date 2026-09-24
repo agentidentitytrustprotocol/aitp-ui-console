@@ -47,6 +47,13 @@ let manifestUpstreamStatus = 200;
 let revocationUpstreamText = '';
 let revocationUpstreamStatus = 200;
 
+// Same pattern, for the federation handshake route. It is the one route whose
+// *failures* are load-bearing on the UI: `federation-errors.ts` classifies
+// seven distinct fail-closed outcomes off the upstream status plus the
+// `{"detail": "…"}` body, which only works if the proxy forwards both intact.
+let handshakeUpstreamStatus = 200;
+let handshakeUpstreamText: string | null = null;
+
 /** The last request the mock upstream saw. */
 function lastRequest(): RecordedRequest {
   if (recorded.length === 0) throw new Error('mock upstream saw no requests');
@@ -99,8 +106,14 @@ beforeAll(async () => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ hosted: [{ hosted_id: 'h1' }] }));
       } else if (/^\/hosted-agents\/[^/]+\/resolve-and-handshake$/.test(url)) {
+        res.writeHead(handshakeUpstreamStatus, { 'Content-Type': 'application/json' });
+        res.end(
+          handshakeUpstreamText ??
+            JSON.stringify({ trust: 'established', received: JSON.parse(body || '{}') }),
+        );
+      } else if (/^\/hosted-agents\/[^/]+$/.test(url) && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ trust: 'established', received: JSON.parse(body || '{}') }));
+        res.end(JSON.stringify({ hosted_id: url.split('/').pop() }));
       } else if (/^\/hosted-agents\/[^/]+\/invoke$/.test(url)) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ result: JSON.parse(body || '{}') }));
@@ -150,6 +163,8 @@ afterAll(async () => {
 
 beforeEach(() => {
   recorded.length = 0;
+  handshakeUpstreamStatus = 200;
+  handshakeUpstreamText = null;
 });
 
 describe('BFF route handlers against a mock upstream', () => {
@@ -285,6 +300,74 @@ describe('BFF route handlers against a mock upstream', () => {
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ trust: 'established', received: body });
     expect(lastRequest().url).toBe('/hosted-agents/h1/resolve-and-handshake');
+  });
+
+  it('GET /api/playground/hosted-agents/[id] maps to the single-agent path', async () => {
+    const route: RouteModule = require('@/app/api/playground/hosted-agents/[id]/route');
+    const res = await route.GET!(
+      makeRequest('http://localhost:3001/api/playground/hosted-agents/h%3A1'),
+      params({ id: 'h:1' }),
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ hosted_id: 'h%3A1' });
+    expect(lastRequest().url).toBe('/hosted-agents/h%3A1');
+  });
+
+  /**
+   * The only non-2xx hosted-agents case, and the one the federation UI rests
+   * on. `federation-errors.ts` tells playground's seven fail-closed handshake
+   * outcomes apart using nothing but the status code and the `{"detail": "…"}`
+   * string, because `hosted.py` raises plain `HTTPException`s and carries no
+   * `cause` field. If the proxy ever normalised either one, all seven would
+   * collapse back into a single unclassifiable banner — so pin both.
+   */
+  it('forwards a 409 fail-closed handshake refusal with status and detail intact', async () => {
+    handshakeUpstreamStatus = 409;
+    handshakeUpstreamText = JSON.stringify({
+      detail:
+        'refusing cross-domain handshake: did:web:org-b.example.com resolved to a ' +
+        'loopback origin (http://127.0.0.1:9102); expected a real remote origin',
+    });
+
+    const route: RouteModule = require('@/app/api/playground/hosted-agents/[id]/resolve-and-handshake/route');
+    const res = await route.POST!(
+      makeRequest('http://localhost:3001/api/playground/hosted-agents/h1/resolve-and-handshake', {
+        method: 'POST',
+        body: JSON.stringify({ peer_did: 'did:web:org-b.example.com' }),
+      }),
+      params({ id: 'h1' }),
+    );
+
+    expect(res.status).toBe(409);
+    const payload = (await res.json()) as { detail: string };
+    expect(payload.detail).toContain('resolved to a loopback origin');
+    expect(payload.detail).toContain('http://127.0.0.1:9102');
+    // No proxy envelope wrapped around it: `{error, target, upstream_status}`
+    // is the shape the proxy synthesizes for its OWN failures only.
+    expect(payload).not.toHaveProperty('error');
+    expect(payload).not.toHaveProperty('upstream_status');
+  });
+
+  it('forwards a 502 handshake failure carrying the peer body verbatim', async () => {
+    handshakeUpstreamStatus = 502;
+    handshakeUpstreamText = JSON.stringify({
+      detail: 'handshake failed (502): {"detail": "peer rejected"}',
+    });
+
+    const route: RouteModule = require('@/app/api/playground/hosted-agents/[id]/resolve-and-handshake/route');
+    const res = await route.POST!(
+      makeRequest('http://localhost:3001/api/playground/hosted-agents/h1/resolve-and-handshake', {
+        method: 'POST',
+        body: JSON.stringify({ peer_did: 'did:web:org-b.example.com' }),
+      }),
+      params({ id: 'h1' }),
+    );
+
+    expect(res.status).toBe(502);
+    await expect(res.json()).resolves.toEqual({
+      detail: 'handshake failed (502): {"detail": "peer rejected"}',
+    });
   });
 
   it('POST /api/playground/hosted-agents/[id]/invoke maps to the sub-route', async () => {

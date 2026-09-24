@@ -21,7 +21,9 @@ import {
   useResolveAndHandshake,
   useStopHostedAgent,
 } from '@/hooks/use-hosted-agents';
+import { MAX_ERROR_BODY_CHARS } from '@/lib/api/client';
 import { C } from '@/lib/colors';
+import { classifyFederationError } from '@/lib/federation-errors';
 import type { HostedAgent } from '@/lib/types/playground';
 
 const baseInput: React.CSSProperties = {
@@ -105,6 +107,87 @@ function ErrorBanner({ error }: { error: unknown }) {
       }}
     >
       {String(error)}
+    </div>
+  );
+}
+
+/**
+ * The handshake path gets its own banner, because
+ * `resolve-and-handshake` has **seven** distinct fail-closed outcomes and the
+ * generic `ErrorBanner` above collapsed all of them into one red
+ * `String(error)` dump. Two of the seven are a security control firing
+ * correctly, and rendering those red is how operators learn to dismiss them.
+ *
+ * All the judgement lives in `classifyFederationError`; this component only
+ * paints. It renders the same styled shell for every outcome — there is no
+ * path here that falls back to a bare stringified error.
+ */
+function HandshakeErrorBanner({ error }: { error: unknown }) {
+  const view = classifyFederationError(error);
+  if (!view) return null;
+  return (
+    <div
+      role="alert"
+      data-outcome={view.outcome}
+      style={{
+        background: view.color + '15',
+        border: `1px solid ${view.color}40`,
+        borderRadius: 6,
+        padding: '10px 12px',
+        marginBottom: 12,
+        wordBreak: 'break-word',
+      }}
+    >
+      <div
+        data-testid="handshake-banner-headline"
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          gap: 8,
+          fontSize: 12,
+          fontWeight: 600,
+          color: view.color,
+          marginBottom: 5,
+        }}
+      >
+        <span>{view.headline}</span>
+        {view.status !== undefined && (
+          <span className="mono" style={{ fontSize: 10, fontWeight: 400, color: C.textMuted }}>
+            HTTP {view.status}
+          </span>
+        )}
+      </div>
+      <div
+        data-testid="handshake-banner-body"
+        style={{ fontSize: 12, color: C.textDim, lineHeight: 1.55 }}
+      >
+        {view.body}
+      </div>
+      {view.detail && (
+        <pre
+          className="mono"
+          style={{
+            background: C.bg3,
+            border: `1px solid ${C.border}`,
+            borderRadius: 6,
+            padding: 8,
+            fontSize: 11,
+            color: C.textDim,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            margin: '8px 0 0',
+            maxHeight: 180,
+            overflow: 'auto',
+          }}
+        >
+          {view.detail}
+        </pre>
+      )}
+      {view.detailTruncated && (
+        <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>
+          Cut off at {MAX_ERROR_BODY_CHARS} characters — this is not the complete response.
+        </div>
+      )}
     </div>
   );
 }
@@ -300,7 +383,7 @@ function HandshakePanel({ agent }: { agent: HostedAgent }) {
       >
         <Share2 size={13} color={C.blue} /> Resolve &amp; handshake
       </div>
-      <ErrorBanner error={handshake.error} />
+      <HandshakeErrorBanner error={handshake.error} />
       <form onSubmit={submit}>
         <div style={{ marginBottom: 12 }}>
           <Label htmlFor={`hs-did-${agent.hosted_id}`}>peer_did</Label>

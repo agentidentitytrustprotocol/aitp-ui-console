@@ -598,7 +598,7 @@ _(appended by `/implement` as phases land)_
 | 2 — `verification-display.ts`: post-signature gap, stale CP attribution, shared export | DONE |
 | 3 — Absorb playground's trust-event vocabulary (5 typed cards) | DONE |
 | 4 — Settle the run-event timestamp unit mismatch | DONE |
-| 5 — Federation handshake error fidelity | NOT STARTED |
+| 5 — Federation handshake error fidelity | DONE |
 | 6 — Declarative accuracy: Draft-spec copy and the `CpEventType` catalogue | NOT STARTED |
 | 7 — Documentation sweep, `PROGRESS.md` refresh, full regression | NOT STARTED |
 
@@ -695,3 +695,40 @@ _(appended by `/implement` as phases land)_
   timestamp at all (unaffected by this phase either way). Both flagged as Phase 7 or
   follow-up candidates.
 - **What's next:** Phase 5 (federation handshake error fidelity). No blockers.
+
+### Phase 5 — 2026-09-23 — DONE
+
+- **Verdict:** PASS on round 2 (round 1: GAPS, 2 substantive + 5 minor; round 2 confirmed
+  all 6 non-bookkeeping items closed — the 7th, updating this file and the plan's Status
+  line, was explicitly deferred to phase close-out rather than the fixer). Verifier tier:
+  Opus, both rounds — round 1 independently re-derived the full 7-outcome error shape
+  itself by driving `aitp_playground.api.hosted.router` under a real `TestClient`, and
+  round 2 re-ran the adversarial classification test and re-checked the corrected copy
+  against `resolver.py`/`hosted.py` directly rather than trusting the fixer's self-report.
+- **Rounds:** 2.
+- **Files touched:** `src/lib/api/client.ts` (`ApiError` class, `MAX_ERROR_BODY_CHARS`),
+  `src/lib/api/client.test.ts`, `src/lib/federation-errors.ts` (new — outcome classifier),
+  `src/lib/federation-errors.test.ts` (new), `src/components/federation/federation-view.tsx`
+  (`HandshakeErrorBanner`), `src/components/federation/federation-view.test.tsx` (new),
+  `src/test/bff-routes.integration.test.ts` (non-2xx hosted-agents coverage), `ASSUMPTIONS.md`
+  (5 entries after round 1's fix pass corrected/retitled one).
+- **What was independently verified, not just argued:** round 1 captured all seven real
+  `HTTPException` bodies (plus a 422 array-`detail` shape) by running playground's actual
+  router, confirmed no `cause` field exists anywhere, and confirmed the shipped classifier
+  reproduces all seven distinct outcomes from those real bodies. Round 1 also found a real,
+  triggerable bug — `.includes`-based matching let a peer-controlled 502 body collide with
+  a different outcome's marker, and a "peer never contacted" claim was factually false for
+  three outcomes since DID resolution performs a real HTTP GET first. Round 2 proved the
+  fix by running the new adversarial test directly (not reading the diff and trusting it)
+  and by re-deriving the "handshake request never sent to the peer's agent endpoint" copy
+  against `resolver.py`/`hosted.py`'s actual call order.
+- **Fixed between rounds (fixer pass, not carried forward):** anchored-prefix (`startsWith`)
+  matching replacing order-dependent `.includes`, with the loopback marker corrected to its
+  true prefix; corrected "never contacted" copy for 3 outcomes; added coverage for a 5th
+  body shape (`proxy.ts`'s 403 CSRF guard) and updated the ASSUMPTIONS.md entry that had
+  undercounted it as a 4th; `MAX_ERROR_BODY_CHARS` referenced instead of a hardcoded "500";
+  a brittle DOM-position test assertion replaced with `data-testid`; the `ApiError` type
+  discriminator changed from `instanceof` to a duck-typed structural check so a module-
+  duplication edge case fails safe instead of into a false claim.
+- **What's next:** Phase 6 (declarative accuracy: draft-spec copy and the `CpEventType`
+  catalogue). No blockers.

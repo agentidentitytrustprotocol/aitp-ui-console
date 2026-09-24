@@ -6,7 +6,15 @@
  * which Node provides natively. The `node` environment keeps the global
  * `Response` faithful to the platform (jsdom's is patchier).
  */
-import { delJSON, getJSON, patchJSON, postJSON, putJSON } from './client';
+import {
+  ApiError,
+  MAX_ERROR_BODY_CHARS,
+  delJSON,
+  getJSON,
+  patchJSON,
+  postJSON,
+  putJSON,
+} from './client';
 
 const ORIGINAL_FETCH = global.fetch;
 
@@ -134,6 +142,99 @@ describe('postJSON / putJSON / patchJSON', () => {
     await expect(fn('/api/cp/thing', {})).rejects.toThrow(
       `${method} /api/cp/thing failed: 422 — nope`,
     );
+  });
+});
+
+/**
+ * `src/lib/api/proxy.ts`'s `runProxy` forwards the upstream status and body
+ * verbatim, so the structured error is intact right up to this boundary —
+ * where it used to be flattened into a message string and lost. These cases
+ * pin the structure being kept **and** the message string staying exactly as
+ * it was, because a dozen call sites render `String(err)` into a toast.
+ */
+describe('ApiError', () => {
+  async function caught(run: () => Promise<unknown>): Promise<unknown> {
+    try {
+      await run();
+      throw new Error('expected a rejection');
+    } catch (err) {
+      return err;
+    }
+  }
+
+  it('carries the status, method, path and raw body alongside the message', async () => {
+    mockFetch(async () => new Response('{"detail":"no hosted agent h1"}', { status: 404 }));
+
+    const err = await caught(() => getJSON('/api/playground/hosted-agents/h1'));
+
+    expect(err).toBeInstanceOf(ApiError);
+    const api = err as ApiError;
+    expect(api.status).toBe(404);
+    expect(api.method).toBe('GET');
+    expect(api.path).toBe('/api/playground/hosted-agents/h1');
+    expect(api.body).toBe('{"detail":"no hosted agent h1"}');
+    expect(api.bodyTruncated).toBe(false);
+  });
+
+  it('keeps `message` and `String(err)` byte-identical to the pre-ApiError shape', async () => {
+    mockFetch(async () => new Response('boom detail', { status: 409 }));
+
+    const err = (await caught(() => postJSON('/api/cp/thing', {}))) as ApiError;
+
+    expect(err.message).toBe('POST /api/cp/thing failed: 409 — boom detail');
+    // `Error.prototype.toString` reads `this.name`, and `name` is deliberately
+    // left inherited so every existing `String(err)` toast is unchanged.
+    expect(String(err)).toBe('Error: POST /api/cp/thing failed: 409 — boom detail');
+    expect(err.name).toBe('Error');
+  });
+
+  it('is an Error, so `catch`-and-read-.message callers are unaffected', async () => {
+    mockFetch(async () => new Response('nope', { status: 422 }));
+
+    const err = await caught(() => putJSON('/api/cp/thing', {}));
+
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toContain('failed: 422');
+  });
+
+  it.each([
+    ['GET', () => getJSON('/api/cp/x')],
+    ['POST', () => postJSON('/api/cp/x', {})],
+    ['PUT', () => putJSON('/api/cp/x', {})],
+    ['PATCH', () => patchJSON('/api/cp/x', {})],
+    ['DELETE', () => delJSON('/api/cp/x')],
+  ] as const)('%s throws an ApiError, not a bare Error', async (_method, run) => {
+    mockFetch(async () => new Response('x', { status: 500 }));
+
+    expect(await caught(run)).toBeInstanceOf(ApiError);
+  });
+
+  it('flags a sliced body as truncated and leaves a fitting one unflagged', async () => {
+    mockFetch(async () => new Response('y'.repeat(MAX_ERROR_BODY_CHARS + 1), { status: 502 }));
+    const cut = (await caught(() => getJSON('/api/cp/x'))) as ApiError;
+    expect(cut.body).toHaveLength(MAX_ERROR_BODY_CHARS);
+    expect(cut.bodyTruncated).toBe(true);
+
+    mockFetch(async () => new Response('y'.repeat(MAX_ERROR_BODY_CHARS), { status: 502 }));
+    const whole = (await caught(() => getJSON('/api/cp/x'))) as ApiError;
+    expect(whole.body).toHaveLength(MAX_ERROR_BODY_CHARS);
+    expect(whole.bodyTruncated).toBe(false);
+  });
+
+  it('leaves `body` undefined for an empty body and for an unreadable one', async () => {
+    mockFetch(async () => new Response('', { status: 500 }));
+    const empty = (await caught(() => getJSON('/api/cp/x'))) as ApiError;
+    expect(empty.body).toBeUndefined();
+    expect(empty.bodyTruncated).toBe(false);
+
+    mockFetch(async () => ({
+      ok: false,
+      status: 503,
+      text: () => Promise.reject(new Error('stream closed')),
+    }) as unknown as Response);
+    const unreadable = (await caught(() => getJSON('/api/cp/x'))) as ApiError;
+    expect(unreadable.body).toBeUndefined();
+    expect(unreadable.status).toBe(503);
   });
 });
 

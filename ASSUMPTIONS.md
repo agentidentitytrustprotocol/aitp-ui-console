@@ -610,3 +610,162 @@ that subtree (`useRun`, `useRunEvents`) is already keyed on `runId` and would re
 the tab is read from the URL rather than held in state.
 
 **Status:** UNCONFIRMED
+
+## Phase 5's `ApiError` deliberately does NOT set `name`
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** Phase 5 Step 1 requires a typed error "with the same `message` string as today for
+backward compatibility". It says nothing about `name`, and the obvious reading of "introduce an
+`ApiError extends Error`" is that the class sets `this.name = 'ApiError'` the way a named error
+subclass normally does.
+
+**Chose:** leave `name` inherited, so it stays the literal string `'Error'`.
+`Error.prototype.toString` reads `this.name`, and **twelve** call sites render `String(err)`
+straight into operator-facing text — `trust-anchors.tsx:94,111,377`, `pinned-keys.tsx:55,270`,
+`revocation.tsx:41`, `webhook-form.tsx:42`, `webhook-list.tsx:388,403`,
+`enrollment-modal.tsx:50`, `agent-detail.tsx:43` and `run-detail.tsx:78` — plus
+`federation-view.tsx`'s remaining generic `ErrorBanner` on the host/invoke/stop paths. Setting `name` would silently retitle every one of
+those from `Error: POST … failed: 409 — …` to `ApiError: POST …`, which is a user-visible copy
+change across four features that this phase has no mandate to make and no tests covering.
+"`message` is unchanged" is plainly meant to protect exactly those strings, and protecting
+`message` while changing `toString()` would honour the letter and miss the point. Pinned by
+`client.test.ts`: one case asserts `String(err)` is byte-identical and `err.name === 'Error'`,
+and `federation-view.test.tsx`'s stop-path case asserts the full unchanged banner text.
+`instanceof ApiError` is the documented way to detect the type, called out in the class doc
+comment so nobody reaches for the name.
+
+**Alternatives:** Set `name = 'ApiError'` and accept the copy change (rejected — an unrequested,
+untested change to four features' error text, riding in on an unrelated fix). Set it and update
+all twelve call sites to render `err.message` instead of `String(err)` (rejected — that is a
+real improvement and a real diff, and it belongs to whoever owns those surfaces, not to this
+phase; it would also quietly drop the `Error: ` prefix operators may be used to). Set it and
+override `toString()` (rejected — two sources of truth for one string, and the next reader has
+to find both).
+
+**Blast radius if wrong:** One line in `client.ts` plus one assertion in `client.test.ts`.
+Anyone who wants `'ApiError'` gets it by adding `this.name = 'ApiError'`; the only thing that
+changes is the prefix on those twelve rendered strings.
+
+**Status:** UNCONFIRMED
+
+## Phase 5's 404 and 400 rows match a `detail` prefix, not the status alone
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** Phase 5's classification table lists `agent gone` as matching on `404` and
+`not did:web` as matching on `400` — status only, no `detail` condition — while all five
+remaining rows are given as status **plus** a `detail` prefix. Taken literally, any 404 reaching
+the handshake mutation would render "The playground has no hosted agent with this id … refresh
+the list".
+
+**Chose:** gate both on a `detail` substring as well — `no hosted agent` for the 404,
+`only did:web peers supported` for the 400 — so an unattributable 404 or 400 degrades to the
+`unclassified` raw render instead. Reason: a 404 can reach that mutation without coming from
+`hosted.py` at all (a missing or renamed console route returns Next.js's own HTML 404; an
+intermediary can synthesize one), and "the hosted agent is gone, refresh the list" would then be
+a confident, wrong, actionable instruction. That is precisely the class of overclaim the phase
+exists to remove, and the plan's own edge-case guidance says the fallback must "render the raw
+text honestly rather than mislabeling it — a mislabel is worse than the current generic banner."
+Gating also makes all seven rows structurally identical, which is why the inconsistency looked
+like an oversight in the table rather than a decision. The cost is stated: if playground rewords
+either message, that outcome loses its specific copy and falls back to the honest raw render —
+the same trade every other row already makes. Two cases in `federation-errors.test.ts` pin it
+(an HTML 404 body and a FastAPI `{"detail":"Not Found"}`, both `unclassified`).
+
+**Alternatives:** Follow the table exactly (rejected — ships a confident mislabel on a body
+shape that genuinely occurs). Gate the 404 but not the 400 (rejected — a 400 with an unrelated
+`detail` has the same problem and the asymmetry would be arbitrary). Add a `console`-vs-upstream
+provenance flag in `proxy.ts` so a 404 can be attributed structurally (rejected — cross-cutting
+change to a Phase-1–4 file for a case the substring match already handles).
+
+**Blast radius if wrong:** Two `&& parsed.detail?.includes(…)` clauses. Deleting them restores
+the plan's literal status-only behaviour, and the two tests naming `unclassified` for those
+bodies are the only things that would need changing.
+
+**Status:** UNCONFIRMED
+
+## Phase 5's severity taxonomy is three tones, with "nothing was attempted" rendered blue
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** Phase 5 Step 3 mandates exactly one severity distinction — "the two 409s … should
+read amber/informational rather than red" — and otherwise says only "a color token matching
+severity". It assigns no token to the 404 or the 400, which are neither a control firing nor a
+failure of anything.
+
+**Chose:** three tones, resolved to tokens in one exported map (`FEDERATION_TONE_COLOR`):
+`blocked` → `C.amber` (a fail-closed control refused it, and that is the control working — the
+two 409s), `input` → `C.blue` (nothing was attempted; the caller's input or the console's own
+stale list is what needs fixing — the 404 and the 400), `failed` → `C.red` (something went wrong
+or is unknown — everything else). Blue for `input` because red would say a security-relevant
+failure occurred when the request never left the validation step, and amber would borrow the
+visual language this phase just reserved for "a control fired", diluting the one distinction the
+plan actually mandates. Blue is also already this codebase's informational token
+(`eventColor`'s `handshake`/`trust` prefix, `boundaryColor`'s `intra_org`).
+
+**Alternatives:** Two tones, folding the 404/400 into amber (rejected — amber would then mean
+both "a control refused you" and "you typed the wrong thing", and an operator learning to read
+amber as the interesting case is the whole point). Two tones, folding them into red (rejected —
+the status quo this phase removes: a typo in the DID field rendered as a red alert). A fourth
+tone just for the 404 (rejected — no behavioural difference from the 400 to justify it; both
+mean nothing was attempted).
+
+**Blast radius if wrong:** One entry in `FEDERATION_TONE_COLOR`, plus the two component cases
+asserting `C.blue` on the 404/400 headlines. No structural change — `tone` and `color` are
+already separate fields, so a re-token is a one-line edit.
+
+**Status:** UNCONFIRMED
+
+## There are five handshake error-body shapes, plus a non-HTTP outcome, none in the plan
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** Phase 5's Context finding enumerates **three** error-body shapes a repo-wide typed
+error will meet — FastAPI's `{"detail": "<string>"}`, the proxy's
+`{error, target, upstream_status}`, and playground's `{"error": {"code", "message"}}` — and the
+classifier is specified as a function of `{status, detail}`, i.e. always of a response.
+
+**Chose:** handle three more cases the empirical pass (and a subsequent verification round) turned
+up, and test all of them. (a) **FastAPI's `detail` is a JSON *array* for a request-validation
+failure**, not a string — confirmed by driving the real router: `POST` with no `peer_did` returns
+422 with `{"detail":[{"type":"missing","loc":["body","peer_did"],…}]}`. This is the same
+type-collision hazard the plan flags for the key `error`, one level down and on the key the plan
+treats as the reliable one, so `parseFederationErrorBody` only accepts `detail` when `typeof` is
+`string` and the 422 degrades to the raw render. Reachable in principle rather than through
+today's form, which always sends the field — but a shape that renders `[object Object]` is worth
+one `typeof`. (b) **An error that never carried a status at all** — `client.ts`'s own 30s timeout
+guard, a React Query abort, or a transport failure before the BFF route ran — is not an `ApiError`
+and has no status to classify. It gets its own `no_response` outcome whose copy says the
+handshake's outcome is *unknown and may still be in flight*, rather than being swept into
+`unclassified` alongside real responses. Playground's own httpx timeout is also 30s
+(`hosted.py:164`), so a console timeout racing a still-running handshake is a live possibility,
+not a theoretical one. (c) **A fifth body shape, from a proxy layer the plan does not name**:
+`src/proxy.ts` (the Next 16 root middleware, matcher `/api/cp/:path*` and
+`/api/playground/:path*`) rejects a cross-site mutation with
+`{error: 'Cross-site request rejected', code: 'csrf_blocked'}` at **403** — before the request
+ever reaches `src/lib/api/proxy.ts`'s BFF route. Its `error` field is a string, so
+`parseFederationErrorBody` reads it as `proxyError` exactly like shape 2 above — they share a
+*discriminator*, not an origin — but the classifier's two proxy branches are gated on status
+**and** shape (504/502 only, matching shape 2's own `makeError` call sites), so a 403 never
+matches either and correctly falls through to `unclassified` with the raw body shown. That
+fall-through was already correct by construction (the both-conditions guard already in place for
+shapes 2/3), not by luck of an untested path — it is now pinned by a dedicated 403 test in
+`federation-errors.test.ts` instead of resting on the guard conditions alone.
+
+**Alternatives:** Trust the three-shape finding and let a 422 render `[object Object]` (rejected
+— an explicit acceptance criterion forbids that string in any banner). Treat a non-`ApiError` as
+`unclassified` (rejected — `unclassified` says "a response arrived that I cannot read", which is
+a different and less honest claim than "no response arrived"). Report it as a failure (rejected —
+the handshake may have succeeded upstream; claiming it failed is an overclaim in the opposite
+direction). Leave the 403 CSRF shape untested on the strength of the existing guard conditions
+(rejected — "it happens to degrade correctly today" and "a test pins that it degrades correctly"
+are different claims, and only the latter survives a future refactor of the proxy guards).
+
+**Blast radius if wrong:** Two branches in `federation-errors.ts` and one enum member for (a) and
+(b); nil for (c), which added a test rather than a code path — the CSRF shape already flowed
+through the existing string/status guards untouched. Removing `no_response` makes those errors
+`unclassified`; removing the `typeof detail === 'string'` guard reintroduces `[object Object]` on
+a 422; deleting the 403 test removes coverage but changes no behaviour.
+
+**Status:** UNCONFIRMED

@@ -581,3 +581,52 @@ _(appended by `/implement` as phases land)_
   (whole-feature tests, cross-phase integration coverage, one final cumulative-diff Opus
   verify), then `/reconcile` (ASSUMPTIONS.md has accumulated UNCONFIRMED entries across every
   phase), then `/ship`.
+
+### Finalization pass — 2026-09-23 — DONE
+
+- **What it covered:** the 5 areas the finalization brief names — whole-feature test-gap
+  analysis over cross-phase seams, an integration-test boundary review, a full regression from
+  a clean state, a docs-staleness check against the cumulative diff, and a tracked-file
+  consistency check. Full reasoning logged in `ASSUMPTIONS.md` under "Finalization pass — two
+  whole-feature test gaps closed, none of them a phase regression"; a matching `## Finalization`
+  note is appended to the plan file itself.
+- **Already covered end-to-end, confirmed rather than assumed (no test added):** Phase 3's
+  `manifest.verify_failed`/`revocation.verify_failed` cards route unassessed causes through
+  Phase 2's real, unmocked `isUnassessedManifestCode`/`isUnassessedRevocationCode`
+  (`event-cards.test.tsx:468-530,575-628`); Phase 6's caption suppression drives real
+  `revocationVerdictBadge`/`manifestVerdictBadge` output, not a mock
+  (`cp-identity.test.tsx:246-268`, `revocation.test.tsx:171-185`); Phase 1's SDK floor and
+  Phase 2's display logic agree on a live SDK call, not just parallel unit tests
+  (`sdk-verification.integration.test.ts:76-147`, real `verifyManifestEnvelope`/
+  `verifyRevocationList` output fed through the real badge functions).
+- **Two genuine gaps found and closed, additive only, no phase's shipped code touched:**
+  `event-cards.test.tsx` gained a test rendering `delegation.redeeming` — the one Phase 3 card
+  actually wired through `<Line ts={offset}>` — with a `baseTs`, mutation-tested against the
+  production code to confirm it actually catches the offset's removal.
+  `federation-view.test.tsx` gained a describe block rendering the real `HandshakeErrorBanner`
+  and the real `manifest.verify_failed` `EventCard` together for the same underlying failure
+  (outcome 6, `peer_rejected`), confirming the banner defers, the card supplies the verdict, and
+  neither contradicts the other — the Phase 3 + Phase 5 payoff the plan's own Approach section
+  names.
+- **Docs:** fixed `docs/CONVENTIONS.md`'s integration-test bullet, which named only
+  `bff-routes.integration.test.ts` and missed Phase 1's `sdk-verification.integration.test.ts`
+  (also self-contained, also ungated). Reconsidered Phase 7's flagged `docs/ARCHITECTURE.md`
+  federation gap and confirmed it's correctly left alone: the console's own topology is
+  unchanged by federation, since the peer hop happens inside playground, not in this repo.
+  `docs/FEATURES.md`/`docs/PROXIES.md` re-checked against the cumulative diff and found
+  accurate, including the `delegation.redeeming`-is-the-only-offset-card detail Phase 7 already
+  documented correctly.
+- **Integration boundary review:** no new uncovered boundary found. The run-events SSE route
+  shares its passthrough implementation with the already-tested CP-events route
+  (`bff-routes.integration.test.ts:459-482`); Phase 5's non-2xx hosted-agents coverage and
+  Phase 1's SDK integration coverage were both confirmed real and adequate, not duplicated.
+- **Honestly not verifiable in this pass:** no repo-automated (non-manual, non-LLM-gated) test
+  drives a live playground service into emitting one of the six new trust-event types over a
+  real SSE connection. That verification happened manually during Phase 3's own review
+  (independently re-run by its round-2 verifier) and would need a failure-injection harness this
+  pass did not build.
+- **Regression:** `typecheck`, `lint`, `format:check`, `test`, `build`, `test:integration` all
+  re-run clean from this state after the additions above (see the finalization pass's own report
+  for exact counts).
+- **What's next:** `/reconcile` (ASSUMPTIONS.md has accumulated UNCONFIRMED entries across every
+  phase plus this pass), then `/ship`.

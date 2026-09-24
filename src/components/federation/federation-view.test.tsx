@@ -1,8 +1,9 @@
-import { screen, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithClient } from '@/test/test-utils';
 import { C } from '@/lib/colors';
-import type { HostedAgent } from '@/lib/types/playground';
+import { EventCard } from '@/components/runs/event-cards';
+import type { HostedAgent, RunEvent } from '@/lib/types/playground';
 
 const getMock = jest.fn();
 const postMock = jest.fn();
@@ -400,5 +401,75 @@ describe('handshake banner — scope', () => {
       'Error: DELETE /api/playground/hosted-agents/h1 failed: 404 — {"detail":"no hosted agent h1"}',
     );
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Finalization-pass addition: the plan's own Phase 5 Approach section calls
+ * this the "real payoff of doing Phases 3 and 5 in the same plan" — a 502
+ * here (outcome 6, `peer_rejected`) is produced by exactly the same
+ * underlying event as a `manifest.verify_failed` run-timeline card
+ * (`agent_admin.py`'s admin endpoint 502s "for anything a downstream peer
+ * did", per `federation-errors.ts`'s own doc comment, and the peer's
+ * verification failure is what the run's `manifest.verify_failed` event
+ * reports). Every existing test above checks the banner's *negative*
+ * property in isolation ("claims no verification verdict on a 502") — none
+ * of them render the timeline card the banner defers to, for the same
+ * scenario, to confirm the deferral actually resolves to something and the
+ * two surfaces do not talk past or contradict each other.
+ */
+describe('handshake banner + run timeline — the same underlying failure, told honestly on both surfaces', () => {
+  it('a peer manifest rejection: the banner defers, the timeline card supplies the verdict, and neither restates the other', async () => {
+    // 1) The federation surface: the peer's admin endpoint 502'd because the
+    //    peer's own manifest failed verification. This is real outcome 6
+    //    (`DETAIL.peerRejected`, the same fixture the other tests in this
+    //    file use), captured from playground's actual router.
+    const banner = await handshakeFailingWith(
+      fastapiError(502, DETAIL.peerRejected),
+    );
+    expect(banner).toHaveAttribute('data-outcome', 'peer_rejected');
+    const headline = within(banner).getByTestId('handshake-banner-headline');
+    const body = within(banner).getByTestId('handshake-banner-body');
+    // The banner asserts no verdict of its own — this is the property the
+    // existing "claims no verification verdict on a 502" test already pins,
+    // repeated here as the premise the rest of this test depends on.
+    expect(`${headline.textContent} ${body.textContent}`).not.toMatch(
+      /manifest|verif/i,
+    );
+    expect(body.textContent).toContain(
+      'The run timeline carries the trust events that name the cause.',
+    );
+
+    // 2) The run timeline: the REAL `manifest.verify_failed` card (Phase 3's
+    //    production component, not a stand-in) for the same underlying
+    //    failure — a peer whose manifest's signature did not verify.
+    const evt: RunEvent = {
+      type: 'manifest.verify_failed',
+      ts: 0,
+      cause: 'signature_invalid',
+      source_url: 'https://org-b.example.com/.well-known/aitp-manifest',
+      agent_id: 'org-a',
+    };
+    const { container: timeline } = render(<EventCard evt={evt} />);
+
+    // The timeline is where the actual cause lives, exactly as the banner
+    // said it would be.
+    expect(within(timeline).getByText('MANIFEST REJECTED')).toHaveStyle({
+      color: C.red,
+    });
+    expect(timeline).toHaveTextContent(
+      'verification failed (signature_invalid)',
+    );
+
+    // 3) Coherence: each surface stays inside what it actually knows, and
+    //    neither one repeats — or contradicts — the other's claim.
+    //    The banner never states the specific verdict only the timeline
+    //    established...
+    expect(banner).not.toHaveTextContent('MANIFEST REJECTED');
+    expect(banner).not.toHaveTextContent('signature_invalid');
+    //    ...and the timeline card, which knows nothing about the handshake
+    //    or the peer's reachability, makes no claim about either.
+    expect(timeline).not.toHaveTextContent(/handshake/i);
+    expect(timeline).not.toHaveTextContent(/peer/i);
   });
 });

@@ -936,6 +936,34 @@ describe('the discretionary delegation.issued / delegation.redeeming pair', () =
     expect(container).toHaveTextContent('writer ⇒ editor: redeeming delegation…');
     expect(container.querySelector('.pulse')).not.toBeNull();
   });
+
+  // Finalization-pass addition. Of the trust cards Phase 3 added,
+  // `delegation.redeeming` is the ONLY one rendered through `<Line ts={offset}>`
+  // rather than a bare `TrustCard` — see the ASSUMPTIONS.md entry for Phase 4
+  // ("...seven event types render no time at all, and still do"), which
+  // enumerates the other six/seven new-or-touched cards as never calling
+  // `formatOffset` at all. That makes this the one place Phase 3's new
+  // vocabulary and Phase 4's epoch-seconds fix actually compose in the same
+  // rendered row, and the test above never passes `baseTs`, so `offset` is
+  // always `undefined` there and `Line`'s `{ts && ...}` guard never fires.
+  it('delegation.redeeming renders a Phase-4-correct run-relative offset, not just the pulsing dot', () => {
+    render(
+      <EventCard
+        evt={evt({
+          type: 'delegation.redeeming',
+          initiator: 'writer',
+          target: 'editor',
+          ts: BASE_TS + 1.5,
+        })}
+        baseTs={BASE_TS}
+      />,
+    );
+    expect(screen.getByText('+1.5s')).toBeInTheDocument();
+    // What the pre-Phase-4 code would have rendered for this exact epoch-
+    // second delta, had it reached this card (see the identical regression
+    // pin above, `+29566.7m`, for the sibling bug this fixes network-wide).
+    expect(screen.queryByText(/29566/)).not.toBeInTheDocument();
+  });
 });
 
 describe('unmodelled trust event types', () => {

@@ -866,3 +866,107 @@ direct diff against the pre-Phase-7 content). If a future reader wants more of t
 forensic detail restored, that is a follow-up edit to this same file with no code impact.
 
 **Status:** UNCONFIRMED
+
+## Finalization pass — two whole-feature test gaps closed, none of them a phase regression
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** The finalization brief asks for a whole-feature test-gap analysis over behaviour that
+only exists in the *combination* of phases, distinct from each phase's own (already-verified) unit
+coverage, and to write a test only where a genuine gap is confirmed by reading the actual test
+files — not to guess.
+
+**Chose, after reading the real test files rather than assuming:** Two of the five named
+cross-phase seams already had real, non-mocked coverage and needed nothing added — logged here so
+the reasoning is on record, not just the conclusion:
+- Phase 3 cards rendering an unassessed manifest/revocation `cause` through Phase 2's real
+  predicates: already covered end-to-end, unmocked. `event-cards.tsx` imports
+  `isUnassessedManifestCode`/`isUnassessedRevocationCode` directly from `verification-display.ts`
+  (`src/components/runs/event-cards.tsx:19-23`); `event-cards.test.tsx` has no `jest.mock` for
+  that module, and its `manifestVerifyFailedVerdict`/`revocationVerifyFailedVerdict` tests
+  (`event-cards.test.tsx:468-530`) plus the `manifest.verify_failed`/`revocation.verify_failed`
+  card tests (`:575-584`, `:586-594`, `:615-628`) drive real codes (`expired`, `version_unknown`,
+  `unknown`, `malformed_body`) through the production predicate, not a hand-rolled stand-in.
+- Phase 6's `entriesGreyed`-conditioned captions against Phase 2's real
+  `revocationVerdictBadge`/`manifestVerdictBadge`: also already covered end-to-end. Both
+  `cp-identity.tsx` and `revocation.tsx` import the real functions (`cp-identity.tsx:11`,
+  `revocation.tsx:12`); their test files mock only `@/lib/api/client` (the network layer), and the
+  suppression tests drive real verdict shapes through them —
+  `cp-identity.test.tsx:246-268` (`no_trusted_issuer` and `signature_invalid`, both real codes) and
+  `revocation.test.tsx:171-185` (the same two, through `RevocationView`).
+
+Two seams had a genuine, confirmed gap, and got a test each (both additive, no phase's shipped
+code changed):
+- **Phase 3 × Phase 4 (offset on a new card).** Of the seven trust/delegation cards Phase 3 added,
+  `delegation.redeeming` is the *only* one wired through `<Line ts={offset}>` — the other six use
+  `TrustCard`, which never receives `baseTs` and has never called `formatOffset`
+  (`event-cards.tsx:216-243`; the exhaustive list of the other six is already recorded in this
+  file's Phase 4 entry, "seven event types render no time at all, and still do"). The one existing
+  test for this card (`event-cards.test.tsx`, "delegation.redeeming names both parties with a
+  pulsing dot") never passed `baseTs`, so `offset` was always `undefined` and `Line`'s `{ts && ...}`
+  guard never fired — the one card that *does* compose Phase 3's vocabulary with Phase 4's fix was
+  untested for exactly that composition. Added
+  `event-cards.test.tsx`, "delegation.redeeming renders a Phase-4-correct run-relative offset, not
+  just the pulsing dot" — mutation-tested directly (reverted `ts={offset}` to `ts={undefined}` on
+  the production case, confirmed the new test fails; restored, confirmed green).
+- **Phase 3 × Phase 5 (banner/timeline coherence).** `federation-errors.ts`'s central honesty
+  constraint — a 502 must defer to "the run timeline's `manifest.verify_failed` card" for the real
+  cause (`federation-errors.ts:46-55`) — had tests for the banner's *negative* property in
+  isolation (`federation-view.test.tsx:267-286`, "claims no verification verdict on a 502") but
+  nothing rendered the timeline card the banner defers to, for the same scenario, to confirm the
+  deferral resolves to something and the two surfaces don't talk past each other. Added a new
+  describe block to `federation-view.test.tsx` ("handshake banner + run timeline — the same
+  underlying failure, told honestly on both surfaces") that renders the real `HandshakeErrorBanner`
+  (via `FederationView`) for outcome 6 (`peer_rejected`) alongside the real `EventCard` for
+  `manifest.verify_failed` with a matching cause, and asserts: the banner defers and states no
+  verdict of its own; the timeline card supplies the actual verdict; and neither surface repeats or
+  contradicts the other (the banner never says "MANIFEST REJECTED" or `signature_invalid`; the
+  card never mentions "handshake" or "peer").
+
+Also fixed, as a stale-doc find rather than a test gap:
+`docs/CONVENTIONS.md`'s "Self-contained" integration-test bullet named only
+`bff-routes.integration.test.ts` and described "call the real route handlers against an in-process
+mock upstream" — accurate for that file, but Phase 1 added a second self-contained,
+`RUN_INTEGRATION`-ungated integration file, `src/test/sdk-verification.integration.test.ts`, which
+calls the real `aitp` native addon directly and fits neither the named example nor its description.
+Reworded the bullet to name both files and describe each accurately.
+
+**Also considered and left as-is, on the finalization brief's own invitation to make this call:**
+`docs/ARCHITECTURE.md`'s topology diagram and prose describe the console as talking to exactly two
+upstreams, playground (`:8000`) and CP (`:4000`) (`ARCHITECTURE.md:15-47`), and say nothing about
+federation. Phase 7 flagged this as "already-correct except for missing federation content" and
+treated adding it as optional. Confirmed that call still holds: the federation handshake proxy is,
+from this repo's perspective, an ordinary `/api/playground/hosted-agents/**` BFF route like any
+other — it still only ever talks to playground; the actual peer hop happens *inside* playground's
+`agent_admin.py`/`hosted.py`, which this console never calls and never sees. The diagram's two-box
+topology is therefore still literally true; nothing in the cumulative diff added a third upstream
+the console itself reaches. `docs/FEATURES.md` is where the federation feature and its seven
+handshake outcomes are actually documented (`FEATURES.md:230-260`, confirmed present and accurate),
+which is the doc `ARCHITECTURE.md`'s own header says feature behaviour belongs in. Separately
+noted, and explicitly NOT fixed (out of scope for this plan): `ARCHITECTURE.md:28`'s topology
+diagram still says "Next.js 15" while `package.json` pins Next 16 as of `6b0ec52`, the pre-branch
+tip — a pre-existing inaccuracy this plan did not introduce and whose diff shows byte-identical
+against `6b0ec52`, not something this plan's cumulative changes made stale.
+
+**Alternatives:** For the two closed gaps — leave them unaddressed and report only "no test found"
+(rejected — the brief is explicit that a genuine gap gets a test, not just a citation). Add a
+`baseTs`-bearing test for all seven new event types uniformly, to make the offset question moot
+(rejected — six of them render no offset by design, per the Phase 4 assumption already on record;
+asserting an offset test against a card that has none would either be vacuous or would wrongly
+assert a design decision this plan never took, the exact trap that Phase 4 entry already declined).
+For the banner/timeline coherence gap — add the test to `event-cards.test.tsx` instead, importing
+`classifyFederationError` (rejected — the coherence claim is specifically that a real *rendered*
+banner and a real *rendered* card don't contradict each other, which needs both components
+mounted; `federation-view.test.tsx` already owns the full `handshakeFailingWith` harness for
+mounting the banner, so extending it there is one new describe block versus rebuilding that
+harness in a second file). For `docs/ARCHITECTURE.md` — add a federation topology note anyway,
+since the brief permits it (rejected on the merits above: the diagram would be adding a box for a
+hop this repo's own code never makes, which is the overclaim class this entire plan exists to
+remove, one layer up in a diagram instead of a badge).
+
+**Blast radius if wrong:** All additive test/doc changes; no phase's shipped `src/` behaviour was
+touched. If a reviewer prefers the two new tests placed elsewhere or judges the
+`ARCHITECTURE.md` call differently, both are small, independent edits with no other test or
+component depending on either.
+
+**Status:** UNCONFIRMED

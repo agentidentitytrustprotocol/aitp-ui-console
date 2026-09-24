@@ -88,9 +88,12 @@ ephemeral UI state only (e.g. an inline confirm dialog).
   pattern.
 - Integration tests live in `src/test/*.integration.test.ts` (node
   environment, `jest.integration.config.js`). Two kinds:
-  - **Self-contained** (`bff-routes.integration.test.ts`) — call the real
-    route handlers against an in-process mock upstream; run everywhere,
-    including CI, with no services.
+  - **Self-contained** — run everywhere, including CI, with no services.
+    `bff-routes.integration.test.ts` calls the real route handlers against
+    an in-process mock upstream; `sdk-verification.integration.test.ts`
+    calls the real `aitp` native addon directly against committed fixtures
+    (it needs the addon, not a running service, so it isn't `RUN_INTEGRATION`-gated
+    either).
   - **Live-service** (`proxies`, `cp-mutations`, `scenario-run`) — gated
     by `RUN_INTEGRATION=1` (and `RUN_LLM_INTEGRATION=1` for the scenario
     run); they hit a real running console + CP + playground and skip

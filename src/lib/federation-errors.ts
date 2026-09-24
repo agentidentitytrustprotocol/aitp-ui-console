@@ -160,7 +160,8 @@ export function parseFederationErrorBody(body: string | undefined): ParsedBody {
   } catch {
     return { raw };
   }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return { raw };
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
+    return { raw };
   const obj = parsed as Record<string, unknown>;
 
   if (typeof obj.error === 'string') return { proxyError: obj.error, raw };
@@ -170,7 +171,9 @@ export function parseFederationErrorBody(body: string | undefined): ParsedBody {
       playgroundError: {
         code: typeof inner.code === 'string' ? inner.code : 'unknown',
         message:
-          typeof inner.message === 'string' ? inner.message : JSON.stringify(inner),
+          typeof inner.message === 'string'
+            ? inner.message
+            : JSON.stringify(inner),
       },
       raw,
     };
@@ -239,7 +242,9 @@ function looksLikeApiError(error: unknown): error is ApiError {
  * Returns `null` for a falsy error so the caller can render nothing, matching
  * the old `ErrorBanner`'s `if (!error) return null`.
  */
-export function classifyFederationError(error: unknown): FederationErrorView | null {
+export function classifyFederationError(
+  error: unknown,
+): FederationErrorView | null {
   if (!error) return null;
 
   if (!looksLikeApiError(error)) {
@@ -319,7 +324,10 @@ export function classifyFederationError(error: unknown): FederationErrorView | n
     );
   }
 
-  if (status === 400 && parsed.detail?.startsWith('only did:web peers supported')) {
+  if (
+    status === 400 &&
+    parsed.detail?.startsWith('only did:web peers supported')
+  ) {
     return view(
       'not_did_web',
       'input',
@@ -337,7 +345,10 @@ export function classifyFederationError(error: unknown): FederationErrorView | n
   // claim the peer was "never contacted". What is true, and all that is
   // claimed here: the handshake *request* to the peer's agent endpoint was
   // never sent.
-  if (status === 409 && parsed.detail?.startsWith('refusing cross-domain handshake:')) {
+  if (
+    status === 409 &&
+    parsed.detail?.startsWith('refusing cross-domain handshake:')
+  ) {
     return view(
       'loopback_refused',
       'blocked',
@@ -395,7 +406,10 @@ export function classifyFederationError(error: unknown): FederationErrorView | n
   // an attempt was made, it just did not succeed. The handshake request to
   // the peer's agent endpoint was never sent, because there was no resolved
   // origin left to send it to.
-  if (status === 502 && parsed.detail?.startsWith('did:web resolution failed')) {
+  if (
+    status === 502 &&
+    parsed.detail?.startsWith('did:web resolution failed')
+  ) {
     return view(
       'did_web_unresolvable',
       'failed',

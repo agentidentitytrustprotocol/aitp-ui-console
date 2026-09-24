@@ -42,7 +42,8 @@ const DETAIL = {
     'refusing cross-domain handshake: did:web:org-b.example.com resolved to a loopback origin (http://127.0.0.1:9102); expected a real remote origin',
   originMismatch:
     "did:web origin mismatch: did:web:org-b.example.com resolved to 'evil.example.com', expected 'org-b.example.com'",
-  peerRejected: 'handshake failed (502): {"detail": "peer manifest verification failed"}',
+  peerRejected:
+    'handshake failed (502): {"detail": "peer manifest verification failed"}',
   unreachablePeer: 'handshake failed: All connection attempts failed',
 } as const;
 
@@ -79,20 +80,31 @@ async function handshakeFailingWith(error: unknown): Promise<HTMLElement> {
 
   await screen.findByText('federated/org-a@1.0.0');
   await user.click(screen.getByRole('button', { name: /Handshake & invoke/i }));
-  await user.type(screen.getByLabelText('peer_did'), 'did:web:org-b.example.com');
+  await user.type(
+    screen.getByLabelText('peer_did'),
+    'did:web:org-b.example.com',
+  );
   await user.click(screen.getByRole('button', { name: 'Resolve & handshake' }));
 
   return await screen.findByRole('alert');
 }
 
-function fastapiError(status: number, detail: string, truncated = false): ApiError {
+function fastapiError(
+  status: number,
+  detail: string,
+  truncated = false,
+): ApiError {
   return new ApiError('POST', HANDSHAKE_PATH, status, {
     text: JSON.stringify({ detail }),
     truncated,
   });
 }
 
-function rawError(status: number, text: string | undefined, truncated = false): ApiError {
+function rawError(
+  status: number,
+  text: string | undefined,
+  truncated = false,
+): ApiError {
   return new ApiError('POST', HANDSHAKE_PATH, status, { text, truncated });
 }
 
@@ -103,10 +115,14 @@ function rawError(status: number, text: string | undefined, truncated = false): 
  */
 describe('handshake banner — the seven fail-closed outcomes', () => {
   it('1 · 404: names the stale list and stays out of red', async () => {
-    const banner = await handshakeFailingWith(fastapiError(404, DETAIL.agentGone));
+    const banner = await handshakeFailingWith(
+      fastapiError(404, DETAIL.agentGone),
+    );
 
     expect(banner).toHaveAttribute('data-outcome', 'agent_gone');
-    expect(screen.getByText('Hosted agent not found')).toHaveStyle({ color: C.blue });
+    expect(screen.getByText('Hosted agent not found')).toHaveStyle({
+      color: C.blue,
+    });
     expect(
       screen.getByText(
         "The playground has no hosted agent with this id, so nothing was attempted. The console's list is stale — refresh it and host the agent again.",
@@ -117,10 +133,14 @@ describe('handshake banner — the seven fail-closed outcomes', () => {
   });
 
   it('2 · 400: says only did:web is supported and that nothing was contacted', async () => {
-    const banner = await handshakeFailingWith(fastapiError(400, DETAIL.notDidWeb));
+    const banner = await handshakeFailingWith(
+      fastapiError(400, DETAIL.notDidWeb),
+    );
 
     expect(banner).toHaveAttribute('data-outcome', 'not_did_web');
-    expect(screen.getByText('Only did:web peers are supported')).toHaveStyle({ color: C.blue });
+    expect(screen.getByText('Only did:web peers are supported')).toHaveStyle({
+      color: C.blue,
+    });
     expect(
       screen.getByText(
         'The playground rejected the peer identifier before resolving anything. No DID document was fetched and no peer was contacted.',
@@ -130,23 +150,33 @@ describe('handshake banner — the seven fail-closed outcomes', () => {
   });
 
   it('3 · 502 resolution failure: claims nothing about the peer identity', async () => {
-    const banner = await handshakeFailingWith(fastapiError(502, DETAIL.unresolvable));
+    const banner = await handshakeFailingWith(
+      fastapiError(502, DETAIL.unresolvable),
+    );
 
     expect(banner).toHaveAttribute('data-outcome', 'did_web_unresolvable');
-    expect(screen.getByText('did:web resolution failed')).toHaveStyle({ color: C.red });
+    expect(screen.getByText('did:web resolution failed')).toHaveStyle({
+      color: C.red,
+    });
     expect(
       screen.getByText(
         "The playground attempted to fetch the peer's DID document but the request failed or the document could not be parsed, so no peer origin was established and the handshake was never sent to the peer's agent endpoint.",
       ),
     ).toBeInTheDocument();
-    expect(banner).toHaveTextContent('[Errno 8] nodename nor servname provided');
+    expect(banner).toHaveTextContent(
+      '[Errno 8] nodename nor servname provided',
+    );
   });
 
   it('4 · 409 loopback: reads as a control working, in amber, not as an error', async () => {
-    const banner = await handshakeFailingWith(fastapiError(409, DETAIL.loopback));
+    const banner = await handshakeFailingWith(
+      fastapiError(409, DETAIL.loopback),
+    );
 
     expect(banner).toHaveAttribute('data-outcome', 'loopback_refused');
-    const headline = screen.getByText('Refused by design: peer resolved to loopback');
+    const headline = screen.getByText(
+      'Refused by design: peer resolved to loopback',
+    );
     expect(headline).toHaveStyle({ color: C.amber });
     expect(headline).not.toHaveStyle({ color: C.red });
     expect(
@@ -158,10 +188,14 @@ describe('handshake banner — the seven fail-closed outcomes', () => {
   });
 
   it('5 · 409 origin mismatch: amber, and both disagreeing values are on screen', async () => {
-    const banner = await handshakeFailingWith(fastapiError(409, DETAIL.originMismatch));
+    const banner = await handshakeFailingWith(
+      fastapiError(409, DETAIL.originMismatch),
+    );
 
     expect(banner).toHaveAttribute('data-outcome', 'origin_mismatch');
-    expect(screen.getByText('Refused by design: did:web origin mismatch')).toHaveStyle({
+    expect(
+      screen.getByText('Refused by design: did:web origin mismatch'),
+    ).toHaveStyle({
       color: C.amber,
     });
     expect(
@@ -174,27 +208,39 @@ describe('handshake banner — the seven fail-closed outcomes', () => {
   });
 
   it("6 · 502 peer refusal: quotes the peer's status and body, asserts no verdict", async () => {
-    const banner = await handshakeFailingWith(fastapiError(502, DETAIL.peerRejected));
+    const banner = await handshakeFailingWith(
+      fastapiError(502, DETAIL.peerRejected),
+    );
 
     expect(banner).toHaveAttribute('data-outcome', 'peer_rejected');
-    expect(screen.getByText('The peer answered and refused')).toHaveStyle({ color: C.red });
+    expect(screen.getByText('The peer answered and refused')).toHaveStyle({
+      color: C.red,
+    });
     // The peer's own words, verbatim — the only place they survive.
     expect(banner).toHaveTextContent('handshake failed (502)');
     expect(banner).toHaveTextContent('peer manifest verification failed');
     // …but the console's own sentence makes no verification claim of its own.
     expect(
       screen.getByText(/Every downstream status is flattened to 502/),
-    ).toHaveTextContent('The run timeline carries the trust events that name the cause.');
+    ).toHaveTextContent(
+      'The run timeline carries the trust events that name the cause.',
+    );
   });
 
   it('7 · 502 incomplete handshake: says only that it did not finish', async () => {
-    const banner = await handshakeFailingWith(fastapiError(502, DETAIL.unreachablePeer));
+    const banner = await handshakeFailingWith(
+      fastapiError(502, DETAIL.unreachablePeer),
+    );
 
     expect(banner).toHaveAttribute('data-outcome', 'handshake_incomplete');
-    expect(screen.getByText('Handshake did not complete')).toHaveStyle({ color: C.red });
+    expect(screen.getByText('Handshake did not complete')).toHaveStyle({
+      color: C.red,
+    });
     expect(
       screen.getByText(/The handshake was attempted and did not finish/),
-    ).toHaveTextContent('The run timeline carries the trust events that name the cause.');
+    ).toHaveTextContent(
+      'The run timeline carries the trust events that name the cause.',
+    );
     expect(banner).toHaveTextContent('All connection attempts failed');
   });
 });
@@ -221,22 +267,31 @@ describe('handshake banner — honesty properties that hold across outcomes', ()
   it.each([
     ['peer refused', DETAIL.peerRejected],
     ['handshake incomplete', DETAIL.unreachablePeer],
-  ] as const)('claims no verification verdict on a 502 (%s)', async (_name, detail) => {
-    const banner = await handshakeFailingWith(fastapiError(502, detail));
+  ] as const)(
+    'claims no verification verdict on a 502 (%s)',
+    async (_name, detail) => {
+      const banner = await handshakeFailingWith(fastapiError(502, detail));
 
-    // Scoped to the console's own copy via stable test ids — the `<pre>`
-    // quoting the upstream may legitimately contain those words, and
-    // dropping them would be worse. DOM-position traversal (`firstElementChild`
-    // / `nextElementSibling`) would silently mis-target if another element
-    // were ever inserted into the banner ahead of these two.
-    const headline = within(banner).getByTestId('handshake-banner-headline');
-    const body = within(banner).getByTestId('handshake-banner-body');
-    expect(`${headline.textContent} ${body.textContent}`).not.toMatch(/manifest|verif/i);
-  });
+      // Scoped to the console's own copy via stable test ids — the `<pre>`
+      // quoting the upstream may legitimately contain those words, and
+      // dropping them would be worse. DOM-position traversal (`firstElementChild`
+      // / `nextElementSibling`) would silently mis-target if another element
+      // were ever inserted into the banner ahead of these two.
+      const headline = within(banner).getByTestId('handshake-banner-headline');
+      const body = within(banner).getByTestId('handshake-banner-body');
+      expect(`${headline.textContent} ${body.textContent}`).not.toMatch(
+        /manifest|verif/i,
+      );
+    },
+  );
 
   it('labels a truncated body as incomplete rather than showing it as whole', async () => {
     const banner = await handshakeFailingWith(
-      rawError(502, `{"detail": "handshake failed (502): ${'z'.repeat(460)}`, true),
+      rawError(
+        502,
+        `{"detail": "handshake failed (502): ${'z'.repeat(460)}`,
+        true,
+      ),
     );
 
     // Asserted against the live constant, not a hardcoded "500", so this
@@ -252,19 +307,29 @@ describe('handshake banner — the shapes that are not playground HTTPExceptions
     const banner = await handshakeFailingWith(
       rawError(
         504,
-        JSON.stringify({ error: 'Upstream timeout', target: 'x', upstream_status: 504 }),
+        JSON.stringify({
+          error: 'Upstream timeout',
+          target: 'x',
+          upstream_status: 504,
+        }),
       ),
     );
 
     expect(banner).toHaveAttribute('data-outcome', 'console_proxy_timeout');
-    expect(screen.getByText('Playground did not answer in time')).toBeInTheDocument();
+    expect(
+      screen.getByText('Playground did not answer in time'),
+    ).toBeInTheDocument();
   });
 
   it("does not read the proxy's own 502 as a peer that refused", async () => {
     const banner = await handshakeFailingWith(
       rawError(
         502,
-        JSON.stringify({ error: 'Upstream unreachable', target: 'x', upstream_status: 502 }),
+        JSON.stringify({
+          error: 'Upstream unreachable',
+          target: 'x',
+          upstream_status: 502,
+        }),
       ),
     );
 
@@ -274,7 +339,12 @@ describe('handshake banner — the shapes that are not playground HTTPExceptions
 
   it("renders playground's {error:{code,message}} without [object Object]", async () => {
     const banner = await handshakeFailingWith(
-      rawError(404, JSON.stringify({ error: { code: 'run_not_found', message: 'no run r1' } })),
+      rawError(
+        404,
+        JSON.stringify({
+          error: { code: 'run_not_found', message: 'no run r1' },
+        }),
+      ),
     );
 
     expect(banner).toHaveAttribute('data-outcome', 'playground_error');
@@ -306,7 +376,9 @@ describe('handshake banner — scope', () => {
     const user = userEvent.setup();
     renderWithClient(<FederationView />);
     await screen.findByText('federated/org-a@1.0.0');
-    await user.click(screen.getByRole('button', { name: /Handshake & invoke/i }));
+    await user.click(
+      screen.getByRole('button', { name: /Handshake & invoke/i }),
+    );
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });

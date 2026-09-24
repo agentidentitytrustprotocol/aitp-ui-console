@@ -18,9 +18,12 @@ describe('useRunTimeBase', () => {
   });
 
   it('keeps the base when later renders append events', () => {
-    const { result, rerender } = renderHook((events: { ts: number }[]) => useRunTimeBase(events), {
-      initialProps: [ev(T0)],
-    });
+    const { result, rerender } = renderHook(
+      (events: { ts: number }[]) => useRunTimeBase(events),
+      {
+        initialProps: [ev(T0)],
+      },
+    );
     rerender([ev(T0), ev(T0 + 1), ev(T0 + 2)]);
     expect(result.current).toBe(T0);
   });
@@ -29,9 +32,12 @@ describe('useRunTimeBase', () => {
     // `use-run-events.ts` caps the buffer at 500 and drops the oldest events,
     // so `events[0]` moves forward on a long run. Recomputing from `events[0]`
     // each render would make every offset in the timeline jump down at once.
-    const { result, rerender } = renderHook((events: { ts: number }[]) => useRunTimeBase(events), {
-      initialProps: [ev(T0), ev(T0 + 1), ev(T0 + 2)],
-    });
+    const { result, rerender } = renderHook(
+      (events: { ts: number }[]) => useRunTimeBase(events),
+      {
+        initialProps: [ev(T0), ev(T0 + 1), ev(T0 + 2)],
+      },
+    );
     expect(result.current).toBe(T0);
 
     rerender([ev(T0 + 1), ev(T0 + 2)]); // front dropped
@@ -47,9 +53,12 @@ describe('useRunTimeBase', () => {
     // event, so a base captured from an already-evicted buffer is too LATE and
     // every offset after the swap would go negative. Only `Math.min` is right
     // under both this and the eviction case above.
-    const { result, rerender } = renderHook((events: { ts: number }[]) => useRunTimeBase(events), {
-      initialProps: [ev(T0 + 40), ev(T0 + 41)], // live buffer, front already evicted
-    });
+    const { result, rerender } = renderHook(
+      (events: { ts: number }[]) => useRunTimeBase(events),
+      {
+        initialProps: [ev(T0 + 40), ev(T0 + 41)], // live buffer, front already evicted
+      },
+    );
     expect(result.current).toBe(T0 + 40);
 
     rerender([ev(T0), ev(T0 + 40), ev(T0 + 41)]); // persisted record, from the top
@@ -64,10 +73,13 @@ describe('useRunTimeBase', () => {
     // The base is lowered with a render-time `setState`, so the double
     // invocation StrictMode forces is the case that would either loop forever
     // or land on the wrong value if the guard were wrong.
-    const { result, rerender } = renderHook((events: { ts: number }[]) => useRunTimeBase(events), {
-      initialProps: [ev(T0 + 40)],
-      wrapper: StrictMode,
-    });
+    const { result, rerender } = renderHook(
+      (events: { ts: number }[]) => useRunTimeBase(events),
+      {
+        initialProps: [ev(T0 + 40)],
+        wrapper: StrictMode,
+      },
+    );
     expect(result.current).toBe(T0 + 40);
 
     rerender([ev(T0), ev(T0 + 40)]);

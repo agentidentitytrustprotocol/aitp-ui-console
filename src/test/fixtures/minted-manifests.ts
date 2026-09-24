@@ -129,7 +129,8 @@
 export const PINNED_NOW_UNIX_SECS = 1_711_900_000;
 
 /** The AID all three fixtures are issued for (a spec KAT keypair). */
-export const FIXTURE_AID = 'aid:pubkey:A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg';
+export const FIXTURE_AID =
+  'aid:pubkey:A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg';
 
 /**
  * Carries neither disputed member. Verifies on 0.10.0 AND 0.12.0 — the

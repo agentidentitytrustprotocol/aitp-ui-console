@@ -38,7 +38,9 @@ import { useState } from 'react';
  *
  *  Returns `undefined` until the first event with a usable `ts` arrives;
  *  callers render no offset rather than `NaN`. */
-export function useRunTimeBase(events: readonly { ts?: number }[]): number | undefined {
+export function useRunTimeBase(
+  events: readonly { ts?: number }[],
+): number | undefined {
   const [base, setBase] = useState<number | undefined>(undefined);
 
   const first = events.length > 0 ? events[0].ts : undefined;

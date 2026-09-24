@@ -822,3 +822,47 @@ too, that is an additive edit to two files outside this phase's scope, decided o
 whoever owns Phase 7's documentation sweep or a follow-up.
 
 **Status:** UNCONFIRMED
+
+## Phase 7's `PROGRESS.md` Repo map refresh — how much of the pre-implementation detail to keep
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** Phase 7 step 7 says only "refresh in place ... this phase updates the map to the
+post-implementation tree," without specifying how much of the pre-implementation forensic detail
+(per-round `[R2]`/`[R3]`/`[R4]` correction markers, exhaustive line-number citations for code that
+Phases 1-6 have since rewritten) to preserve versus replace. The acceptance criterion is only
+"`PROGRESS.md`'s repo map reflects the post-implementation tree."
+
+**Chose:** Replaced the planning-era "Repo map" body (everything between the `## Repo map` heading
+and `## Phase log`, ~570 lines) with a shorter post-implementation version, grouped by the same
+phase headings but describing what actually shipped rather than the pre-implementation starting
+point, plus a new "New files this branch added" list built from
+`git diff --name-status 6b0ec52..HEAD`. Kept the substance of the "Sibling-repo ground truth"
+subsection (what it says about `aitp-control-plane`/`aitp-rs`/the spec repo/`aitp-playground`,
+none of which this branch touched, so it remains valid reference), but condensed it heavily —
+from roughly 223 lines to 69, a ~70% cut, not the "lightly trimmed" this entry first claimed.
+Did not carry forward every `[R2]`/`[R3]`/`[R4]` review-round citation or every planning-era
+line-number claim about this repo's *own* code, since most of that described code Phases 1-6
+have since rewritten and would now read as current-state if left in place — the exact
+stale-claim failure mode the plan warns about elsewhere (e.g. `docs/ARCHITECTURE.md`'s
+"already correct" note). **Correction (Phase 7 close-out, post fresh-verification):** a
+round-1 verifier caught that this entry, and `PROGRESS.md`'s own in-file description, both
+understated the size of the cut — both now say "condensed" and name the ~70% figure rather
+than "essentially as written" / "lightly trimmed."
+
+**Alternatives:** Leave the pre-implementation map fully intact and append a short
+"post-implementation" addendum instead of rewriting in place (rejected — the file's own header
+states the convention is "refresh in place," and an addendum would leave the stale claims sitting
+directly above the corrections, inviting exactly the misreading the plan is trying to prevent).
+Do a line-for-line preservation of the original's full forensic depth, correcting only individual
+facts that changed (rejected as disproportionate for a docs-only phase with a regression gate still
+to run, and the original's per-round citation style was an artifact of the planning/review process
+rather than something a post-implementation reader needs).
+
+**Blast radius if wrong:** Contained to this one file's prose. Nothing in `src/` depends on
+`PROGRESS.md`'s wording, and the `## Phase log` section — which carries the per-phase verdicts and
+file lists a reviewer may actually rely on — was left byte-for-byte unchanged (verified with a
+direct diff against the pre-Phase-7 content). If a future reader wants more of the original's
+forensic detail restored, that is a follow-up edit to this same file with no code impact.
+
+**Status:** UNCONFIRMED

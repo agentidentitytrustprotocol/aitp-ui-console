@@ -7,353 +7,281 @@ Plan: `plans/absorb-cp-playground-changes.md` — the **merged** plan, and the o
 > do not implement from it. This repo map is the merged one — **one active plan's map at a time,
 > never appended**, per this repo's existing convention.
 
-## Repo map (written during planning — read this instead of re-scanning)
+## Repo map (refreshed post-implementation — Phase 7, 2026-09-23)
 
-Every path and line number below was read during a planning pass, re-verified by an independent
-review pass (round 2), re-verified a third time during the merge (round 3), and audited a fourth
-time by an independent post-merge review (round 4). Corrections are marked inline: **[R2]** from
-review round 2, **[R3]** from the merge, **[R4]** from the post-merge review. Line numbers drift
-as phases land — **re-grep before editing, never edit by line number alone.**
+Phases 1–6 have landed and are committed on `feature/absorb-cp-playground-changes`
+(`c67f73c`…`95ba08f`; see the Phase log below for the exact commits per phase). This section
+originally described the **pre-implementation** tree, read during planning to guide the six
+phases; Phase 7 rewrites it in place to describe what actually shipped, so a future reader
+doesn't mistake planning-era "current behaviour" claims (e.g. "`formatOffset` treats `evt.ts` as
+milliseconds since run start") for the state of `main` today. Line numbers still drift — **re-grep
+before editing, never edit by line number alone.** The **Sibling-repo ground truth** subsection
+below describes `aitp-control-plane`, `aitp-rs`, the spec repo, and `aitp-playground` as they
+stood during planning, none of which this branch touches, so it remains valid reference for the
+next person absorbing upstream drift — but it has been **condensed**, not retained as written:
+per-round provenance markers (`[R2]`/`[R3]`/`[R4]`), the `aitp-verifier-py` fixture-generation
+recipe, and most line-level citations describing pre-Phase-1 code that Phases 1–6 have since
+rewritten were cut. Treat it as a pointer to re-verify against the sibling repos directly, not as
+a forensic record of the original planning pass — that fuller record lives in this branch's own
+Phase-log entries below and in the git history up to Phase 7.
 
-> **Round 3 overturned three claims**, two of them load-bearing on Phase 1. The `aitp-rs` block
-> below is the one that changed most: `UnknownField` is in `0.12.0` **but cannot reach this
-> console**, and two of Phase 1's three proposed fixture tests are **not constructible from this
-> repo**. See the plan's `## Plan review — merge` section for the full list.
->
-> **Round 4 overturned six more, three of them load-bearing.** In short: **npm latest is
-> `0.13.0`, not `0.12.0`**; the **`aitp-v0.10.0` git tag is not the npm `0.10.0` release**
-> (Node binding `0.5.0` at that tag) so every "verified at the tag" claim about the installed
-> SDK was anchored to the wrong tree (the conclusions survive, re-anchored to `c7a7159`); the
-> **Tier-2 fixture generator the merge named (`bindings/aitp-py`) cannot build either fixture**;
-> **`revocation.verify_failed`'s cause set was wrong** and Phase 3 as written would have shipped
-> two fresh overclaims; **Phase 2's `--no-ignore` acceptance grep could never fail**; and
-> **`verify_manifest`'s own rustdoc contradicts the check order Phase 2 rests on**. See the
-> plan's `## Plan review — round 4 (post-merge)` section.
+### New files this branch added
+
+From `git diff --name-status 6b0ec52..HEAD` (`6b0ec52` is the pre-branch tip):
+
+- `src/lib/federation-errors.ts` + `federation-errors.test.ts` (Phase 5) — the handshake-outcome
+  classifier and its tests.
+- `src/hooks/use-run-time-base.ts` + `use-run-time-base.test.tsx` (Phase 4) — the monotonically-
+  lowering run time base.
+- `src/test/fixtures/minted-manifests.ts` (Phase 1) — committed Tier-2 evidence fixtures (`.ts`
+  module, not raw JSON — see the Phase 1 assumption entry for why).
+- `src/test/sdk-verification.integration.test.ts` (Phase 1) — ungated Tier-0 evidence; runs in CI
+  (no live service needed, only the native addon).
+- `src/components/federation/federation-view.test.tsx` (Phase 5) — did not exist before.
+- `src/components/runs/run-summary.test.tsx`, `run-timeline.test.tsx` (Phase 4).
+- `ASSUMPTIONS.md`, `PROGRESS.md` (this file) — process docs, not shipped product code.
+
+No files were deleted. `git diff --stat 6b0ec52..HEAD` (excluding `package-lock.json`'s mechanical
+diff): 36 files changed, ~6,200 insertions, ~130 deletions.
 
 ### Prerequisites and environment hazards
 
-- **`node_modules/` is absent in this checkout.** `npm ci` is a hard gate for every phase.
+- **`node_modules/` is absent in a fresh checkout.** `npm ci` is a hard gate for every phase.
   `AGENTS.md`'s instruction to read `node_modules/next/dist/docs/` is only followable afterward.
   `package.json:6` requires Node `>=22.13.0`.
 - **`plans/` is gitignored** (`.gitignore:15`, alongside `temp/` and `CLAUDE.md`);
-  `git ls-files plans/` is empty. **[R3]** Two consequences:
+  `git ls-files plans/` is empty. Two consequences:
   1. **The default `grep` here respects `.gitignore`**, so a recursive `grep -rn <pattern> .`
      silently skips `plans/`. Any acceptance criterion phrased as a repo-wide grep must **name
-     its paths explicitly**. **[R4] Do NOT use `--no-ignore`** — the fix R3 prescribed does not
-     work here: where `grep` is **ugrep 7.8.4** it **silently matches nothing** (so a
-     "returns zero hits" criterion passes on an untouched checkout), and where it is **BSD grep**
-     it is rejected outright; both exist in this environment. The working ugrep flag is
+     its paths explicitly**. Do **not** rely on `--no-ignore` — where `grep` is ugrep 7.8.4 it
+     silently matches nothing (a "returns zero hits" criterion would pass on an untouched
+     checkout); where it is BSD grep it is rejected outright. The working ugrep flag is
      `--no-ignore-files`, but the portable answer is explicit paths.
-  2. Plan-file edits never appear in a commit and are **not recoverable from git history**.
-     Anything that must survive belongs in `docs/`, a commit message, or `DECISIONS.md`.
-- **Coverage ratchet `79/63/70/80`** — `jest.config.js:30-34`. `verification-display.ts` is at
-  100% and must stay there.
+  2. Plan-file edits (including Phase 7's optional one in
+     `plans/playground-federation-and-run-label.md`) never appear in a commit and are **not
+     recoverable from git history**. Anything that must survive belongs in `docs/`, a commit
+     message, or `DECISIONS.md`.
+- **Coverage ratchet `79/63/70/80`** — `jest.config.js:30-34`. `verification-display.ts` and
+  `event-cards.tsx` are at or near 100% and should stay there.
 - `npm run` scripts (`package.json:8-19`): `dev`, `build`, `start`, `analyze`, `typecheck`,
   `lint`, `format`, `format:check`, `test` (jest), `test:watch`,
   `test:integration` (`jest.integration.config.js`).
 
-### Dependency surface (Phase 1)
+### Dependency surface (Phase 1) — shipped
 
-- `package.json:23` — `"aitp": "npm:@agentidentitytrustprotocol/aitp@>=0.7.0"`, the only declared
-  SDK range. Phase 1 raises it to **`^0.12.0`** (decided; see the plan's Open question 2) and adds
-  a sibling `//aitp` key immediately above `"dependencies"`, matching CP's position.
-- `package-lock.json:4213-4217` — `node_modules/aitp` currently resolves to **`0.10.0`**.
-  **[R4] npm latest is `0.13.0`, not `0.12.0`** (`npm view @agentidentitytrustprotocol/aitp
-  version` → `0.13.0`; tag `aitp-v0.13.0` dated 2026-09-23). Two consequences: a plain
-  `npm install` under the current uncapped range resolves `0.13.0`, so **Phase 1 must edit the
-  range before installing**; and `^0.12.0` is a present decision to decline a released minor,
-  which costs nothing here (`crates/aitp-tct/src/` and `crates/aitp-manifest/src/` are untouched
-  `0.12.0→0.13.0`, and `bindings/aitp-node/src/` is unchanged).
-- **Only two SDK symbols are imported anywhere in this repo**, in exactly two files:
-  - `src/lib/api/verify-manifest.ts:1` — `import { verifyManifestJson } from 'aitp'`
-  - `src/lib/api/verify-revocation.ts:1` — `import { verifyManifestJson, verifyRevocationList } from 'aitp'`
+- `package.json:24` — `"aitp": "npm:@agentidentitytrustprotocol/aitp@^0.12.0"`, raised from the
+  unbounded `>=0.7.0`. `package.json:21` carries the `//aitp` sibling key documenting the floor's
+  rationale (the two false-rejection fixes 0.12.0 brings a *verifier*, and why CP's own `//aitp`
+  reaches the opposite conclusion about the same release).
+- `package-lock.json:4221` — `node_modules/aitp` now resolves to **`0.12.0`** (was `0.10.0`).
+  `0.13.0` is deliberately declined; see the `//aitp` comment and the plan's Open question 2 for
+  why raising the range is a decision for a human, not an automatic lockfile refresh.
+- Evidence for the floor is now checked in, not just argued: `src/test/sdk-verification.integration.test.ts`
+  (ungated Tier-0, exercises the real `0.12.0` install) and `src/test/fixtures/minted-manifests.ts`
+  (Tier-2, externally-minted fixtures with a provenance header, verified against both `0.10.0` and
+  `0.12.0` — including a third `CONTROL` fixture that verifies on both, isolating which SDK member
+  actually caused each 0.10.0 failure).
+- Only two SDK symbols are imported anywhere in this repo, unchanged by this branch:
+  `verifyManifestJson` (`src/lib/api/verify-manifest.ts:1`) and `verifyManifestJson`,
+  `verifyRevocationList` (`src/lib/api/verify-revocation.ts:1`).
 
-### Verification core
+### Verification core (Phase 2) — shipped
 
-- `src/lib/api/verify-manifest.ts` — `verifyManifestEnvelope(rawText): Verdict`.
-  - `:4-16` — the module's own discipline: "Never canonicalizes, never checks a signature by
-    hand." **Load-bearing for Phase 1's test design** — it forbids hand-rolling a signed fixture.
-  - `:22-23` branches on `typeof code === 'string'` (never pins a specific code — compliant with
-    CP's forward-compat rule). `:24-29` classifies a code-less throw as
-    `{checked: false, reason: 'sdk_unavailable'}`, **not** a failed verification — this is what
-    makes a native-addon load failure degrade honestly.
-- `src/lib/api/verify-revocation.ts` — `codeOf` (`:6-9`, same opaque-string discipline),
-  `verifyAgainst` (`:11-22`), `resolveSelfConsistentIssuer` (`:34-50`),
-  `verifyRevocationEnvelope` (`:66-79`). Two tiers: `'pinned'` when `serverConfig.cpAid` is set,
-  `'self-consistent'` otherwise.
-- `src/lib/verification-display.ts` — **the render contract; Phase 2 owns this whole file.**
-  - `MANIFEST_UNASSESSED_CODES` at `:27` = `{version_unknown, malformed}`;
-    `REVOCATION_UNASSESSED_CODES` at `:90` = the same. Pre-signature codes → amber, never red or
-    green. **Both are module-private `const`, NOT exported** [R2] — Phase 2 exports
-    `isUnassessedManifestCode` / `isUnassessedRevocationCode` **predicates** (not the sets) so
-    Phase 3 reuses the *rule*, not a copy of the list. [R3: moved here from Phase 3.]
-  - Comment block `:13-27` — states the module's own anti-overclaim standard at `:16-18`, and
-    calls `aid_mismatch` "dead code" at `:22-26`. Phase 2 makes that precise, not reversed.
-  - `manifestVerdictBadge` `:40-74` (5 branches). **`:62-68` is the generic red catch-all**
-    `· VERIFICATION FAILED (${verdict.code})` — where `pop_failed` and
-    `identity_hint_malformed` land today, in the **same bucket as `signature_invalid`**.
-    **[R3]** They are *not* bucketed with the amber unassessed codes; a paraphrase claiming
-    otherwise was wrong. The defect is conflation with a *signature failure*.
-  - `revocationVerdictBadge` `:106-148` (7 branches).
-  - **`:140-146`** — the `no_trusted_issuer` + `manifestCode` branch, whose `:145` return string
-    ends `"(aitp-control-plane defect)"`. Phase 2's Part B.
-- `src/lib/types/cp.ts:124-138,169-185` — `Verdict`, `RevocationVerdict`, `RevocationTier`. Three
-  states, never a boolean. `verdict.code` is `string`, not a union (`:137`); `tsconfig.json:11`
-  sets `strict` but **not** `noUncheckedIndexedAccess`, so a `Record` lookup types as `string`
-  while returning `undefined` — membership-test it.
-- `src/lib/colors.ts:4-29` — the `C` token map (`green`, `amber`, `red`, `blue`, `purple`, `teal`,
-  `tealBright`, `text`, `textDim`, `textMuted`, `bg3`).
-  - `eventColor` `:31-39` — prefix-matched over
-    `agent`/`handshake`/`trust`/`capability`/`step`/`tct`/`revoc`/`run`/`llm`. **No `delegation`
-    or `manifest` prefix**, so those fall to `C.textDim`. **[R3]** Its only consumers are
-    `monitor/event-ticker.tsx:135`, `monitor/event-row.tsx:17` and `audit/audit-table.tsx:69` —
-    the **CP event feed**, disjoint from the run timeline's `event-cards.tsx`. **[R4]** There is
-    a fourth consumer, `src/lib/colors.test.ts:1,16`, but it is that function's own table test,
-    not a rendering surface — the disjointness conclusion is unaffected. So Phase 3's cards
-    and Phase 6's `CpEventType` additions change no `eventColor` output. Pre-existing cosmetic
-    gap; **out of scope**.
+- `src/lib/verification-display.ts` now **exports** `isUnassessedManifestCode` (`:85`) and
+  `isUnassessedRevocationCode` (`:222`) as predicates over the module-private
+  `MANIFEST_UNASSESSED_CODES` / `REVOCATION_UNASSESSED_CODES` sets (`:76`, `:208`) — Phase 3 reuses
+  the *rule*, never a second copy of the code lists.
+- `manifestVerdictBadge` no longer buckets `pop_failed` / `identity_hint_malformed` with
+  `signature_invalid`: a manifest whose outer signature checked out but which then fails a later
+  proof-of-possession or identity-hint check now renders as rejected *and* as having had a valid
+  signature — never as a signature failure it demonstrably wasn't, and never as verified.
+- `docs/FEATURES.md`'s Config → CP identity bullet already carries this distinction (added by
+  Phase 2, confirmed still present — no further edit needed from Phase 7 on that bullet).
+- `plans/cp-signed-artifact-verification.md`'s tracked cross-repo follow-up item was marked
+  RESOLVED by Phase 2 (gitignored, so this edit is not visible in `git log`).
 
-### Proxy layer
+### Proxy layer and `client.ts` (Phase 5) — shipped
 
-- `src/lib/api/proxy.ts`:
-  - `runProxy` `:75-112` — **forwards upstream status and body verbatim** (`:91-101`).
-    **[R4]** Earlier rounds said "for non-2xx"; `:91-101` has **no status branch at all** — it
-    forwards *every* response, which is stronger. The status-conditional pass-through is in
-    `proxyGetVerified` at `:177-182`, a different function on different routes.
-    Load-bearing for Phase 5.
-  - `makeError` `:57-65` — proxy-generated errors use a **different body shape**:
-    `{error, target, upstream_status}`, not FastAPI's `{detail}`. Returned for 504 timeout
-    (`:105`) and 502 unreachable (`:108`). Phase 5's classifier must handle both.
-  - `logUpstreamError` `:67-73` — proxy-internal error strings stay server-side by design;
-    Phase 5 must not undo that.
-  - `serviceHeaders` `:16-21` — upstream API keys never leave the server.
-  - `proxyGetVerified` `:160-198`, `spliceVerification` `:135-141`, `fetchUpstreamText`
-    `:206-219`, `proxyPost` `:221-229`, `proxySse` `:261-287`.
-- `src/lib/api/client.ts` — five generic verb wrappers only (`getJSON` `:42`, `postJSON` `:48`,
-  `putJSON` `:61`, `patchJSON` `:74`, `delJSON` `:87`). **No per-resource named helpers** — this
-  is why `plans/playground-federation-and-run-label.md:26-29` is accurate as written, not stale.
-  - **`failed()` `:14-16` is Phase 5's target**: flattens status + body into
-    `Error("<M> <path> failed: <status> — <detail>")`, destroying the structure the proxy
-    forwarded. `errorDetail` `:5-12` slices the body to **500 chars**.
+- `src/lib/api/client.ts` now exports an `ApiError` class (`:51-72`) and `MAX_ERROR_BODY_CHARS`
+  (`:8`, = 500). `ApiError` carries `status`, `method`, `path`, `body` (sliced, never reworded),
+  and `bodyTruncated` — additive: `.message` is preserved byte-for-byte from the pre-`ApiError`
+  message, so every existing `error.message` / `String(error)` consumer is unaffected. This is the
+  one repo-wide-reach change from the whole plan (see "Long-term posture" in the plan).
+- `client.ts` still holds **only** the five generic verb wrappers (`getJSON`, `postJSON`,
+  `putJSON`, `patchJSON`, `delJSON`) — no per-resource named helpers were added. This is exactly
+  why `plans/playground-federation-and-run-label.md:26-29`'s claim ("that layer does not exist ...
+  hooks call the generic wrappers directly") is still accurate as written; Phase 7 added a
+  one-line note there about the new `ApiError` export, nothing more.
+- `src/lib/api/proxy.ts` is unchanged by this branch — `runProxy`, `makeError`, `proxyGetVerified`,
+  `proxySse`, etc. all read as they did during planning.
 
-### Routes using the verified proxy (3, not 2)
+### Routes using the verified proxy (three, documented as three)
 
 - `src/app/api/cp/well-known/aitp-manifest/route.ts`
 - `src/app/api/cp/well-known/aitp-revocation-list/route.ts`
 - `src/app/api/cp/registry/agents/[aid]/manifest/route.ts`
 
-Each has a colocated `route.integration.test.ts`. `docs/PROXIES.md:10` still says "the two
-manifest routes" — Phase 7 fixes the count.
+Each has a colocated `route.integration.test.ts`, unchanged by this branch. `docs/PROXIES.md`
+previously said "the two manifest routes"; Phase 7 fixed the count to three and clarified that the
+revocation route verifies in two tiers rather than via a bare `verifyManifestJson` call, and added
+the missing `(verifying — see note above)` marker to the revocation-list table row.
 
-### Federation (Phase 5)
+### Federation (Phase 5) — shipped
 
-- `src/components/federation/federation-view.tsx`:
-  - `ErrorBanner` `:92-110` — renders `String(error)`; used at `:183` (host), `:303`
-    (**handshake — Phase 5's target**), `:381` (invoke), `:477` (stop).
-  - `JsonBlock` `:112-133`; success dump at `:331` (keep).
-  - `HandshakePanel` `:267-334`, `InvokePanel` `:336-427`, `HostedAgentCard` `:429-522`,
-    `FederationView` `:526-577`.
-- `src/hooks/use-hosted-agents.ts` — `useHostedAgents` `:20-26`, `useHostAgent` `:28-35`,
-  `useStopHostedAgent` `:37+`, plus `useInvokeHosted` / `useResolveAndHandshake`. Imports
-  `delJSON, getJSON, postJSON` from `@/lib/api/client` at `:4`.
-- BFF routes (all four undocumented in `docs/PROXIES.md`):
-  - `src/app/api/playground/hosted-agents/route.ts`
-  - `src/app/api/playground/hosted-agents/[id]/route.ts`
-  - `src/app/api/playground/hosted-agents/[id]/invoke/route.ts`
-  - `src/app/api/playground/hosted-agents/[id]/resolve-and-handshake/route.ts` — 10 lines,
-    `proxyPost('playground', '/hosted-agents/{id}/resolve-and-handshake', req)`.
+- `src/lib/federation-errors.ts` (new) — `classifyFederationError(error): FederationErrorView |
+  null`, a pure classifier over the seven documented `resolve-and-handshake` failure shapes plus
+  proxy-generated 502/504, playground's `{error:{code,message}}` envelope, and a no-response case.
+  Exports `FederationOutcome` (12 members), `FederationTone` (`'blocked' | 'input' | 'failed'`),
+  and `parseFederationErrorBody`. Keys off an anchored `detail.startsWith(...)` prefix, never
+  `.includes`, so a peer-controlled response body embedded in outcome 6's `detail` cannot spoof
+  another outcome's marker text.
+- `src/components/federation/federation-view.tsx` — `HandshakeErrorBanner` (new) renders
+  `classifyFederationError`'s output for the resolve-and-handshake mutation only; the host, invoke,
+  and stop mutations still use the older generic `ErrorBanner` (`String(error)`), which was judged
+  sufficient since none of those three has more than one or two plausible failure shapes.
+- The two 409 outcomes (`loopback_refused`, `origin_mismatch`) render in the `blocked` tone
+  (amber) with copy stating outright that a fail-closed control fired correctly. Every 502 outcome
+  explicitly disclaims a verification verdict (`FLATTENED_502` constant in `federation-errors.ts`)
+  and points at the run timeline's `manifest.verify_failed` card as the place that distinction
+  actually lives.
+- `docs/FEATURES.md` and `docs/PROXIES.md` did not document any of this, or the four
+  `hosted-agents/*` BFF routes, until Phase 7 (this phase) added a Federation section and the four
+  playground-table rows.
 
-### Run events (Phases 3 and 4)
+### Run events (Phases 3 and 4) — shipped
 
-- `src/lib/types/playground.ts:128-148` — `RunEvent`. **Missing** `cause`, `source_url`, `detail`,
-  `reason`, `serves`, `fail_mode`, and (**[R3]**, for `delegation.redeemed`) `delegatee_aid`,
-  `role`, `peer_aid`, `peer_port`, `tct`. **Already has** `error?: string` `:143`,
-  `grants?: string[]` `:140`, `jti?: string` `:144`, `port?: number` `:135`. No `RunEvent` **field**
-  named `cause` exists. **[R4]** The bare identifier *does* occur in `src/` —
-  `verification-display.ts:141,145` (a local) and two test titles — so `grep -rn cause src/` is
-  not the emptiness check earlier rounds implied.
-- `src/components/runs/event-cards.tsx`:
-  - `formatOffset` `:20-24` — **treats `evt.ts` as milliseconds since run start** (Phase 4);
-    single call site at `:27`, receiving the raw `evt.ts`.
-  - `EventCard` `:26-200`: **14 named cases at `:30-189`** — `run.started`, `agent.spawning`,
-    `agent.ready`, `trust.peers_resolved`, `trust.establishing`, `trust.established`,
-    `step.started`, `step.probing_no_trust`, `step.access_denied`, `llm.started`, `llm.complete`,
-    `step.complete`, `run.complete`, `run.failed`. **`default:` at `:191-198`** (bare grey
-    monospace type string). **[R3] There is no `delegation.*` case at all**, so all five Phase 3
-    events *plus* `delegation.issued` and `delegation.redeeming` land there today.
-  - `:175` — `Total elapsed: {(evt.ts / 1000).toFixed(1)}s`.
-  - `Line` `:202-231`, `TrustFlowCard` `:233-307`, `StepOutputCard` `:309-386`.
-- `src/components/runs/run-summary.tsx:12` —
-  `duration = events.length > 0 ? events[events.length - 1].ts / 1000 : 0` (Phase 4). The
-  `events.length > 0` guard already exists; keep it.
-- `src/components/runs/run-detail.tsx:43-51` — `mergeRunEvents`: `if (!active && queryEvents)
-  return queryEvents; if (liveEvents.length > 0) return liveEvents; return queryEvents ?? []`.
-  So it returns the **live SSE buffer** while active, the **persisted `run.data.events`** once
-  terminal (`useMemo` `:62-65`). [R2] Phase 4's base timestamp must survive this swap as well as
-  buffer eviction — hold it in a ref and **only ever lower it**
-  (`Math.min(base, events[0].ts)`), or the swap drives every offset negative.
-- `src/components/runs/run-list.tsx:13-17` — **[R4]** `formatCreatedAt` (the merge cited `:13-15`) already normalizes epoch with
-  `ts < 1e12 ? ts * 1000 : ts`. Correct for `created_at`; **do not copy for offsets.**
-- `src/components/runs/run-timeline.tsx:100` — maps events, key `${evt.type}-${evt.ts}-${i}`.
-- `src/hooks/use-run-events.ts` — `maxBuffer = 500` (**[R4]** the destructured default at `:13`,
-  not inside `:18-22`, which is the append + front-drop slice); drops from the **front**
-  (`:18-22`); handles `stream.end` / `run.complete` / `run.failed` at `:27-36` (**[R4]** the `if`
-  starts at `:27`). Consumes
-  `/api/playground/runs/{id}/events` via `useSse`.
-- `src/components/runs/run-narrate.tsx` — a `<pre>` of server-authored prose from
-  `/runs/:id/narrate`. **Not a gap; add no narration UI.**
-- `src/components/config/metrics-panel.tsx:38` — generic `Object.entries` render.
-  **[R2] Nothing new surfaces here** — playground has no counter for three of the five Phase 3
-  events. Confirm, do not edit, and do not cite it as observability coverage.
+- `src/lib/types/playground.ts` — `RunEvent` gained `cause`, `source_url`, `detail`, `reason`,
+  `serves`, `fail_mode`, `delegatee_aid`, `role`, `peer_aid`, `peer_port`, `tct` (Phase 3), all
+  optional.
+- `src/components/runs/event-cards.tsx` — six dedicated card components handle the playground's
+  trust/delegation vocabulary that used to fall through to the generic grey default row:
+  `ManifestVerifyFailedCard`, `RevocationVerifyFailedCard`, `RevocationDegradedServeCard`,
+  `DelegationIssuedCard`, `DelegationRedeemedCard`, `DelegationRejectedCard`. `delegation.redeeming`
+  is handled inline via the existing generic `Line` component rather than a dedicated card. Each
+  card renders the producer's own classified cause verbatim and routes amber/red through Phase 2's
+  exported predicates rather than a second hardcoded list — except `manifest.verify_failed`'s
+  playground-only `"unknown"` literal (not an SDK code), which gets one explicit amber branch since
+  the exported predicate doesn't cover it.
+- `src/lib/utils.ts` — `runOffsetMs(ts, baseTs)` (`:70`) replaces the old raw-division math;
+  interprets `ts` as **epoch seconds** (`time.time()`, as the playground actually stamps it), not
+  milliseconds since run start. `formatOffset` in `event-cards.tsx` now consumes this delta and
+  renders a signed offset (a negative delta from cross-process clock skew is shown as such, not
+  clamped to zero).
+- `src/hooks/use-run-time-base.ts` (new) — `useRunTimeBase(events)` holds a run's time base as
+  React state, monotonically lowering (`Math.min`) across both live-buffer eviction (500-event cap,
+  drops from the front) and the SSE→persisted-events source swap in `run-detail.tsx`'s
+  `mergeRunEvents`. `src/app/runs/[id]/page.tsx:18` now renders `<RunDetail key={runId} .../>` so a
+  run-identity change forces a remount rather than letting one run's base leak into the next.
+- `src/components/runs/run-summary.tsx` and `run-timeline.tsx` were updated to consume the same
+  base/offset math instead of their own raw `ts / 1000`.
+- **Deliberately deferred, not fixed by any phase 1–7, tracked in `ASSUMPTIONS.md`:**
+  `src/components/runs/run-deliveries.tsx:119` still renders `` `+${(ts / 1000).toFixed(1)}s` `` —
+  the identical unit bug in a different component/tab. And the six dedicated trust/delegation
+  cards above (everything except `delegation.redeeming`, which uses the generic timestamped `Line`)
+  plus the generic `run.failed` card still render **no timestamp at all** — they don't take
+  `baseTs` as a prop. Both are one-prop additions and were explicitly named as Phase 7 or follow-up
+  candidates when Phase 4 landed; Phase 7's actual scope (per the plan) is documentation and
+  regression only, so neither was fixed here. `docs/FEATURES.md`'s Runs section now says so
+  explicitly rather than implying every event has a timestamp.
 
-### CP event feed (Phase 6)
+### CP event feed (Phase 6) — shipped
 
-- `src/lib/types/cp.ts:271-302` — the `CpEventType` union. Carries `delegation.issued` and
-  `delegation.revoked` (`:283-284`); **missing** `delegation.rejected` and
-  `delegation.redeemed`. `grep -rn "CpEventType" src/ docs/ README.md` returns **exactly one
-  hit — the definition itself.** Nothing imports it.
-- `src/lib/types/cp.ts:34,306` — `AuditEvent.type` and `CpEvent.type`, both `string`
-  passthroughs. So the two missing literals already reach `/audit` and the Monitor ticker today,
-  untyped.
-- `src/app/audit/page.tsx:109-116` — the event-type filter is a free-text `<input>`; its only
-  enum-ish content is a `placeholder`. **Must stay free-text** (CP accepts arbitrary type
-  strings).
-- **This is a different surface from Phase 3.** Phase 3 types the same two strings as playground
-  `RunEvent`s in `src/lib/types/playground.ts` and renders timeline cards; Phase 6 types them as
-  CP audit-feed names in `src/lib/types/cp.ts`. Neither covers the other.
+- `src/lib/types/cp.ts` — the `CpEventType` union gained `delegation.rejected` and
+  `delegation.redeemed` alongside the pre-existing `delegation.issued` / `delegation.revoked`.
+  `AuditEvent.type` and `CpEvent.type` remain plain `string` passthroughs (CP's `/api/events`
+  ingestion accepts arbitrary type strings), so this union still has **zero** use sites by design —
+  `grep -rn "CpEventType" src/` returns exactly one hit, the definition itself. It documents the
+  vocabulary; it must never be used to filter or validate.
+- This remains a distinct surface from the Phase 3 run-timeline work: Phase 3 types the same two
+  strings as playground `RunEvent`s and renders timeline cards; Phase 6 types them as CP audit-feed
+  names. Neither implementation covers the other.
 
-### RFC copy (Phase 6)
+### RFC copy (Phase 6, tightened by a same-day follow-up fix) — shipped
 
-- `grep -rn "RFC-AITP" src/ docs/ README.md` returns **exactly two hits**:
-  - `src/components/config/cp-identity.tsx:127` — `RFC-AITP-0008 compliant · empty list is a
-    meaningful assertion`, a `fontSize: 10` mono caption `div`. **Asserts compliance nothing here
-    checks.**
-  - `src/components/trust/revocation.tsx:218` — `An empty revocation list is a meaningful
-    assertion under RFC-AITP-0008.`, an `EmptyState` `description` prop. Cites rather than
-    claims; only the status qualifier is missing.
-- **[R3] No conformance suite exists in this repo.**
-  `grep -rni "conformance" src/ docs/ package.json README.md` returns exactly one hit, and it is
-  a *comment* at `verification-display.ts:24` referring to the *spec's* suite.
+- `src/components/config/cp-identity.tsx:128` and `src/components/trust/revocation.tsx:224` now
+  read "RFC-AITP-0008 (Draft)" and "a signed empty list is a meaningful assertion" — never
+  "compliant". No conformance suite exists anywhere in this repo, and the RFC's own status line is
+  still Draft (all thirteen RFCs are Draft or better; none has graduated).
+- Both captions are now **suppressed entirely** (not just re-worded) whenever
+  `badge.entriesGreyed` is true — i.e. whenever the revocation snapshot's verification could not
+  be established or failed. Before this fix, an empty list with an unverified or failed signature
+  got the identical reassuring caption as a genuinely verified empty list, which is exactly the
+  suppression-attack scenario RFC-AITP-0008 §1 describes the console narrating in the attacker's
+  favor. This closes a real overclaim, not just a wording one — see commit `95ba08f`.
+
+### Docs (Phase 7 — this phase)
+
+- `docs/FEATURES.md`:
+  - Top summary table gained a `Federation` row.
+  - New `## Federation` section added after `## Trust` (existing order preserved: Dashboard →
+    Scenarios → Runs → Monitor → Registry → Trust → Federation → Audit → Config → Cross-cutting).
+    Documents hosting an agent, resolve-and-handshake, invoke, the two 409 fail-closed refusals as
+    features (rendered amber, not red), and states explicitly that a 502 at the federation
+    boundary cannot distinguish "peer manifest failed verification" from "peer unreachable" — that
+    distinction lives on the run timeline's `manifest.verify_failed` card, not in this banner.
+  - "Live timeline behaviour" (under `## Runs`) now names all seven trust/delegation event types
+    with dedicated or inline handling, and states the timestamp semantic (epoch seconds, not
+    ms-since-start) plus which of those seven types don't yet render a timestamp at all.
+- `docs/PROXIES.md`:
+  - The `proxyGetVerified` exception paragraph now says "three routes", names the two-tier
+    revocation path explicitly, and no longer implies `verifyManifestJson` alone covers it.
+  - The playground route table gained all four `hosted-agents/*` rows, verbs confirmed against the
+    actual route files (not inferred from the path).
+  - The `well-known/aitp-revocation-list` CP-table row gained the `(verifying — see note above)`
+    marker its two sibling verified rows already carried.
+- `plans/playground-federation-and-run-label.md:26-29` — left as accurate (the file exists and was
+  not touched by the "does not exist" claim, which is about the *named-helpers layer*, not the
+  file); a one-line note about the now-exported `ApiError` was appended. Gitignored — this edit
+  does not appear in `git diff`/commits.
+- `docs/ARCHITECTURE.md:81-82` — verified unchanged (still correctly states
+  `plans/cp-signed-artifact-verification.md` is "local, not tracked in this repo," which remains
+  true — `plans/` is gitignored). Not edited by Phase 7, per the plan's explicit instruction.
+- `ASSUMPTIONS.md` — header verified to still name `plans/absorb-cp-playground-changes.md` as the
+  single active plan, with `upstream-drift-absorption.md`/`.SUPERSEDED.md` mentioned only as
+  accurate history, never as current. No edit was needed.
+- `DECISIONS.md` — append-only, all entries RESOLVED. Left untouched, per the plan.
 
 ### Tests
 
-- `src/test/` — `bff-routes.integration.test.ts` (CI-safe, mocked upstream),
-  `proxies.integration.test.ts` (live-gated), `cp-mutations.integration.test.ts`,
-  `scenario-run.integration.test.ts`, `integration-utils.ts`, `setup.ts`,
-  `setup-integration.ts`, `test-utils.tsx` (`renderWithClient`), `lucide-stub.tsx`,
-  `recharts-stub.tsx`, `polyfills.ts`.
-- `src/lib/verification-display.test.ts` — table-style; `:65` is the "never says verified"
-  **absence assertion** pattern every new copy test should follow. Currently asserts
-  `signature_invalid` → "VERIFICATION FAILED" (lines ~37-44); **Phase 2 replaces that case.**
-- **Phase 2's four pinned literals — all four break in Phase 2:**
-  - `src/components/config/cp-identity.test.tsx:105` —
-    `getByText('· VERIFICATION FAILED (signature_invalid)')`
-  - `src/components/registry/agent-detail.test.tsx:123` —
-    `provenanceNode('· VERIFICATION FAILED (signature_invalid)')`
-  - `src/components/config/cp-identity.test.tsx:203` — the full `(aitp-control-plane defect)`
-    string via `findByText`; enclosing `it` at `:190` is "names the upstream cause…" → misnomer
-  - `src/components/trust/revocation.test.tsx:145` — same full literal; misnomer at `:139`
-  - Plus `cp-identity.test.tsx:187` — a `queryByText(/SIGNATURE INVALID/)` absence guard that
-    **weakens quietly rather than breaking** [R2]; re-scope it in the same commit.
-- `src/components/runs/event-cards.test.tsx` — `evt()` helper at `:8-10` defaults `ts: 1_500`
-  (inherited by **every** test in the file); offset table `:14-24`; `run.complete` at `:179`
-  uses `5_000`; `:195` asserts `+1.5s` inside the *unknown-type* regression case;
-  `step.complete` at `:200` uses `2_000`. **All millisecond-shaped — this is what hides the
-  Phase 4 bug**, and rebasing them is file-wide churn.
-- `src/components/runs/agent-status-grid.test.tsx:15-38` — same millisecond-shaped values, but
-  **out of scope for Phase 4** [R2]: `agent-status-grid.tsx` never reads `evt.ts`
-  (`deriveAgents` at `:113` keys off `type`/`agent_id` only). Leave it alone.
-- `src/test/bff-routes.integration.test.ts` — **all four `hosted-agents/*` routes already have
-  cases** (`:234, 250, 260, 274, 290`; shared mock upstream `:95-107`) [R2]. All are 2xx-forward
-  assertions; **no non-2xx case exists**, and `GET /hosted-agents/[id]` has no case at all.
-  The two `aitp`-signed cases: the `it(` titles are at `:313`/`:350` and the `require('aitp')`
-  lines at `:314`/`:351` (**[R4]**). **[R4] `GET /api/playground/hosted-agents/[id]` DOES exist**
-  (`route.ts:7` exports `GET`) and has no case; only `DELETE` at `:260`. **No hosted-agents case
-  exercises a non-2xx upstream** — all five mock arms answer 200 (arms run `:95-109`). The file's
-  only non-2xx coverage is the SSE 503 at `:390` and the unreachable-502 describe at `:402-403`.
-- `src/components/federation/federation-view.test.tsx` — **does not exist** (confirmed;
-  `src/components/federation/` holds only `federation-view.tsx`). Phase 5 creates it.
-- `src/lib/api/verify-manifest.test.ts` / `verify-revocation.test.ts` — **do not exist**
-  (confirmed). `src/lib/api/` holds `client.ts`, `client.test.ts`, `proxy.ts`, `proxy.test.ts`,
-  `verify-manifest.ts`, `verify-revocation.ts`. Do not create them.
-- `src/lib/colors.test.ts` — `eventColor` table test at `:3-16`.
-- The four SDK-exercising integration suites that are Phase 1's **Tier 0** evidence:
-  `src/app/api/cp/well-known/aitp-manifest/route.integration.test.ts`,
-  `.../aitp-revocation-list/route.integration.test.ts` (six-case tier matrix),
-  `.../registry/agents/[aid]/manifest/route.integration.test.ts`, and the two `aitp`-signed
-  cases in `bff-routes.integration.test.ts`. They **sign and verify with the same SDK**, so they
-  prove no regression and **cannot** prove what the bump fixes. Say exactly that.
-- Conventions: mock `@/lib/api/client`, never global `fetch`; one `it` per rendered state;
-  assert color token **and** literal text; in `*.integration.test.ts` use `require('aitp')`
-  **inside the test body**, never a top-level ESM import.
+- `src/test/` — `bff-routes.integration.test.ts` (CI-safe, mocked upstream; now covers the four
+  `hosted-agents/*` routes' 2xx paths), `proxies.integration.test.ts` (live-gated),
+  `cp-mutations.integration.test.ts`, `scenario-run.integration.test.ts`,
+  `sdk-verification.integration.test.ts` (new, Phase 1, ungated), `integration-utils.ts`,
+  `setup.ts`, `setup-integration.ts`, `test-utils.tsx` (`renderWithClient`), `lucide-stub.tsx`,
+  `recharts-stub.tsx`, `polyfills.ts`, `fixtures/minted-manifests.ts` (new, Phase 1).
+- `src/lib/verification-display.test.ts` — extended for Phase 2's post-signature distinction;
+  at/near 100% coverage.
+- `src/components/runs/event-cards.test.tsx` — extended with captured real wire frames for all
+  seven trust/delegation event types (Phase 3), at 100% line/function coverage.
+- `src/components/runs/run-summary.test.tsx`, `run-timeline.test.tsx` (new, Phase 4).
+- `src/hooks/use-run-time-base.test.tsx` (new, Phase 4) — includes a mutation-style regression test
+  for the `key={runId}` remount fix.
+- `src/lib/api/client.test.ts` — extended for `ApiError` (Phase 5).
+- `src/lib/federation-errors.test.ts`, `src/components/federation/federation-view.test.tsx` (new,
+  Phase 5) — including an adversarial test proving a peer-controlled response body cannot spoof
+  another outcome's classification.
+- `src/components/config/cp-identity.test.tsx`, `src/components/trust/revocation.test.tsx` —
+  extended across Phases 2 and 6 for the post-signature badge distinction and the
+  `entriesGreyed`-suppressed RFC caption.
+- Conventions unchanged: mock `@/lib/api/client`, never global `fetch`; one `it` per rendered
+  state; assert color token **and** literal text; in `*.integration.test.ts` use `require('aitp')`
+  inside the test body, never a top-level ESM import.
 
-### Docs (Phase 7)
+### Sibling-repo ground truth (verified during planning — do not re-derive)
 
-- `docs/FEATURES.md` — headings at `:1` (title), `:30` Dashboard, `:47` Scenarios, `:82` Runs
-  (`:110` "Live timeline behaviour", `:129` "When the CP isn't wired up"), `:137` Monitor,
-  `:160` Registry (`:172`), `:185` Trust (`:203`), `:211` Audit, `:229` Config, `:260`
-  Cross-cutting (`:262` SSE, `:279` URLs, `:287` primitives). **Zero mentions of
-  federation/hosted-agents** (grepped). New section goes after Trust. The Config → CP identity
-  bullet gains Phase 2's post-signature state.
-- `docs/PROXIES.md`:
-  - `:10` — "the two manifest routes" → **three** routes use `proxyGetVerified`.
-  - `:34-53` — playground route table; **all four `hosted-agents/*` routes missing**. `:53` is
-    the current last row (SSE `/runs/[id]/events`).
-  - `:73` and `:92` carry `(verifying — see note above)`; **`:93`
-    (`well-known/aitp-revocation-list`) does not** — add it.
-  - `:95-124` — the "Adding a new proxy" convention checklist (**[R4]** heading `:95`, step 1 at
-    `:97`; the merge's `:115-124` is only steps 4a-6).
-- `docs/ARCHITECTURE.md` — **[R3] already correct on both counts an earlier draft flagged.**
-  `:68-69` reads "The three routes serving CP-signed artifacts"; `:83-86` describes the
-  revocation route's two tiers accurately; `:90-97` covers the `src/proxy.ts` CSRF gate (**[R4]** the merge cited `:90-95`). And
-  **`:81-82`'s "local, not tracked in this repo" about `plans/cp-signed-artifact-verification.md`
-  is TRUE** — `plans/` is gitignored. Round 2 flagged it as stale without checking;
-  **do not "fix" it.** The only genuine gap is that federation is absent here too.
-  `docs/CONVENTIONS.md` — **still not audited.**
-- `plans/cp-signed-artifact-verification.md` — Phase 2's doc target, **two sites**:
-  - `:1357` — a verdict-table row (row 7) quoting the full `(aitp-control-plane defect)`
-    literal. **[R3] Invisible to a default recursive grep** because `plans/` is gitignored.
-  - `:1636-1650` — "Cross-repo follow-ups" item 1, still reading as an open filed issue. Its
-    body at `:1645-1647` cites `cp-agent.ts:35-44` and `:52-55`, **both now stale** (see the CP
-    block below). Needs a RESOLVED marker *and* corrected citations.
-  - `:1587-1609` — Criterion 8 **already recorded closed** (2026-08-29), naming CP PR #74.
-    (**[R4]** the merge's `:1587-1605` is short at the end; follow-up item 1 runs `:1638-1654`
-    under the heading at `:1636`.)
-    Cross-reference it so the two do not read as contradicting.
-  - **[R3] The literal occurs 4 times repo-wide, not 5** — **[R4] it occurs 5 times in
-    source-or-reference files, plus 2 generated.** R2 said 5 and named the wrong five; R3 said 4
-    and missed one. The real list: `verification-display.ts:145`, `cp-identity.test.tsx:203`,
-    `revocation.test.tsx:145`, `plans/cp-signed-artifact-verification.md:1357`, and
-    **`plans/upstream-drift-absorption.SUPERSEDED.md:76`** (reference-only — **do not edit**,
-    just exclude it from the criterion), plus 2 generated `coverage/lcov-report/**` hits,
-    and however many `PROGRESS.md` and the plan file accumulate discussing it by name (both are
-    excluded by the criterion, so the number does not matter). The `:1636`-heading follow-up entry is an *edit site*, not an occurrence.
-- `plans/playground-federation-and-run-label.md:26-29` — **accurate as written**; the research
-  claim that it is stale was wrong. Optional clarifying parenthetical only.
-- `DECISIONS.md` — all entries RESOLVED. **Leave untouched**; `/implement` and `/reconcile`
-  append below.
-- `ASSUMPTIONS.md` — **repointed at the merged plan on 2026-09-23.** It previously named
-  `plans/upstream-drift-absorption.md` and cited that plan's "seven already decided during
-  planning." Phase 7 step 8 verifies it still reads correctly after `/implement` logs into it.
-- `plans/upstream-drift-absorption.SUPERSEDED.md` — the retired competing plan. Kept for
-  reference; **do not implement from it.** Its unique content (post-signature verdict codes,
-  Draft-spec copy, `CpEventType` literals, the `^0.12.0` justification, the measured lockfile
-  diff) is folded into Phases 1, 2 and 6 of the merged plan.
-
-### Sibling-repo ground truth (verified — do not re-derive)
+Unchanged by this branch (these describe other repositories); retained as reference for whoever
+next absorbs upstream drift.
 
 **`aitp-control-plane`:**
 - `package.json:19` — the `//aitp` documented-floor convention Phase 1 mirrors. States
   `0.5.0`/`0.6.0`/`0.7.0` as real wire floors and `0.11.0`/`0.12.0` as explicitly **not** floors
   for CP. Documents the `^`-on-`0.x` caret trap and names "the bump-aitp workflow" as CP's escape
-  from it — **a workflow this repo does not have**, which is the honest cost of Phase 1's caret.
+  from it — a workflow this repo does not have, which is the honest cost of Phase 1's caret.
   `aitp` itself is pinned `^0.12.0`.
 - `src/lib/identity/cp-agent.ts` — `MANIFEST_TTL_SECS = 86_400` at `:13`,
-  `MANIFEST_REBUILD_MARGIN_SECS = 3_600` at `:21`, `initCpIdentity` at **`:37`**,
-  `getCpManifestJson` at **`:68`** (rebuild-in-place). Fixed by `4c62641` (PR #74, 2026-08-28)
-  and `c74a190` (PR #77, 2026-08-29) — **pre-cutoff**, which is what makes
-  `verification-display.ts:145`'s attribution stale. **The `:35-44` / `:52-55` citations in
-  `plans/cp-signed-artifact-verification.md:1645-1647` are stale against these.**
+  `MANIFEST_REBUILD_MARGIN_SECS = 3_600` at `:21`, `initCpIdentity` at `:37`,
+  `getCpManifestJson` at `:68` (rebuild-in-place). Fixed by `4c62641` (PR #74, 2026-08-28) and
+  `c74a190` (PR #77, 2026-08-29) — pre-cutoff.
 - `src/lib/revocation/producer.ts:28-33` — signs an **empty** list when its DB read fails. Known
   limitation; not actionable here; decision recorded as "do not file a cross-repo issue."
 - `src/app/api/events/route.ts:75` — unverified caller-supplied `source`. Guardrail only;
@@ -361,223 +289,69 @@ manifest routes" — Phase 7 fixes the count.
 - `src/lib/registry/enrollment.test.ts:26-43` — the forward-compat contract: assert
   `typeof err.code === 'string'`, never pin a value for the unknown-field class.
 
-**`aitp-rs`** — **read the tags, never `CHANGELOG.md`, for release boundaries — and [R4] check
-`bindings/aitp-node/package.json` at the tag, because a tag here is not necessarily an npm
-release.**
+**`aitp-rs`** — read the tags, never `CHANGELOG.md`, for release boundaries — and check
+`bindings/aitp-node/package.json` at the tag, because a tag here is not necessarily an npm release.
 - `CHANGELOG.md` has **no `## [0.12.0]`, `## [0.11.0]` or `## [0.13.0]` header at all** —
-  `## [Unreleased]` at `:8` runs to `## [SDK 0.4.1]` at `:645` (14 `## [` headers total). The
-  heading carries **zero** release information.
-- **[R4] The `aitp-v0.10.0` tag is NOT the npm `0.10.0` release.** At that tag
-  `bindings/aitp-node/package.json` is `"0.5.0"` and the tagged commit's subject is
-  `chore: release v0.9.0 (#120)`. The binding was five releases out of lockstep until `44eec51`;
-  **`c7a7159`** (`chore(release): aitp-node v0.10.0 (lockstep with aitp crate)`, 2026-08-29) is
-  the real npm-`0.10.0` tree. Tags and npm agree from `aitp-v0.11.0` onward. Use `c7a7159` for
-  any "what does the installed SDK do" question.
-- **The two fixes `0.12.0` brings this console (the whole reason the floor moves)** —
-  **[R4] re-verified at `c7a7159` and `aitp-v0.11.0`, the right trees:**
-  `Manifest` is `#[serde(deny_unknown_fields)]` at `crates/aitp-manifest/src/types.rs:11` at
-  `c7a7159`, `v0.11.0`, `v0.12.0` **and** `v0.13.0`.
-  - `accepted_signature_algorithms: Option<Vec<String>>` — at `aitp-v0.12.0:types.rs:57`;
-    **absent at `c7a7159` and at `aitp-v0.11.0`**. On 0.10.0 an authentic manifest carrying it
-    throws `malformed` (a false amber).
-  - `extensions` — a bare `ExtensionsMap` with `skip_serializing_if = "ExtensionsMap::is_empty"`
-    at **`c7a7159:types.rs:62`** and `aitp-v0.11.0:types.rs:62`; `Option<ExtensionsMap>` at
-    `aitp-v0.12.0:types.rs:93`. The fix is `b78e608` (2026-08-30), **not** an ancestor of
-    `aitp-v0.11.0`. `builder.rs:332-334` records the consequence verbatim: the old shape
-    "silently dropped a wire-present `\"extensions\":{}` from the signing input — a manifest
-    signed with that literal shape failed verification." On 0.10.0 that is
-    **`signature_invalid` — a RED badge on an authentic artifact.**
-  - **[R4] `git diff c7a7159 aitp-v0.12.0 -- bindings/aitp-node/src/{lib,revocation}.rs` is
-    empty**, so the byte-identical-entry-point claim holds for the real npm versions.
-- **[R3] `UnknownField` / `UNKNOWN_FIELD` does NOT reach this console.** It exists at
-  `aitp-v0.12.0` and is absent at `aitp-v0.10.0`/`v0.11.0` (round 2 got that part right), but:
-  - its only construction site is `parse_manifest_wire`
-    (`crates/aitp-manifest/src/verifier.rs:174,181,185`; variant at `error.rs:50`), and
-  - **`parse_manifest_wire` has no caller in `bindings/`** — every reference outside its
-    definition at `verifier.rs:168` is a test or `aitp-rs`'s own notes citing the Rust adapter.
-    `verify_manifest_json` (`bindings/aitp-node/src/lib.rs:71-88`) calls `serde_json::from_str`
-    then `verify_manifest`; `verify_manifest` (`:49-137`) starts at the version check.
-  - **And `deny_unknown_fields` is on `Manifest` at line 11 at BOTH tags** — so a stray
-    top-level member arrives as `malformed` before *and* after the bump. **Unknown-member
-    handling is an invariant across the bump, not a tightening.** Round 2's "present behavior
-    change" claim is retracted; Phase 1's `//aitp` comment must record this as a non-change.
-- **[R3] Phase 1's fixture tests 1 and 2 are NOT constructible from this repo.**
-  `bindings/aitp-node/src/agent.rs`'s `ManifestOpts` (`:36-57`) exposes **neither**
-  `accepted_signature_algorithms` **nor** `extensions`, and the builder hard-codes
-  `extensions: None` at `:414`. Injecting either into a builder-signed envelope yields an
-  *inauthentic* manifest whose signature genuinely fails — such a test would pass on 0.12.0 for
-  the wrong reason. See Phase 1's evidence tiers. `nowUnixSecs`
-  (`bindings/aitp-node/src/lib.rs:68-70`, documented as "pass a pinned value in tests") is what
-  makes a committed external fixture viable without it expiring.
-- **[R4] Nor from `bindings/aitp-py` — the generator R3 proposed and flagged unvetted.**
-  `bindings/aitp-py/src/agent.rs:118-128`'s `build_manifest` takes
-  `display_name, handshake_endpoint, offered_caps, required_caps, ttl_secs, identity_type,
-  oidc_issuer, oidc_subject, accepted_trust_anchors` — neither field. A grep for
-  `extensions|accepted_signature_algorithms` across `bindings/aitp-py/src/` returns one hit,
-  `revocation.rs:149`. **Nor from the Rust builder**: `.extension(k,v)`
-  (`crates/aitp-manifest/src/builder.rs:168`) only yields a *non-empty* map, which serializes
-  fine even on 0.10.0, and `builder.rs:223-231` states that a literal `"extensions":{}` "is only
-  reachable by constructing a `Manifest` directly."
-- **[R4] The viable Tier-2 generator is `aitp-verifier-py`** (sibling repo, on disk):
-  `_manifest_input(**body_extra)` (`tests/test_unknown_fields.py:363-380`) +
-  `mint_input(inp, REFERENCE_CLOCK, keys)` (`aitp_verifier/minter.py:356`) →
-  `_sign_manifest` (`:137-153`), which signs `sha256(canonicalize(body minus signature))` — the
-  same JCS input as `aitp-rs`'s `ManifestSigningView`, so the result is authentic, not injected.
-  `REFERENCE_CLOCK = 1711900000` (`aitp_verifier/timeutil.py:15`), `expires_at = NOW + 86400`.
-  Its own suite already mints fixture (a): `test_manifest_optional_fields_are_not_rejected`
-  (`:410-424`). KAT keys come from the spec repo's
-  `schemas/conformance/known-answer/keypairs.json`.
-- **[R4] Free evidence nobody cited — upstream's own regression tests:**
-  `crates/aitp-manifest/tests/round_trip.rs:254`
-  `extensions_present_but_empty_now_verifies_end_to_end` (doc comment `:242-252` describes the
-  whole bug; assertion at `:278-279`) and `:378`
-  `parse_manifest_wire_accepts_accepted_signature_algorithms`.
-- **[R4] `parse_manifest_wire` has TWO non-test callers, not one** — `aitp-rs-adapter/src/lib.rs:1269`
-  and `aitp-transport-http/src/client.rs:376`. Still **none under `bindings/`**, which is the
-  load-bearing half. R3 sourced "one" from `aitp-rs/PROGRESS.md:295` rather than a grep.
-- **[R4] `verify_manifest`'s own rustdoc (`crates/aitp-manifest/src/verifier.rs:28-44`) lists PoP
-  as step 3 and the outer signature as step 4** — the RFC's nominal order, the **reverse** of what
-  the code does. The numbered step comments (`:68`, `:101`, `:113`) and the error-construction
-  sites (`:96/:99` `SignatureInvalid`, `:105/:108/:111` `PopFailed`, `:117/:122/:129`
-  `IdentityHintMalformed`) govern. **Phase 2 rests entirely on this; whoever audits it will read
-  the rustdoc first and conclude Phase 2 is wrong unless warned.**
-- **[R4] `0.12.0 → 0.13.0` changes nothing this console reaches.** `bindings/aitp-node/src/revocation.rs:18-21`
-  binds `aitp_tct::verify_revocation_list`; `git diff aitp-v0.12.0 aitp-v0.13.0 -- crates/`
-  leaves `crates/aitp-tct/src/` and `crates/aitp-manifest/src/` untouched (only `aitp-manifest`'s
-  *tests*). `30b673b`'s retaxonomy lands in `aitp-transport-http`, which the Node binding does not
-  use. So R3's conclusion holds — but R3 argued it from a `--stat` of `bindings/`, the same
-  shortcut its own "What did not survive" section condemns.
-- `crates/aitp-manifest/src/verifier.rs` — **the check order Phase 2 rests on.**
-  `verify_manifest` at `:49`; version `:53`; expiry `:58`; AID→key `:66`; **outer signature
-  `:68`** (with the `mh-002` conformance rationale at `:68-75`); PoP `:101`; identity-hint
-  `:113`. So `pop_failed` and `identity_hint_malformed` **imply a verified outer signature.**
-  `check_identity_type_compatibility` at `:213` — one non-test caller
-  (`crates/aitp/src/facade.rs:506`), **not `#[napi]`-exported**.
-- `bindings/aitp-node/src/lib.rs` — `manifest_verification_cause` `:45-56`, catch-all
-  `_ => "malformed"` at `:54`; `AidMismatch` mapped at `:50`; the documented **8-code** taxonomy
-  at `:62-66`. **Only 6 are reachable**: `malformed`, `version_unknown`, `expired`,
-  `signature_invalid`, `pop_failed`, `identity_hint_malformed`.
-- `crates/aitp-manifest/src/error.rs:18` — `AidMismatch` declared. **No construction site
-  anywhere**; every other reference is a binding map (`lib.rs:50`,
-  `bindings/aitp-py/src/manifest.rs:49`), a match arm, a comment, or a test
-  (`aitp-transport-http/src/server.rs:1461`, `aitp-rs-adapter/src/lib.rs:1299,3572`). The
-  existing "dead code" comment in this repo was **right**; it needs precision, not reversal.
-- `bindings/aitp-node/src/revocation.rs` — `verification_cause` `:31-38`, catch-all
-  `_ => "malformed"` at `:36`; five codes only (`signature_invalid`, `issuer_mismatch`,
-  `version_unknown`, `expired`, `malformed`), and `revocationVerdictBadge` already branches on
-  every one. **No revocation badge gap. No phase.**
-- **The surface is a trap, not a gate:** `index.d.ts` declares both symbols identically (0.10.0
-  `:196`/`:291` vs 0.12.0 `:524`/`:542`), and `git diff aitp-v0.10.0 aitp-v0.12.0 --
-  bindings/aitp-node/src/lib.rs bindings/aitp-node/src/revocation.rs` is **empty**. Every delta
-  above is invisible to both.
-- **Lockfile consequences, measured** (not assumed): `aitp@0.10.0` depends on `jose ^6.2.3`;
-  `aitp@0.12.0` has **no runtime dependencies at all**, only four native `optionalDependencies`
-  (`darwin-arm64`, `darwin-x64`, `linux-arm64-gnu`, `linux-x64-gnu` — so CI's `ubuntu-latest` is
-  covered). The lock diff therefore **removes `jose@6.2.10`** and adds nothing. Six nested
-  `@tailwindcss/oxide-wasm32-wasi/node_modules/*` entries also appear — npm churn, not SDK
-  fallout. `npm audit` unchanged (one pre-existing low `@babel/core` via `ts-jest`). Published
-  `engines` is `{node: ">=16"}`.
-- `30b673b` (2026-09-23, `fix!` on revocation snapshot codes) **is** genuinely post-0.12.0 and
-  does **not** touch the node binding — but it is exactly the class of change an unbounded `>=`
-  range would accept unreviewed.
-- `63f2223` (0.11.0's pinned-key erratum) touches only `crates/aitp-handshake` + the adapter —
-  unreachable from either symbol.
+  `## [Unreleased]` at `:8` runs to `## [SDK 0.4.1]` at `:645`.
+- The `aitp-v0.10.0` tag is **not** the npm `0.10.0` release. At that tag
+  `bindings/aitp-node/package.json` is `"0.5.0"`; `c7a7159` is the real npm-`0.10.0` tree. Tags and
+  npm agree from `aitp-v0.11.0` onward.
+- The two fixes `0.12.0` brings this console: `accepted_signature_algorithms` becoming a known
+  `Manifest` member (absent before, so an authentic manifest carrying it threw `malformed` — a
+  false amber), and `extensions` becoming `Option<ExtensionsMap>` instead of a bare map that
+  silently dropped a wire-present `"extensions":{}` from the signing input (causing
+  `signature_invalid` — a false red — on 0.10.0/0.11.0).
+- `UnknownField` / `UNKNOWN_FIELD` does **not** reach this console: its only construction site,
+  `parse_manifest_wire`, has no caller under `bindings/`. `deny_unknown_fields` on `Manifest`
+  itself is an invariant across the bump, not a tightening.
+- `0.12.0 → 0.13.0` changes nothing this console reaches (`aitp-tct`/`aitp-manifest` crates
+  untouched by the Node binding's dependency graph); declined anyway as a deliberate, documented,
+  reversible-but-not-free choice.
+- `crates/aitp-manifest/src/verifier.rs` — `verify_manifest`'s actual check order: version → expiry
+  → AID→key → **outer signature** → PoP → identity-hint. Its own rustdoc lists PoP before the
+  signature (the RFC's nominal order); the code does the reverse. Phase 2 is built on the code's
+  order, confirmed via the error-construction sites, not the rustdoc prose.
+- `bindings/aitp-node/src/lib.rs` — `manifest_verification_cause`, catch-all `"malformed"`;
+  documented 8-code taxonomy, only 6 reachable: `malformed`, `version_unknown`, `expired`,
+  `signature_invalid`, `pop_failed`, `identity_hint_malformed`. `AidMismatch` has no construction
+  site anywhere — genuinely dead code, not a gap.
+- `bindings/aitp-node/src/revocation.rs` — `verification_cause`, catch-all `"malformed"`; five
+  codes only, and `revocationVerdictBadge` already branches on every one.
 
 **`agentidentitytrustprotocol` (spec repo):**
-- **[R3] All thirteen RFC status lines read directly.** `RFC-AITP-0001` through `-0011` each
-  carry `**Status:** Community Standards Track (Draft)`; `-0012` is `Reserved`; `-0013` is
-  `Planned`. **Nothing has graduated.**
-- `rfcs/RFC-AITP-0008-revocation.md` — `**Version:** 0.2.7-draft`, `**Status:** … (Draft)` at
-  `:6`. The empty-list MUST is verbatim at **`:110`** (§1): "Even when an issuing peer has
-  revoked nothing, it MUST publish a signed snapshot with an empty `entries` array."
-- `rfcs/RFC-AITP-0003-manifest.md` §5 — manifest verification steps; nominally orders PoP
-  (step 4) before signature (step 5), which the implementation deliberately inverts (see
-  `verifier.rs:68-75`). Its Security section requires rejecting a manifest failing *any* step —
-  which is why Phase 2 keeps `aidColor` muted even when the signature verified.
+- All thirteen RFCs read `Community Standards Track (Draft)`, `Reserved`, or `Planned` — nothing
+  has graduated.
+- `rfcs/RFC-AITP-0008-revocation.md:110` (§1) — the empty-list MUST, verbatim: "Even when an
+  issuing peer has revoked nothing, it MUST publish a signed snapshot with an empty `entries`
+  array." Status line: `0.2.7-draft`.
+- `rfcs/RFC-AITP-0003-manifest.md` §5 — nominally orders PoP before signature; the implementation
+  deliberately inverts this (see above).
 
 **`aitp-playground`:**
-- `src/aitp_playground/api/runs.py:347-382` — the SSE endpoint (**[R4]** `return StreamingResponse`
-  is at `:378-382`). Frames are
-  `data: {json.dumps(evt)}\n\n`, flat keys; backlog replayed first (`:359-363`); closes with
-  `{"type":"stream.end"}`. `json.dumps` at `:359-374` does **not** rewrite `ts`.
-- `src/aitp_playground/runner/context.py` — `RunEvent` model `:11-38` (**`cause` and
-  `source_url` declared at `:37-38`**, comment at `:34-36`, `error` at `:30`,
-  **`ts` = `time.time()` at `:13`**); `RunContext.emit` `:50-66` →
-  `store.append_event(run_id, event.model_dump())` at `:55` (**no `exclude_none`, so nulls are
-  on the wire** — cards must treat `null` and `undefined` identically).
-- `src/aitp_playground/api/telemetry.py:13-22` — agent-subprocess events POST here and are
-  appended **verbatim, unvalidated**. `logger.info(...body=%s)` at `:18` is the easiest way to
-  capture a literal frame for Phase 3's gate.
-- `agents/base/telemetry.py:13-29` — `emit_event`; builds
-  `{type, run_id, agent_id, ts: time.time(), **fields}` at `:15-21`. **`ts` is at `:19`**
-  (`:18` is `agent_id`) — corrected in R2.
-- `src/aitp_playground/runner/store.py:41-55` — `append_event`; **no `ts` rewriting.**
-- **Emit sites and their actual field names — three different names, not one `cause`:**
-  - `manifest.verify_failed` — `agents/base/agent_admin.py:127-132` (`cause`, `source_url`) and
-    `src/aitp_playground/runner/engine.py:641-645` (+ `step_id`, `agent_id`).
-    **[R4] `_classify_manifest_verify_failure` is DEFINED at `engine.py:32-53`**; `:640` is its
-    call site. Its body: `cause = getattr(exc, "code", None)`, else `"malformed"` for a
-    `ValueError`, else **`"unknown"`**. `unknown` is not in `MANIFEST_UNASSESSED_CODES`, so it
-    would render **red** by default — it is a "could not classify" state and needs an explicit
-    **amber** branch, exactly like `sdk_cannot_verify`.
-  - `revocation.verify_failed` — `agents/base/revocation_refresh.py:104-106` (`cause`,
-    `detail`). **[R4] The cause set every earlier round recorded is WRONG.** `:105` is the
-    `emit(...)` inside `_discard` and enumerates nothing. The four real `_discard` sites are:
-    `no_expected_issuer` `:116` (**amber** — nothing checked, no CP AID pinned);
-    `sdk_cannot_verify` `:122` (**amber** — SDK lacks `verify_revocation_list`);
-    `getattr(exc, "code", None) or "signature_invalid"` `:130` (an SDK code, or that literal
-    fallback — route through the predicate); `malformed_body` `:151` (**red, POST-signature** —
-    the source comment says "A snapshot that VERIFIES (so it was signed by the pinned CP key)
-    but whose body is malformed"). There is **no bare `malformed` literal**, so
-    `isUnassessedRevocationCode('malformed_body')` → `false` → a card would render a *verified*
-    snapshot as a signature failure. **The set is open**, not closed. See the plan's round-4
-    Context section and Phase 3.
-  - `revocation.degraded_serve` — `agents/base/aitp_server.py:341-346` (`reason`, `serves`,
-    `fail_mode`); sampling guard at `:340`. **No `cause`.** `serves` is sampled at the 1st and
-    every 100th occurrence — **not a total.** Emitted via `_emit_soon` (`:269-289` — **[R4]** `:285-289` is task bookkeeping), which
-    **drops the event when no asyncio loop is running** — so it never appears from a direct
-    unit-test call, only from a live server.
-  - `delegation.rejected` — `agents/base/aitp_server.py:607-609` (`error` only, a stringified
-    exception).
-  - **[R3] `delegation.redeemed` — THREE emit sites, THREE different field sets:**
-    1. `agents/base/aitp_server.py:616-621` (issuer side) — `delegatee_aid`, `grants`,
-       `role: "issuer"`.
-    2. `agents/base/agent_admin.py:621-627` (delegatee, happy path) — `tct` (a
-       `{token, claims}` **object** from `tct_event()`, `agents/base/tct_claims.py:52-65`, which
-       emits `claims: {}` on decode failure "so the event is never dropped"), `peer_aid`,
-       `grants` (from an **unvalidated** JWS claim — `Array.isArray` before mapping), `jti`.
-    3. `agents/base/agent_admin.py:631` (delegatee, `except (ValueError, KeyError)` fallback) —
-       **`peer_port` only.** The peer returned 2xx but its body was not parseable as a TCT, so
-       the card **must not claim a fresh TCT or any claims.**
-    Playground documents the divergence itself at its own `PROGRESS.md:624`.
-- **[R3] Narration and metrics coverage is uneven — do not generalize either way:**
-  - `src/aitp_playground/observability/narrator.py` covers `delegation.issued` `:76`,
-    `delegation.redeeming` `:78`, `delegation.redeemed` `:80`, `delegation.rejected` `:82`,
-    `revocation.list_fetched` `:94`, `revocation.refresh_failed` `:99` (**not**
-    `revocation.refused`, which does not exist). **Zero** coverage of `manifest.verify_failed`,
-    `revocation.verify_failed`, `revocation.degraded_serve`.
-  - `src/aitp_playground/observability/metrics.py:149-159` counts the whole `delegation.*`
-    family into `_DELEGATIONS_TOTAL{outcome=…}` (plus `_TCTS_ISSUED_TOTAL` on redeem). **No
-    counter** for any of the three trust-failure events.
-  - So Phase 3's cards are the **only** surface for those three, and an **additional** surface
-    for the delegation pair.
-- `src/aitp_playground/errors.py:46-52` — a `PlaygroundError` handler returning
-  **`{"error": {"code", "message"}}`** — a third error-body shape alongside FastAPI's
-  `{detail}` and this console's proxy `{error, target, upstream_status}`. Note `error` is an
-  **object** here and a **string** there: **discriminate on type, not key presence**, or a
-  banner renders `[object Object]`.
-- `src/aitp_playground/api/hosted.py:110-189` — `resolve_and_handshake`. **7 fail-closed
-  outcomes**, all `HTTPException(detail="<f-string>")` → `{"detail": "…"}`, **no `cause`
-  field**: 404 `:120`, 400 `:122-125`, 502 `:126-132`, 409 `:143-150` (loopback), 409 `:153-160`
-  (origin mismatch), 502 `:174-178` (peer rejected — carries peer status+body), 502 `:179-180`
-  (peer unreachable). Docstring `:116-117` says nothing about flattening.
-  `AITP_FEDERATION_ALLOW_LOOPBACK` gate at `:140-143` (so the loopback case is unreachable in
-  playground's own in-process suite — test it synthetically). **No custom `HTTPException`
-  handler is installed**, so FastAPI's default shape is intact for all seven.
-- `agents/base/agent_admin.py:110-119` — **where the "flattens back to 502 at the federation
-  boundary" statement actually lives**, and where it says the `manifest.verify_failed` event's
-  `cause` is the only channel that survives. **The hard honesty constraint on Phase 5's 502
-  copy**: a 502 must not claim a manifest verification verdict.
+- `src/aitp_playground/runner/context.py` — `RunEvent.ts = time.time()` (epoch seconds);
+  `RunContext.emit` appends with no `exclude_none`, so nulls are on the wire (cards must treat
+  `null` and `undefined` identically).
+- Three field-name families for the trust vocabulary, not one `cause`: `manifest.verify_failed`
+  (`cause`, `source_url`), `revocation.verify_failed` (`cause`, `detail` — four real causes:
+  `no_expected_issuer`, `sdk_cannot_verify`, an SDK code or `signature_invalid` fallback, and
+  `malformed_body`), `revocation.degraded_serve` (`reason`, `serves`, `fail_mode`, no `cause` at
+  all), `delegation.rejected` (`error` only), and `delegation.redeemed` (three emit sites, three
+  different shapes — one carries only `peer_port`, and its card must not imply a TCT it never saw).
+- Narration and metrics coverage is uneven: `manifest.verify_failed`, `revocation.verify_failed`,
+  and `revocation.degraded_serve` have **zero** narrator or metrics coverage upstream — the
+  console's dedicated cards are the *only* surface where they become observable at all.
+- `src/aitp_playground/errors.py:46-52` — `PlaygroundError` → `{"error": {"code", "message"}}`, a
+  third error-body shape (object) alongside FastAPI's `{detail}` (string) and this console's proxy
+  `{error, target, upstream_status}` (string) — `error` collides on key but not on type across two
+  of the three, so discriminate on `typeof`, never key presence.
+- `src/aitp_playground/api/hosted.py:110-189` — `resolve_and_handshake`'s seven fail-closed
+  outcomes, all `HTTPException(detail="<f-string>")`, no `cause` field: 404 (agent gone), 400 (not
+  did:web), 502 (did:web resolution failed), 409×2 (loopback, origin mismatch), 502×2 (peer
+  rejected / handshake incomplete).
+- `agents/base/agent_admin.py:110-119` — where "flattens back to 502 at the federation boundary"
+  actually lives, and where it says `manifest.verify_failed`'s `cause` field is the only channel
+  that survives. The hard honesty constraint behind Phase 5's copy and this phase's FEATURES.md
+  Federation section: a 502 must never claim a manifest verification verdict.
 
 ## Phase log
 
@@ -600,7 +374,7 @@ _(appended by `/implement` as phases land)_
 | 4 — Settle the run-event timestamp unit mismatch | DONE |
 | 5 — Federation handshake error fidelity | DONE |
 | 6 — Declarative accuracy: Draft-spec copy and the `CpEventType` catalogue | DONE |
-| 7 — Documentation sweep, `PROGRESS.md` refresh, full regression | NOT STARTED |
+| 7 — Documentation sweep, `PROGRESS.md` refresh, full regression | DONE |
 
 ### Phase 1 — 2026-09-23 — DONE
 
@@ -762,3 +536,48 @@ _(appended by `/implement` as phases land)_
   filter (must stay free-text).
 - **What's next:** Phase 7 (documentation sweep, `PROGRESS.md` refresh, full regression) and
   the finalization pass. No blockers.
+
+### Phase 7 — 2026-09-23 — DONE (last phase)
+
+- **Verdict:** PASS on round 1, with 2 minor gaps the orchestrator closed directly rather
+  than spending a second full agent round (both mechanical: a self-description accuracy fix
+  and a `prettier --write` on 9 files). Verifier tier: Opus (fresh agent, independent) — ran
+  the full regression chain itself, re-derived route counts/verbs from the actual route
+  files rather than trusting the doc text, diffed every claimed-untouched region against
+  `95ba08f`, and used a throwaway worktree at the pre-branch tip (`6b0ec52`) to distinguish
+  genuinely pre-existing `format:check` failures from ones this plan's phases introduced.
+- **Rounds:** 1 (plus orchestrator-level mechanical fixes, not a second agent round).
+- **Files touched:** `docs/FEATURES.md` (new Federation section, Live-timeline-behaviour
+  update), `docs/PROXIES.md` (route count 2→3, two-tier revocation note, revocation-list
+  marker, 4 new hosted-agents rows), `plans/playground-federation-and-run-label.md` (one
+  clarifying sentence, gitignored — not in git history), `PROGRESS.md` (Repo map section
+  rewritten to post-implementation state; this Phase log section append-only, untouched by
+  the phase itself), `ASSUMPTIONS.md` (1 new entry, later corrected at close-out), plus a
+  `prettier --write` pass (cosmetic only) on 9 files from Phases 1/4/5 that had never been
+  formatted: `src/lib/federation-errors.ts`/`.test.ts`, `src/hooks/use-run-time-base.ts`/
+  `.test.tsx`, `src/test/fixtures/minted-manifests.ts`,
+  `src/test/sdk-verification.integration.test.ts`,
+  `src/components/federation/federation-view.test.tsx`,
+  `src/components/runs/run-summary.test.tsx`, `src/components/runs/run-timeline.test.tsx`.
+- **What was independently verified, not just argued:** `proxyGetVerified` really is used by
+  exactly 3 route files, and the revocation route genuinely does two-tier verification (not
+  a bare `verifyManifestJson` call) — the doc's route-count fix is literally true of the
+  code. All 4 hosted-agents route files' exported verbs read directly and matched the new
+  table exactly. `federation-errors.ts`'s classifier genuinely never asserts a verification
+  verdict on any 502 branch, and `event-cards.tsx`'s `manifestVerifyFailedVerdict` genuinely
+  carries that distinction on the run timeline — the Federation doc section's central
+  honesty claim is true of shipped code on both ends. `docs/ARCHITECTURE.md` confirmed
+  byte-for-byte unchanged. Full regression chain re-run independently: typecheck/lint/build/
+  test (625/625)/test:integration all green, matching the executor's numbers exactly.
+- **2 gaps found and closed at close-out (mechanical, orchestrator-applied):** (1) this
+  file's and `ASSUMPTIONS.md`'s own description of the Repo map condensation understated its
+  size ("essentially as written" / "lightly trimmed" for a ~70% cut, 223→69 lines) — both
+  corrected to name the actual figure. (2) `format:check` had drifted from `main`'s
+  pre-existing 149 failing files to 158 — 9 files Phases 1/4/5 added were never run through
+  `npm run format`. Fixed with `npx prettier --write` on exactly those 9 files (purely
+  cosmetic; typecheck/lint/test/build/test:integration all re-confirmed green after);
+  `format:check` is back to 149, matching `main`.
+- **What's next:** all 7 phases DONE. Proceed to `/implement`'s finalization pass
+  (whole-feature tests, cross-phase integration coverage, one final cumulative-diff Opus
+  verify), then `/reconcile` (ASSUMPTIONS.md has accumulated UNCONFIRMED entries across every
+  phase), then `/ship`.

@@ -8,11 +8,16 @@ import type { RunEvent } from '@/lib/types/playground';
 /** Epoch seconds — the shape playground puts on the wire (`time.time()`). */
 const T0 = 1_790_199_933.127181;
 
-const ev = (ts: number, agent_id: string): RunEvent => ({ type: 'agent.ready', ts, agent_id });
+const ev = (ts: number, agent_id: string): RunEvent => ({
+  type: 'agent.ready',
+  ts,
+  agent_id,
+});
 
 /** The timeline's rendered offsets, in document order. `agent.ready` with only
  *  an `agent_id` renders exactly one `+`/`-` prefixed cell, the offset. */
-const offsets = () => screen.queryAllByText(/^[+-]\d/).map((el) => el.textContent);
+const offsets = () =>
+  screen.queryAllByText(/^[+-]\d/).map((el) => el.textContent);
 
 /** Mirrors `run-detail.tsx`'s composition exactly — `mergeRunEvents` chooses
  *  the source, `useRunTimeBase` holds the base across the switch, the timeline
@@ -32,7 +37,9 @@ function Harness({
 }) {
   const events = mergeRunEvents(active, live, persisted);
   const baseTs = useRunTimeBase(events);
-  return <RunTimeline events={events} active={active} connected baseTs={baseTs} />;
+  return (
+    <RunTimeline events={events} active={active} connected baseTs={baseTs} />
+  );
 }
 
 describe('RunTimeline offsets across the mergeRunEvents source swap', () => {
@@ -76,7 +83,9 @@ describe('RunTimeline offsets across the mergeRunEvents source swap', () => {
     const live = [ev(T0 + 40, 'writer')];
     const persisted = [ev(T0, 'researcher'), ev(T0 + 40, 'writer')];
 
-    const { rerender } = render(<Harness active={false} live={live} persisted={persisted} />);
+    const { rerender } = render(
+      <Harness active={false} live={live} persisted={persisted} />,
+    );
     expect(offsets()).toEqual(['+0ms', '+40.0s']);
 
     // A late refetch that returns only the tail must not push offsets back.
@@ -134,7 +143,9 @@ describe('RunTimeline offsets across a run-identity change', () => {
     // `src/app/runs/[id]/page.tsx`, and it is the *decoded* id, the same value
     // the prop carries — so a run id with an encoded character keys once, not
     // twice under two spellings.
-    const el = await RunDetailPage({ params: Promise.resolve({ id: 'org%2Frun-7f3c' }) });
+    const el = await RunDetailPage({
+      params: Promise.resolve({ id: 'org%2Frun-7f3c' }),
+    });
     expect(el.key).toBe('org/run-7f3c');
     expect((el.props as { runId: string }).runId).toBe('org/run-7f3c');
   });

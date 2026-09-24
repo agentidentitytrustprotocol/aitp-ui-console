@@ -29,7 +29,8 @@ const DETAIL = {
     'refusing cross-domain handshake: did:web:org-b.example.com resolved to a loopback origin (http://127.0.0.1:9102); expected a real remote origin',
   originMismatch:
     "did:web origin mismatch: did:web:org-b.example.com resolved to 'evil.example.com', expected 'org-b.example.com'",
-  peerRejected: 'handshake failed (502): {"detail": "peer manifest verification failed"}',
+  peerRejected:
+    'handshake failed (502): {"detail": "peer manifest verification failed"}',
   unreachablePeer: 'handshake failed: All connection attempts failed',
 } as const;
 
@@ -42,7 +43,11 @@ function fastapi(status: number, detail: unknown, truncated = false): ApiError {
   });
 }
 
-function rawBody(status: number, text: string | undefined, truncated = false): ApiError {
+function rawBody(
+  status: number,
+  text: string | undefined,
+  truncated = false,
+): ApiError {
   return new ApiError('POST', PATH, status, { text, truncated });
 }
 
@@ -157,7 +162,7 @@ describe('classifyFederationError — the seven playground outcomes', () => {
  * `"did:web resolution failed"`, no matter what the peer's body contains.
  */
 describe('outcome 6 is immune to peer-controlled body text colliding with another marker', () => {
-  it('classifies a 502 whose quoted peer body contains outcome 3\'s marker as peer_rejected, not did_web_unresolvable', () => {
+  it("classifies a 502 whose quoted peer body contains outcome 3's marker as peer_rejected, not did_web_unresolvable", () => {
     const adversarialDetail =
       'handshake failed (502): {"detail": "did:web resolution failed for something"}';
     const v = classify(fastapi(502, adversarialDetail));
@@ -188,20 +193,30 @@ describe('no 502 copy asserts a verification verdict', () => {
     ['did:web unresolvable', fastapi(502, DETAIL.unresolvable)],
     ['peer rejected', fastapi(502, DETAIL.peerRejected)],
     ['handshake incomplete', fastapi(502, DETAIL.unreachablePeer)],
-    ['proxy unreachable', rawBody(502, JSON.stringify({ error: 'Upstream unreachable' }))],
+    [
+      'proxy unreachable',
+      rawBody(502, JSON.stringify({ error: 'Upstream unreachable' })),
+    ],
     ['unclassified 502', fastapi(502, 'something else entirely')],
   ];
 
-  it.each(fiveOhTwos)('%s says nothing about manifests or verification', (_name, error) => {
-    const v = classify(error);
-    const ours = `${v.headline} ${v.body}`;
-    expect(ours).not.toMatch(/manifest/i);
-    expect(ours).not.toMatch(/verif/i);
-  });
+  it.each(fiveOhTwos)(
+    '%s says nothing about manifests or verification',
+    (_name, error) => {
+      const v = classify(error);
+      const ours = `${v.headline} ${v.body}`;
+      expect(ours).not.toMatch(/manifest/i);
+      expect(ours).not.toMatch(/verif/i);
+    },
+  );
 
   it('points the operator at the run timeline instead of guessing', () => {
-    expect(classify(fastapi(502, DETAIL.peerRejected)).body).toMatch(/run timeline/);
-    expect(classify(fastapi(502, DETAIL.unreachablePeer)).body).toMatch(/run timeline/);
+    expect(classify(fastapi(502, DETAIL.peerRejected)).body).toMatch(
+      /run timeline/,
+    );
+    expect(classify(fastapi(502, DETAIL.unreachablePeer)).body).toMatch(
+      /run timeline/,
+    );
   });
 
   it('still surfaces the peer’s own status and body for outcome 6', () => {
@@ -221,13 +236,16 @@ describe('the other two error-body shapes', () => {
         504,
         JSON.stringify({
           error: 'Upstream timeout',
-          target: 'http://localhost:8000/hosted-agents/h1/resolve-and-handshake',
+          target:
+            'http://localhost:8000/hosted-agents/h1/resolve-and-handshake',
           upstream_status: 504,
         }),
       ),
     );
     expect(v.outcome).toBe('console_proxy_timeout');
-    expect(v.body).toMatch(/could have completed upstream|may have completed upstream/);
+    expect(v.body).toMatch(
+      /could have completed upstream|may have completed upstream/,
+    );
   });
 
   it("does not mistake the proxy's own 502 for a peer that refused", () => {
@@ -236,7 +254,8 @@ describe('the other two error-body shapes', () => {
         502,
         JSON.stringify({
           error: 'Upstream unreachable',
-          target: 'http://localhost:8000/hosted-agents/h1/resolve-and-handshake',
+          target:
+            'http://localhost:8000/hosted-agents/h1/resolve-and-handshake',
           upstream_status: 502,
         }),
       ),
@@ -248,7 +267,9 @@ describe('the other two error-body shapes', () => {
   it('does not attribute a string `error` body at some other status to the proxy', () => {
     // `makeError` is only ever called with 504 or 502. Anything else carrying
     // a string `error` came from somewhere this module cannot name.
-    const v = classify(rawBody(500, JSON.stringify({ error: 'something else' })));
+    const v = classify(
+      rawBody(500, JSON.stringify({ error: 'something else' })),
+    );
     expect(v.outcome).toBe('unclassified');
     expect(v.detail).toBe('{"error":"something else"}');
   });
@@ -265,26 +286,40 @@ describe('the other two error-body shapes', () => {
     // raw render rather than being mislabelled as either proxy outcome — and
     // certainly never as `[object Object]`.
     const v = classify(
-      rawBody(403, JSON.stringify({ error: 'Cross-site request rejected', code: 'csrf_blocked' })),
+      rawBody(
+        403,
+        JSON.stringify({
+          error: 'Cross-site request rejected',
+          code: 'csrf_blocked',
+        }),
+      ),
     );
     expect(v.outcome).toBe('unclassified');
     expect(v.outcome).not.toBe('console_proxy_timeout');
     expect(v.outcome).not.toBe('console_proxy_unreachable');
-    expect(v.detail).toBe('{"error":"Cross-site request rejected","code":"csrf_blocked"}');
-    expect(`${v.headline} ${v.body} ${v.detail}`).not.toContain('[object Object]');
+    expect(v.detail).toBe(
+      '{"error":"Cross-site request rejected","code":"csrf_blocked"}',
+    );
+    expect(`${v.headline} ${v.body} ${v.detail}`).not.toContain(
+      '[object Object]',
+    );
   });
 
   it("renders playground's {error:{code,message}} envelope without [object Object]", () => {
     const v = classify(
       rawBody(
         404,
-        JSON.stringify({ error: { code: 'run_not_found', message: 'no run r1' } }),
+        JSON.stringify({
+          error: { code: 'run_not_found', message: 'no run r1' },
+        }),
       ),
     );
     expect(v.outcome).toBe('playground_error');
     expect(v.headline).toContain('run_not_found');
     expect(v.body).toBe('no run r1');
-    expect(`${v.headline} ${v.body} ${v.detail}`).not.toContain('[object Object]');
+    expect(`${v.headline} ${v.body} ${v.detail}`).not.toContain(
+      '[object Object]',
+    );
     // Key presence would have matched the proxy branch and stringified an
     // object; the discriminator is the TYPE of `error`.
     expect(v.outcome).not.toBe('console_proxy_unreachable');
@@ -295,22 +330,33 @@ describe('shapes that must degrade honestly rather than mislabel', () => {
   it("does not read FastAPI's 422 detail ARRAY as a classifiable string", () => {
     const v = classify(
       fastapi(422, [
-        { type: 'missing', loc: ['body', 'peer_did'], msg: 'Field required', input: {} },
+        {
+          type: 'missing',
+          loc: ['body', 'peer_did'],
+          msg: 'Field required',
+          input: {},
+        },
       ]),
     );
     expect(v.outcome).toBe('unclassified');
-    expect(`${v.headline} ${v.body} ${v.detail}`).not.toContain('[object Object]');
+    expect(`${v.headline} ${v.body} ${v.detail}`).not.toContain(
+      '[object Object]',
+    );
     expect(v.detail).toContain('Field required');
   });
 
   it('falls back to the raw text for a non-JSON body', () => {
-    const v = classify(rawBody(502, '<html><body>502 Bad Gateway</body></html>'));
+    const v = classify(
+      rawBody(502, '<html><body>502 Bad Gateway</body></html>'),
+    );
     expect(v.outcome).toBe('unclassified');
     expect(v.detail).toBe('<html><body>502 Bad Gateway</body></html>');
   });
 
   it('falls back for a JSON body cut mid-token by the 500-char slice', () => {
-    const v = classify(rawBody(502, '{"detail": "handshake failed (502): {\\"det', true));
+    const v = classify(
+      rawBody(502, '{"detail": "handshake failed (502): {\\"det', true),
+    );
     expect(v.outcome).toBe('unclassified');
     expect(v.detailTruncated).toBe(true);
   });
@@ -324,18 +370,24 @@ describe('shapes that must degrade honestly rather than mislabel', () => {
 
   it('degrades when a recognised status carries an unrecognised detail prefix', () => {
     // Playground rewording a message must cost fidelity, never accuracy.
-    expect(classify(fastapi(409, 'some new fail-closed rule fired')).outcome).toBe(
+    expect(
+      classify(fastapi(409, 'some new fail-closed rule fired')).outcome,
+    ).toBe('unclassified');
+    expect(classify(fastapi(502, 'brand new failure mode')).outcome).toBe(
       'unclassified',
     );
-    expect(classify(fastapi(502, 'brand new failure mode')).outcome).toBe('unclassified');
-    expect(classify(fastapi(400, 'some other bad request')).outcome).toBe('unclassified');
+    expect(classify(fastapi(400, 'some other bad request')).outcome).toBe(
+      'unclassified',
+    );
   });
 
   it('does not claim the hosted agent is gone for a 404 it cannot attribute', () => {
     // A 404 reaching here need not be playground's "no hosted agent" — a
     // missing console route or an intermediary produces one too, and saying
     // "refresh the list" about those would be a mislabel.
-    const html = classify(rawBody(404, '<html><title>404 Not Found</title></html>'));
+    const html = classify(
+      rawBody(404, '<html><title>404 Not Found</title></html>'),
+    );
     expect(html.outcome).toBe('unclassified');
     expect(html.outcome).not.toBe('agent_gone');
     expect(classify(fastapi(404, 'Not Found')).outcome).toBe('unclassified');
@@ -353,7 +405,9 @@ describe('shapes that must degrade honestly rather than mislabel', () => {
 describe('truncation and non-response errors', () => {
   it('carries the truncation flag through so a cut body is not shown as complete', () => {
     const long = 'x'.repeat(600);
-    const v = classify(rawBody(502, `handshake failed (502): ${long}`.slice(0, 500), true));
+    const v = classify(
+      rawBody(502, `handshake failed (502): ${long}`.slice(0, 500), true),
+    );
     expect(v.detailTruncated).toBe(true);
   });
 
@@ -373,7 +427,9 @@ describe('truncation and non-response errors', () => {
     const v = classify('kaboom');
     expect(v.outcome).toBe('no_response');
     expect(v.detail).toBe('kaboom');
-    expect(`${v.headline} ${v.body} ${v.detail}`).not.toContain('[object Object]');
+    expect(`${v.headline} ${v.body} ${v.detail}`).not.toContain(
+      '[object Object]',
+    );
   });
 
   it('returns null for a falsy error so the caller renders nothing', () => {
@@ -389,22 +445,28 @@ describe('parseFederationErrorBody', () => {
   });
 
   it('discriminates the two `error` shapes on type, not key presence', () => {
-    expect(parseFederationErrorBody('{"error":"Upstream timeout"}').proxyError).toBe(
-      'Upstream timeout',
-    );
-    expect(parseFederationErrorBody('{"error":"Upstream timeout"}').playgroundError).toBeUndefined();
     expect(
-      parseFederationErrorBody('{"error":{"code":"c","message":"m"}}').playgroundError,
+      parseFederationErrorBody('{"error":"Upstream timeout"}').proxyError,
+    ).toBe('Upstream timeout');
+    expect(
+      parseFederationErrorBody('{"error":"Upstream timeout"}').playgroundError,
+    ).toBeUndefined();
+    expect(
+      parseFederationErrorBody('{"error":{"code":"c","message":"m"}}')
+        .playgroundError,
     ).toEqual({ code: 'c', message: 'm' });
     expect(
-      parseFederationErrorBody('{"error":{"code":"c","message":"m"}}').proxyError,
+      parseFederationErrorBody('{"error":{"code":"c","message":"m"}}')
+        .proxyError,
     ).toBeUndefined();
   });
 
   it('survives a JSON null, a bare array and a JSON scalar', () => {
     expect(parseFederationErrorBody('null')).toEqual({ raw: 'null' });
     expect(parseFederationErrorBody('[1,2]')).toEqual({ raw: '[1,2]' });
-    expect(parseFederationErrorBody('"just a string"')).toEqual({ raw: '"just a string"' });
+    expect(parseFederationErrorBody('"just a string"')).toEqual({
+      raw: '"just a string"',
+    });
   });
 
   it('fills in a missing code/message on the playground envelope', () => {

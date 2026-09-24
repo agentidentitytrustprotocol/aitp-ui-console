@@ -18,8 +18,11 @@ function run(overrides: Partial<RunResponse> = {}): RunResponse {
   };
 }
 
-const ev = (type: string, ts: number, extra: Partial<RunEvent> = {}): RunEvent =>
-  ({ type, ts, ...extra });
+const ev = (
+  type: string,
+  ts: number,
+  extra: Partial<RunEvent> = {},
+): RunEvent => ({ type, ts, ...extra });
 
 /** The `Duration` row's value cell. */
 function durationText(): string {
@@ -69,13 +72,18 @@ describe('RunSummary duration', () => {
 
   it('falls back to the first event in hand when no base is threaded in', () => {
     render(
-      <RunSummary run={run()} events={[ev('run.started', T0), ev('run.complete', T0 + 9)]} />,
+      <RunSummary
+        run={run()}
+        events={[ev('run.started', T0), ev('run.complete', T0 + 9)]}
+      />,
     );
     expect(durationText()).toBe('9.0s');
   });
 
   it('shows 0.0s — not NaN — for a run with no events yet', () => {
-    const { container } = render(<RunSummary run={run({ status: 'pending' })} events={[]} />);
+    const { container } = render(
+      <RunSummary run={run({ status: 'pending' })} events={[]} />,
+    );
     expect(durationText()).toBe('0.0s');
     expect(container).not.toHaveTextContent('NaN');
   });
@@ -101,7 +109,12 @@ describe('RunSummary duration', () => {
   });
 
   it('shows 0.0s for a single event, which is its own base', () => {
-    render(<RunSummary run={run({ status: 'running' })} events={[ev('run.started', T0)]} />);
+    render(
+      <RunSummary
+        run={run({ status: 'running' })}
+        events={[ev('run.started', T0)]}
+      />,
+    );
     expect(durationText()).toBe('0.0s');
   });
 });
@@ -114,7 +127,9 @@ describe('RunSummary counts', () => {
         events={[
           ev('run.started', T0),
           ev('trust.established', T0 + 1, { grants: ['summarize.text'] }),
-          ev('trust.established', T0 + 2, { grants: ['write.doc', 'summarize.text'] }),
+          ev('trust.established', T0 + 2, {
+            grants: ['write.doc', 'summarize.text'],
+          }),
           ev('llm.started', T0 + 3),
           ev('llm.complete', T0 + 4),
           ev('run.complete', T0 + 5),
@@ -123,9 +138,15 @@ describe('RunSummary counts', () => {
       />,
     );
 
-    expect(screen.getByText('Handshakes').nextElementSibling).toHaveTextContent('2');
-    expect(screen.getByText('LLM calls').nextElementSibling).toHaveTextContent('1');
-    expect(screen.getByText('Events').nextElementSibling).toHaveTextContent('6');
+    expect(screen.getByText('Handshakes').nextElementSibling).toHaveTextContent(
+      '2',
+    );
+    expect(screen.getByText('LLM calls').nextElementSibling).toHaveTextContent(
+      '1',
+    );
+    expect(screen.getByText('Events').nextElementSibling).toHaveTextContent(
+      '6',
+    );
     // De-duplicated across both handshakes.
     expect(screen.getByText('summarize.text')).toBeInTheDocument();
     expect(screen.getByText('write.doc')).toBeInTheDocument();

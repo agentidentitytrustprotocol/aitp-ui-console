@@ -197,14 +197,20 @@ describe('aitp SDK floor — Tier 2: the two false rejections 0.12.0 fixes', () 
   it('DELTA: an authentic manifest carrying `accepted_signature_algorithms` verifies (0.10.0 threw `malformed` — a false amber on a spec-legal member)', () => {
     const { verifyManifestJson } = require('aitp');
     expect(() =>
-      verifyManifestJson(JSON.stringify(ACCEPTED_SIGNATURE_ALGORITHMS), PINNED_NOW_UNIX_SECS),
+      verifyManifestJson(
+        JSON.stringify(ACCEPTED_SIGNATURE_ALGORITHMS),
+        PINNED_NOW_UNIX_SECS,
+      ),
     ).not.toThrow();
   });
 
   it('DELTA: an authentic manifest signed WITH a wire-present `"extensions":{}` verifies (0.10.0 threw `signature_invalid` — a RED "SIGNATURE INVALID" badge on an authentic artifact)', () => {
     const { verifyManifestJson } = require('aitp');
     expect(() =>
-      verifyManifestJson(JSON.stringify(EXTENSIONS_PRESENT_BUT_EMPTY), PINNED_NOW_UNIX_SECS),
+      verifyManifestJson(
+        JSON.stringify(EXTENSIONS_PRESENT_BUT_EMPTY),
+        PINNED_NOW_UNIX_SECS,
+      ),
     ).not.toThrow();
   });
 
@@ -231,7 +237,9 @@ describe('aitp SDK floor — Tier 2: the two false rejections 0.12.0 fixes', () 
     let code: string | undefined;
     try {
       verifyManifestJson(JSON.stringify(CONTROL));
-      throw new Error('expected a long-expired fixture to be rejected without a pinned clock');
+      throw new Error(
+        'expected a long-expired fixture to be rejected without a pinned clock',
+      );
     } catch (err) {
       code = codeOf(err);
     }

@@ -630,3 +630,34 @@ _(appended by `/implement` as phases land)_
   for exact counts).
 - **What's next:** `/reconcile` (ASSUMPTIONS.md has accumulated UNCONFIRMED entries across every
   phase plus this pass), then `/ship`.
+
+### Reconcile — 2026-09-23 — DONE
+
+- All 22 UNCONFIRMED entries settled in one pass by 6 parallel fresh-Opus agents (5 clustered by
+  phase, 1 dedicated skeptical one-way-door scan). Verdicts: 19 CONFIRM, 2 CHANGE (applied), 1
+  DEFER. Zero entries escalated to Fable or the user. Full disposition in `DECISIONS.md`'s
+  "`/reconcile` of `plans/absorb-cp-playground-changes.md`" entry. Committed `7cdffcc`.
+- Changes applied: exported `manifestPostSignatureDetail()` from `verification-display.ts`,
+  wired into `event-cards.tsx` so `pop_failed`/`identity_hint_malformed` get proper
+  post-signature wording; fixed a third instance of the Phase-4 timestamp-unit bug in
+  `run-deliveries.tsx` (moved `formatOffset` to `lib/utils.ts`, threaded `baseTs`, added 10 new
+  tests to a previously-untested component).
+- `ASSUMPTIONS.md` now holds exactly one entry (deliberately deferred: whether seven event types
+  should render a timestamp — a design decision, already documented honestly in
+  `docs/FEATURES.md`, not blocking).
+- Regression after reconcile: 665 tests (up from 625), coverage 84.24/75.03/76.27/85.38 (ratchet
+  79/63/70/80), format:check at the pre-existing 149-file baseline, build clean, integration
+  41/69 (28 gated).
+- **What's next:** `/ship`.
+
+### Ship — 2026-09-23
+
+- Preflight: working tree clean, branch already based on current `main` (`6b0ec52`), no rebase
+  needed. Full gate suite re-run clean immediately before the ship verification gate.
+- Ship verification gate: **PASS** on round 1, fresh Opus, over the full cumulative diff
+  `6b0ec52...7cdffcc` (9 commits, 41 files). Independently re-verified the two reconcile-pass
+  changes in particular (the `manifestPostSignatureDetail` wiring and the `run-deliveries.tsx`
+  fix), confirmed no doc drift, confirmed tracked-file consistency, confirmed the one remaining
+  `ASSUMPTIONS.md` entry is genuinely non-blocking, and re-ran the full gate suite from scratch
+  with numbers matching exactly. No gaps found; no fixes needed.
+- pushed feature/absorb-cp-playground-changes 7cdffcc

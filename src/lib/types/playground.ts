@@ -184,12 +184,12 @@ export interface RunEvent {
    *  (`revocation_refresh.py:105`). Not on playground's pydantic model; this
    *  field exists only on the agent-POSTed channel. */
   detail?: string | null;
-  /** `revocation.degraded_serve` (`agents/base/aitp_server.py:341-346`).
+  /** `revocation.degraded_serve` (`agents/base/aitp_server.py:345-355`).
    *  This event carries **no** `cause`. */
   reason?: string | null;
   /** `revocation.degraded_serve` — the ordinal of this degraded serve, not a
    *  total: the event is emitted on the 1st and every 100th occurrence only
-   *  (sampling guard, `aitp_server.py:340`). */
+   *  (sampling guard, `aitp_server.py:368`). */
   serves?: number | null;
   /** `revocation.degraded_serve` — the configured Axis-B mode
    *  (`aitp_server.py:345`); the event only fires under `soft_fail`. */

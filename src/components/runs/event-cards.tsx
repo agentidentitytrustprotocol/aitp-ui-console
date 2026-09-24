@@ -634,19 +634,29 @@ export function RevocationVerifyFailedCard({ evt }: { evt: RunEvent }) {
   );
 }
 
-/** A capability call was answered on a stale deny-set because
- *  `fail_mode=soft_fail` (`aitp_server.py:341-346`).
+/** A capability call was answered without a fresh revocation snapshot because
+ *  `fail_mode=soft_fail` (`aitp_server.py:345-355`).
  *
  *  The most easily over- and under-stated of the five: it is neither a
  *  failure nor a success, it is a call answered without current revocation
  *  data. And `serves` is a **sample, not a total** — the event fires on the
- *  1st degraded serve and every 100th thereafter (`aitp_server.py:340`) — so
- *  the copy gives it as an occurrence ordinal and names the sampling. */
+ *  1st degraded serve and every 100th thereafter (`aitp_server.py:368`) — so
+ *  the copy gives it as an occurrence ordinal and names the sampling.
+ *
+ *  The verdict text deliberately does not say "the last verified deny-set":
+ *  `degraded_reason()` (`revocation_state.py:192-211`) has three distinct
+ *  causes, and one of them — "no verified snapshot has ever been applied" —
+ *  means no CP snapshot was ever verified at all, so there is no "last
+ *  verified" one to point to (only whatever local revocations exist). Saying
+ *  so anyway would have the card contradict its own REASON line. The text
+ *  stays true across all three causes instead of asserting the one that
+ *  happens to hold for two of them; `evt.reason` (rendered below, verbatim,
+ *  never parsed) is what carries the specific cause. */
 export function RevocationDegradedServeCard({ evt }: { evt: RunEvent }) {
   const verdict: TrustVerdict = {
     color: C.amber,
     headline: 'SERVED WITHOUT CURRENT REVOCATION DATA',
-    text: 'a call was answered on the last verified deny-set',
+    text: 'a call was answered while revocation checking was degraded',
   };
   return (
     <TrustCard verdict={verdict} icon={<AlertTriangle size={14} color={C.amber} />}>

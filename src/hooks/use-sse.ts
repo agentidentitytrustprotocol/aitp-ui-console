@@ -53,10 +53,21 @@ export function useSse<T>({
     }
 
     let active = true;
-    const probeController = new AbortController();
+    // True while the tab is hidden. Distinct from `active` (which only ever
+    // goes false on unmount): a probe or fetch that was in flight when the
+    // tab was hidden must not be allowed to open a connection once it
+    // settles -- that would hold a capacity slot open behind a closed tab,
+    // the exact thing `onVisibilityChange`'s "hidden" branch exists to
+    // prevent.
+    let suspended = false;
+    // A fresh controller per probe attempt (assigned in connect(), below) --
+    // AbortController.abort() is permanent, so reusing one across attempts
+    // would let a single timed-out probe silently disable every later probe
+    // for the rest of this mount.
+    let currentProbeController: AbortController | null = null;
 
     function openEventSource() {
-      if (!active) return;
+      if (!active || suspended) return;
       if (esRef.current) {
         try {
           esRef.current.close();
@@ -86,7 +97,7 @@ export function useSse<T>({
       };
 
       es.onerror = (err) => {
-        if (!active) return;
+        if (!active || suspended) return;
         setState('reconnecting');
         onErrorRef.current?.(err);
         try {
@@ -100,13 +111,15 @@ export function useSse<T>({
     }
 
     async function connect() {
-      if (!active) return;
+      if (!active || suspended) return;
 
       if (!capacityProbePath) {
         openEventSource();
         return;
       }
 
+      const probeController = new AbortController();
+      currentProbeController = probeController;
       const probeTimeout = setTimeout(() => probeController.abort(), 10_000);
       try {
         const res = await fetch(capacityProbePath, {
@@ -119,7 +132,7 @@ export function useSse<T>({
         try {
           await res.body?.cancel();
         } catch {}
-        if (!active) return;
+        if (!active || suspended) return;
         if (res.status === 503) {
           setState('at-capacity');
           timerRef.current = setTimeout(() => {
@@ -133,9 +146,15 @@ export function useSse<T>({
         }
       } catch {
         // Probe failed (network error or timeout) — try the EventSource
-        // anyway; EventSource has its own reconnect handling.
+        // anyway; EventSource has its own reconnect handling. If this was an
+        // abort triggered by the tab going hidden (below), `suspended` is now
+        // true and the check after this block stops it from opening a
+        // connection behind a closed tab.
         clearTimeout(probeTimeout);
+      } finally {
+        if (currentProbeController === probeController) currentProbeController = null;
       }
+      if (!active || suspended) return;
       openEventSource();
     }
 
@@ -143,15 +162,21 @@ export function useSse<T>({
 
     const onVisibilityChange = () => {
       if (document.hidden) {
+        suspended = true;
         try {
           esRef.current?.close();
         } catch {}
+        try {
+          currentProbeController?.abort();
+        } catch {}
+        currentProbeController = null;
         if (timerRef.current) {
           clearTimeout(timerRef.current);
           timerRef.current = null;
         }
         setState('closed');
       } else {
+        suspended = false;
         // A reconnect timer may already be pending from a prior failure;
         // clear it so we don't stack timers across visibility cycles.
         if (timerRef.current) {
@@ -167,7 +192,7 @@ export function useSse<T>({
     return () => {
       active = false;
       try {
-        probeController.abort();
+        currentProbeController?.abort();
       } catch {}
       if (timerRef.current) clearTimeout(timerRef.current);
       try {

@@ -46,9 +46,13 @@ export function RevocationView() {
   const entries = data?.revocation_list?.entries ?? [];
 
   const badge = isLoading
-    ? { text: '· checking revocation list signature…', color: C.textMuted }
+    ? { text: '· checking revocation list signature…', color: C.textMuted, entriesGreyed: true }
     : error
-      ? { text: '· signature not checked — revocation list failed to load', color: C.amber }
+      ? {
+          text: '· signature not checked — revocation list failed to load',
+          color: C.amber,
+          entriesGreyed: true,
+        }
       : data
         ? revocationVerdictBadge(data._verification)
         : null;
@@ -215,7 +219,11 @@ export function RevocationView() {
       ) : entries.length === 0 ? (
         <EmptyState
           title="No revocations"
-          description="An empty revocation list is a meaningful assertion under RFC-AITP-0008."
+          description={
+            badge && !badge.entriesGreyed
+              ? 'A signed empty revocation list is a meaningful assertion under RFC-AITP-0008 (Draft).'
+              : undefined
+          }
         />
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>

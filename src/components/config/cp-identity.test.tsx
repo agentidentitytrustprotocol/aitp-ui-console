@@ -228,3 +228,42 @@ describe('CpIdentityCard revocation verdict', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('CpIdentityCard RFC-AITP-0008 caption', () => {
+  it('cites the spec as Draft and makes no compliance claim, when the revocation list verified', async () => {
+    wireApi(
+      manifest({ checked: true, ok: true }),
+      revocationList({ checked: true, ok: true, tier: 'pinned' }),
+    );
+    renderWithClient(<CpIdentityCard />);
+
+    const caption = await screen.findByText(/RFC-AITP-0008/);
+    expect(caption.textContent).toContain('RFC-AITP-0008');
+    expect(caption.textContent).toContain('(Draft)');
+    expect(caption.textContent).not.toContain('compliant');
+  });
+
+  it('suppresses the "meaningful assertion" caption when no trusted issuer was available to check the revocation list', async () => {
+    wireApi(
+      manifest({ checked: true, ok: true }),
+      revocationList({ checked: false, reason: 'no_trusted_issuer', manifestCode: 'expired' }),
+    );
+    renderWithClient(<CpIdentityCard />);
+
+    await screen.findByText(
+      "· signature not checked · the CP's manifest has expired, so no trusted issuer is available",
+    );
+    expect(screen.queryByText(/meaningful assertion/)).not.toBeInTheDocument();
+  });
+
+  it('suppresses the "meaningful assertion" caption when the revocation list signature is invalid', async () => {
+    wireApi(
+      manifest({ checked: true, ok: true }),
+      revocationList({ checked: true, ok: false, code: 'signature_invalid', tier: 'pinned' }),
+    );
+    renderWithClient(<CpIdentityCard />);
+
+    await screen.findByText('· SIGNATURE INVALID (signature_invalid)');
+    expect(screen.queryByText(/meaningful assertion/)).not.toBeInTheDocument();
+  });
+});

@@ -769,3 +769,56 @@ through the existing string/status guards untouched. Removing `no_response` make
 a 422; deleting the 403 test removes coverage but changes no behaviour.
 
 **Status:** UNCONFIRMED
+
+## Phase 6's acceptance criterion 1 cannot literally hold: Phases 2–5 already put four more `RFC-AITP` hits in `src/`
+
+**Plan:** plans/absorb-cp-playground-changes.md
+
+**Assumed:** Phase 6's criterion 1 says `grep -rn "RFC-AITP" src/ --include='*.tsx' --include='*.ts'`,
+excluding `*.test.*` files, "returns exactly two hits, both containing `(Draft)`" — i.e. the two
+caption strings Part A rewrites are the *only* non-test `RFC-AITP` citations anywhere in `src/`.
+The plan's own edge cases say the same thing predictively ("The two RFC strings are the only hits
+... note it, don't build machinery for it").
+
+**Chose:** Ran the criterion 1 grep after making Part A/A′'s edits and got **six** hits, not two:
+the two rewritten captions (`cp-identity.tsx:128`, `revocation.tsx:224`, both containing `(Draft)`,
+neither containing `compliant`) plus four pre-existing code comments citing RFC section numbers as
+implementation rationale — `event-cards.tsx:380,602` (`RFC-AITP-0008 §1.5`, on why a revocation
+snapshot is discarded) and `verification-display.ts:40,97` (`RFC-AITP-0003 §5`, on manifest
+verification ordering). `git log --oneline -- src/lib/verification-display.ts
+src/components/runs/event-cards.tsx` shows these were added by Phases 2–5 (commits `3f20aa6`,
+`5a0a478`, `e2ad75d`, `34a2b29`), all already merged onto this branch before this executor pass
+started — i.e. the plan's Phase 6 section was written against an earlier snapshot of the repo and
+the "two hits" premise was overtaken by the very phases Phase 6 says it is independent of.
+
+Chose to leave all four alone and report the divergence rather than edit them: none of the four is
+in Phase 6's Files list (`cp-identity.tsx`, `revocation.tsx`, their tests, `cp.ts`); none makes an
+operator-facing compliance claim the way the two captions did (they cite a spec section to justify
+*why the code branches the way it does*, a categorically different rhetorical act from a UI string
+telling an operator "this is a meaningful assertion"); none contains the word `compliant`, so
+criterion 2 holds across all six hits; and two of the four cite a different RFC (`RFC-AITP-0003`)
+that Part A never touches. Editing them would be exactly the scope creep the phase's own Rejected
+list warns against ("A repo-wide RFC-status constant or lint … over-engineering for two strings;
+revisit if a third appears") — four more hits are not "a third appears" in the sense that clause
+means (an intentional new caption), they are comments that were already there when this phase
+started. Read criterion 1's intent as scoped to the operator-facing caption strings Part A owns:
+exactly two such strings exist, both fixed, both containing `(Draft)`, neither containing
+`compliant` — verified directly, not inferred.
+
+**Alternatives:** Add `(Draft)` to the four comments too, to make the literal grep count hold
+(rejected — out of Phase 6's Files, and it would misapply a caption-register qualifier to sentences
+that are not claims of conformance in the first place; `verify_manifest`'s ordering does not become
+more or less "Draft" depending on the caption's fix). Narrow the grep with more `--include`/path
+exclusions until it reports two (rejected — that launders the discrepancy instead of surfacing it,
+and the next phase to re-run this exact criterion would get a different number depending on which
+exclusions it remembers to add). Treat the mismatch as a blocking failure and stop (rejected — the
+instructions given for this pass are explicit that a plan/code divergence discovered here should be
+noted and worked through, not used to halt a phase whose actual deliverables — the two caption
+fixes and the `CpEventType` additions — are unaffected by it).
+
+**Blast radius if wrong:** None to this phase's own deliverables — both caption edits are correct
+and tested regardless of how criterion 1 is read. If a reviewer wants the four comments qualified
+too, that is an additive edit to two files outside this phase's scope, decided on its own merits by
+whoever owns Phase 7's documentation sweep or a follow-up.
+
+**Status:** UNCONFIRMED

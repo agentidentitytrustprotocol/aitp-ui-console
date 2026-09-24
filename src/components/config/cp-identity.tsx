@@ -123,9 +123,11 @@ export function CpIdentityCard() {
               · expires {expiresIn(list?.expires_at)}{' '}
               <span style={{ color: badge.color }}>{badge.text}</span>
             </div>
-            <div className="mono" style={{ fontSize: 10, color: C.textMuted }}>
-              RFC-AITP-0008 compliant · empty list is a meaningful assertion
-            </div>
+            {!badge.entriesGreyed && (
+              <div className="mono" style={{ fontSize: 10, color: C.textMuted }}>
+                per RFC-AITP-0008 (Draft) · a signed empty list is a meaningful assertion
+              </div>
+            )}
           </>
             );
           })()

@@ -599,7 +599,7 @@ _(appended by `/implement` as phases land)_
 | 3 — Absorb playground's trust-event vocabulary (5 typed cards) | DONE |
 | 4 — Settle the run-event timestamp unit mismatch | DONE |
 | 5 — Federation handshake error fidelity | DONE |
-| 6 — Declarative accuracy: Draft-spec copy and the `CpEventType` catalogue | NOT STARTED |
+| 6 — Declarative accuracy: Draft-spec copy and the `CpEventType` catalogue | DONE |
 | 7 — Documentation sweep, `PROGRESS.md` refresh, full regression | NOT STARTED |
 
 ### Phase 1 — 2026-09-23 — DONE
@@ -732,3 +732,33 @@ _(appended by `/implement` as phases land)_
   duplication edge case fails safe instead of into a false claim.
 - **What's next:** Phase 6 (declarative accuracy: draft-spec copy and the `CpEventType`
   catalogue). No blockers.
+
+### Phase 6 — 2026-09-23 — DONE
+
+- **Verdict:** PASS on round 1. Verifier tier: Opus (fresh agent, independent) — re-ran the
+  literal grep from the plan itself, `git blame`'d every extra hit to confirm it predated
+  this phase, traced `revocationVerdictBadge`'s full branch set in already-committed Phase 2
+  code to confirm `entriesGreyed` really is true exactly when the verdict was not
+  established, and hand-mutated the suppression guard to confirm the new tests would
+  actually catch its removal.
+- **Rounds:** 1.
+- **Files touched:** `src/components/config/cp-identity.tsx` (caption text + entriesGreyed
+  guard), `src/components/config/cp-identity.test.tsx`, `src/components/trust/revocation.tsx`
+  (EmptyState description + entriesGreyed guard, plus `entriesGreyed: true` added to its two
+  local loading/error placeholder objects), `src/components/trust/revocation.test.tsx`,
+  `src/lib/types/cp.ts` (`CpEventType` +2 literals +doc comment), `ASSUMPTIONS.md`.
+- **What was independently verified, not just argued:** both captions now render only when
+  `!badge.entriesGreyed` — an unverified or failed-verification empty list no longer gets an
+  unconditional "meaningful assertion" claim (Part A′'s actual point, the suppression-attack
+  framing RFC-AITP-0008 §1 describes). `CpEventType` addition confirmed zero-behavior-change
+  (`grep -rn "CpEventType" src/` still exactly one hit, the definition; `CpEvent.type` stays
+  `string`).
+- **Logged divergence:** acceptance criterion 1's literal "exactly two RFC-AITP hits" count
+  no longer holds — four pre-existing citations from already-merged Phases 2 and 5 land in
+  between; confirmed via `git blame` to genuinely predate this phase and to not assert
+  compliance. See plan Phase 6 note and `ASSUMPTIONS.md`.
+- **Deliberately out of scope (per plan's own Rejected list):** no `delegation` branch added
+  to `src/lib/colors.ts`'s `eventColor`; `CpEventType` not wired into the audit page's
+  filter (must stay free-text).
+- **What's next:** Phase 7 (documentation sweep, `PROGRESS.md` refresh, full regression) and
+  the finalization pass. No blockers.

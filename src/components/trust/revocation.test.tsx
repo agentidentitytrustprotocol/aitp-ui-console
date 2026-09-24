@@ -136,13 +136,13 @@ describe('RevocationView verdict rendering', () => {
     expect(screen.queryByText(/verified/)).not.toBeInTheDocument();
   });
 
-  it('names the upstream cause when the manifest could not be verified', async () => {
+  it('states what it observed about the manifest, without attributing a cause, when no trusted issuer is available', async () => {
     wireApi(list({ checked: false, reason: 'no_trusted_issuer', manifestCode: 'expired' }));
     renderWithClient(<RevocationView />);
 
     expect(
       await screen.findByText(
-        "· signature not checked · the CP's manifest has expired, so no trusted issuer is available (aitp-control-plane defect)",
+        "· signature not checked · the CP's manifest has expired, so no trusted issuer is available",
       ),
     ).toBeInTheDocument();
   });
@@ -154,5 +154,33 @@ describe('RevocationView verdict rendering', () => {
     expect(
       await screen.findByText('· signature not checked (manifest_unreachable)'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('RevocationView RFC-AITP-0008 empty-state description', () => {
+  it('cites the spec as Draft and makes no compliance claim, when the list verified with zero entries', async () => {
+    wireApi(list({ checked: true, ok: true, tier: 'pinned' }, []));
+    renderWithClient(<RevocationView />);
+
+    const description = await screen.findByText(/RFC-AITP-0008/);
+    expect(description.textContent).toContain('RFC-AITP-0008');
+    expect(description.textContent).toContain('(Draft)');
+    expect(description.textContent).not.toContain('compliant');
+  });
+
+  it('suppresses the "meaningful assertion" description when no trusted issuer was available to verify the list', async () => {
+    wireApi(list({ checked: false, reason: 'no_trusted_issuer', manifestCode: 'expired' }, []));
+    renderWithClient(<RevocationView />);
+
+    await screen.findByText('No revocations');
+    expect(screen.queryByText(/meaningful assertion/)).not.toBeInTheDocument();
+  });
+
+  it('suppresses the "meaningful assertion" description when the list signature is invalid', async () => {
+    wireApi(list({ checked: true, ok: false, code: 'signature_invalid', tier: 'pinned' }, []));
+    renderWithClient(<RevocationView />);
+
+    await screen.findByText('No revocations');
+    expect(screen.queryByText(/meaningful assertion/)).not.toBeInTheDocument();
   });
 });

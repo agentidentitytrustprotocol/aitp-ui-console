@@ -268,6 +268,15 @@ export interface PinnedKey {
 /** The CP `/api/revocation/entries` route is POST-only; the list is
  *  served by `/.well-known/aitp-revocation-list` via `RevocationList`. */
 
+/** A documentation-only catalogue of the event `type` strings the CP is
+ *  known to emit -- nothing more. CP's `/api/events` ingestion does not
+ *  validate `type` against any enum (it is an arbitrary-string
+ *  passthrough), and `CpEvent.type` below stays `string` for exactly that
+ *  reason. This union has no import site anywhere in this repo and must
+ *  never be used to filter or validate an event: narrowing a wire `string`
+ *  to this type would reject event names the CP legitimately sends (e.g. a
+ *  playground agent's own `delegation.*` events) that just haven't been
+ *  added here yet. */
 export type CpEventType =
   | 'agent.registered'
   | 'agent.deregistered'
@@ -282,6 +291,8 @@ export type CpEventType =
   | 'tct.revoked'
   | 'delegation.issued'
   | 'delegation.revoked'
+  | 'delegation.rejected'
+  | 'delegation.redeemed'
   | 'oidc.identity.bound'
   | 'oidc.identity.refreshed'
   | 'session.bundle.committed'

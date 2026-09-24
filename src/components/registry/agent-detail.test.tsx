@@ -120,7 +120,7 @@ describe('AgentDetail AID provenance', () => {
 
     expect(aidNode()).toHaveStyle({ color: C.textMuted });
     expect(aidNode()).not.toHaveStyle({ color: C.tealBright });
-    expect(provenanceNode('· VERIFICATION FAILED (signature_invalid)')).toBeInTheDocument();
+    expect(provenanceNode('· SIGNATURE INVALID (signature_invalid)')).toBeInTheDocument();
   });
 
   it('renders the AID muted while the manifest query is loading', () => {

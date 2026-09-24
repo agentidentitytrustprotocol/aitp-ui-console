@@ -22,6 +22,7 @@ when its backend is down rather than crashing.
 | [Monitor](#monitor) | `/monitor`, `/monitor/sessions/[id]` | CP | Live event ticker, delegation tree, TCTs |
 | [Registry](#registry) | `/registry`, `/registry/[aid]` | CP | View agents, mint enrollment tokens, deregister |
 | [Trust](#trust) | `/trust` | CP | Manage trust anchors, pinned keys, revocations |
+| [Federation](#federation) | `/federation` | Playground | Host an agent, resolve a `did:web` peer, handshake, invoke |
 | [Audit](#audit) | `/audit` | CP | Filter and export the protocol event history |
 | [Config](#config) | `/config` | Both | Health, identity, metrics, webhooks |
 
@@ -119,6 +120,30 @@ being dropped. The event catalog, ordering, and *shapes* are the
 playground's contract — see
 [observability](https://agentidentitytrustprotocol.io/playground/observability).
 
+Seven of the playground's trust- and delegation-vocabulary event types get
+dedicated cards rather than the generic fallback: `manifest.verify_failed`
+and `revocation.verify_failed` (each naming the producer's own classified
+`cause`, coloured amber when nothing was actually checked and red only when
+an artifact was checked and rejected — never a stronger claim than the
+cause supports), `revocation.degraded_serve` (a producer serving revocation
+data in a degraded mode, carrying its own `reason` / `serves` /
+`fail_mode`), `delegation.issued`, `delegation.redeeming`,
+`delegation.redeemed` (three distinct playground emit sites with three
+distinct field shapes — a redemption whose peer response couldn't be parsed
+as a token renders only what actually arrived, never a grant it never
+saw), and `delegation.rejected`. For the first three of those, this card is
+the *only* place the event becomes observable at all — the playground
+narrates and counts none of them.
+
+Event timestamps (`ts`) are epoch seconds, the way the playground stamps
+them — not milliseconds since the run started — and the console converts
+each to a run-relative offset from the run's own first observed event. Of
+the seven trust/delegation types above, only `delegation.redeeming`
+currently renders that offset; `manifest.verify_failed`,
+`revocation.verify_failed`, `revocation.degraded_serve`,
+`delegation.issued`, `delegation.redeemed`, `delegation.rejected`, and the
+generic `run.failed` card do not yet show a timestamp.
+
 The view **auto-scrolls** to the newest event unless you've scrolled up,
 in which case a **jump-to-latest** control appears; a small indicator
 shows whether the stream is *streaming* or *reconnecting*. Once a run is
@@ -208,6 +233,53 @@ materially destructive — on the CP side its effects cascade well beyond
 the single JTI. The cascade rules are the control plane's; see
 [revocation](https://agentidentitytrustprotocol.io/spec/revocation) and the [CP data model](https://agentidentitytrustprotocol.io/control-plane/data-model).
 
+## Federation
+
+A cross-org, `did:web`-resolved handshake demo (`/federation`), talking to
+the playground's `/hosted-agents` API rather than the CP. Federation
+semantics — what hosting, resolution, and a handshake actually do — are the
+playground's; this section documents only what the console lets you drive
+and what it can honestly tell you about the result.
+
+- **Host an agent** — supply a scenario `ref` (`pack/agent@version`) plus
+  optional `public_host`, `public_scheme`, `signing_suite`, and `port`. The
+  playground starts the agent and the console shows its AID, DID, origin,
+  manifest URL, and handshake URL.
+- **Resolve & handshake** — for a hosted agent, give a peer's `peer_did`
+  (`did:web:...`) and optional comma-separated `requested_grants`; the
+  console asks the playground to resolve that DID and attempt a handshake
+  against whatever origin it resolves to.
+- **Invoke** — call a capability on an already-resolved peer directly
+  (`peer_port`, `capability`, an optional JSON `payload`).
+- **Stop** — deregister a hosted agent.
+
+### Fail-closed refusals are a feature, not a fault
+
+`resolve-and-handshake` fails in seven distinct ways, and the console
+renders each one honestly instead of collapsing them into a single red
+error string. Two of the seven are the interesting case: a **409 loopback
+refusal** (the resolved `did:web` origin turned out to be a loopback
+address — a same-process handshake wearing a `did:web` costume) and a
+**409 origin mismatch** (the host named in the DID and the origin it
+actually resolved to disagree). Both render in **amber**, not red, with
+copy that says outright that this is a fail-closed control working as
+designed, not an error — rendering them red would train an operator to
+distrust the one thing this demo does correctly.
+
+**What a 502 here cannot tell you.** The playground's federation boundary
+flattens every downstream failure to the same HTTP 502 — a peer that
+answered and refused, a peer that never answered at all, and a peer whose
+manifest failed verification are indistinguishable at this layer. The
+console's handshake error banner is honest about that limit: it quotes the
+peer's own response text verbatim when one exists, but it never asserts a
+verification verdict a bare 502 cannot support. **The distinction between
+"the peer's manifest failed verification" and "the peer was simply
+unreachable" is not observable at this boundary at all.** It lives one
+layer down, on the run timeline's `manifest.verify_failed` event card (see
+[Live timeline behaviour](#live-timeline-behaviour)), which carries the
+playground's own classified `cause` for the failure. A 502 banner here is
+not the place to look for that answer — the timeline is.
+
 ## Audit
 
 A filterable, exportable view of the control plane's **protocol event
@@ -242,7 +314,12 @@ Operational settings and health, split across two columns.
   is coloured as verified only when its manifest's signature actually
   checked out; an expired manifest renders as its own distinct state that
   claims nothing about authenticity either way, never as a softer
-  "verified". The revocation snapshot verifies in one of two tiers: against
+  "verified". A manifest whose signature checked out but which then fails a
+  later proof-of-possession or identity-hint check is shown as rejected
+  *and* as having had a valid signature — never as a signature failure,
+  because it demonstrably wasn't one, and never as verified, because a
+  manifest that fails any step is still discarded. The revocation snapshot
+  verifies in one of two tiers: against
   the CP's own manifest by default (proves one key signed both artifacts,
   not that the origin is authentic — never rendered as "verified"), or
   against a pinned `CP_AID` if configured (a real authentication claim).

@@ -7,14 +7,22 @@ lives here — the proxy exists only to keep credentials off the browser and
 collapse two upstreams to one origin (see
 [ARCHITECTURE.md](https://agentidentitytrustprotocol.io/console/architecture#why-a-bff-proxy)).
 
-**Exception: the two manifest routes below use `proxyGetVerified`, not
+**Exception: the three routes below use `proxyGetVerified`, not
 `proxyGet`.** They forward the upstream body unchanged but run it through
-the `aitp` SDK's `verifyManifestJson` server-side first, attaching the
-result as a sibling `_verification` key (`{checked, ok, code}` /
-`{checked: false, reason}`) — never re-serializing the upstream bytes, so
-the response the browser sees is byte-identical to what was verified. This
-is the one case in this table with real logic in the proxy layer: rendering
-a CP-signed artifact as trusted without checking it is exactly the defect
+the `aitp` SDK server-side first, attaching the result as a sibling
+`_verification` key (`{checked, ok, code}` / `{checked: false, reason}`) —
+never re-serializing the upstream bytes, so the response the browser sees
+is byte-identical to what was verified. The two manifest routes
+(`well-known/aitp-manifest`, `registry/agents/[aid]/manifest`) verify with
+`verifyManifestJson` alone; the revocation route
+(`well-known/aitp-revocation-list`) is **not** a bare `verifyManifestJson`
+call — it verifies in two tiers instead, self-consistently against the CP's
+own co-served manifest by default or against a pinned `CP_AID` when one is
+configured. See the "Trust" section of
+[FEATURES.md](https://agentidentitytrustprotocol.io/console/features#trust)
+for what each revocation tier actually proves. This is the one case in this
+table with real logic in the proxy layer: rendering a CP-signed artifact as
+trusted without checking it is exactly the defect
 `plans/cp-signed-artifact-verification.md` exists to fix. See
 [ARCHITECTURE.md](https://agentidentitytrustprotocol.io/console/architecture#what-the-bff-verifies).
 
@@ -51,6 +59,10 @@ server-side, never sent to the browser.
 | GET | `/api/playground/runs/[id]/cp-sessions` | `/runs/:id/cp-sessions` |
 | GET | `/api/playground/runs/[id]/deliveries` | `/runs/:id/cp-deliveries` |
 | **SSE** | `/api/playground/runs/[id]/events` | `/runs/:id/events` |
+| GET, POST | `/api/playground/hosted-agents` | `/hosted-agents` |
+| GET, DELETE | `/api/playground/hosted-agents/[id]` | `/hosted-agents/:id` |
+| POST | `/api/playground/hosted-agents/[id]/invoke` | `/hosted-agents/:id/invoke` |
+| POST | `/api/playground/hosted-agents/[id]/resolve-and-handshake` | `/hosted-agents/:id/resolve-and-handshake` |
 
 > **Why `scenario-templates` is a query-param route, not a child of
 > `/scenarios/[...ref]`:** Next.js does not allow child segments under a
@@ -90,7 +102,7 @@ server-side, never sent to the browser.
 | GET, POST | `/api/cp/webhooks/[id]/circuit-breaker` | `/api/webhooks/:id/circuit-breaker` |
 | POST | `/api/cp/webhooks/[id]/circuit-breaker/reset` | `/api/webhooks/:id/circuit-breaker/reset` |
 | GET | `/api/cp/well-known/aitp-manifest` | `/.well-known/aitp-manifest` (verifying — see note above) |
-| GET | `/api/cp/well-known/aitp-revocation-list` | `/.well-known/aitp-revocation-list` |
+| GET | `/api/cp/well-known/aitp-revocation-list` | `/.well-known/aitp-revocation-list` (verifying — see note above) |
 
 ## Adding a new proxy
 

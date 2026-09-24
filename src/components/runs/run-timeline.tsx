@@ -11,9 +11,15 @@ interface Props {
   events: RunEvent[];
   active: boolean;
   connected: boolean;
+  /** The run's time base — the earliest `ts` seen for this run, computed once
+   *  by `useRunTimeBase` in `run-detail.tsx` (where the live-buffer →
+   *  persisted-record swap happens) and threaded down. Every card's offset is
+   *  a delta against it; `undefined` before the first event, which renders as
+   *  no offset. */
+  baseTs?: number;
 }
 
-export function RunTimeline({ events, active, connected }: Props) {
+export function RunTimeline({ events, active, connected, baseTs }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
@@ -97,7 +103,9 @@ export function RunTimeline({ events, active, connected }: Props) {
             description={active ? 'Streaming from the playground.' : 'This run has no recorded events.'}
           />
         ) : (
-          events.map((evt, i) => <EventCard key={`${evt.type}-${evt.ts}-${i}`} evt={evt} />)
+          events.map((evt, i) => (
+            <EventCard key={`${evt.type}-${evt.ts}-${i}`} evt={evt} baseTs={baseTs} />
+          ))
         )}
       </div>
     </div>

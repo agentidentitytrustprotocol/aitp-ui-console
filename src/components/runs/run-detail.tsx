@@ -18,6 +18,7 @@ import { RunCpSessions } from './run-cp-sessions';
 import { RunDeliveries } from './run-deliveries';
 import { useRun } from '@/hooks/use-run';
 import { useRunEvents } from '@/hooks/use-run-events';
+import { useRunTimeBase } from '@/hooks/use-run-time-base';
 import { useUrlEnum } from '@/hooks/use-url-state';
 import { useToast } from '@/components/shared/toast';
 import { postJSON } from '@/lib/api/client';
@@ -63,6 +64,13 @@ export function RunDetail({ runId }: { runId: string }) {
     () => mergeRunEvents(active, live.events, run.data?.events),
     [active, live.events, run.data?.events],
   );
+
+  // The run's time base, computed once here — the only place that sees BOTH
+  // event sources `mergeRunEvents` switches between — and threaded into the
+  // two surfaces that render run-relative time. `useRunTimeBase` only ever
+  // lowers it, so neither the live buffer's front-drop nor the swap to the
+  // persisted record can move offsets around under the reader.
+  const baseTs = useRunTimeBase(events);
 
   const cancel = useMutation({
     mutationFn: () => postJSON(`/api/playground/runs/${encodeURIComponent(runId)}/cancel`, {}),
@@ -147,7 +155,7 @@ export function RunDetail({ runId }: { runId: string }) {
         <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <AgentStatusGrid events={events} />
-            <RunSummary run={run.data} events={events} />
+            <RunSummary run={run.data} events={events} baseTs={baseTs} />
             {run.data.error && (
               <Card style={{ padding: 14, borderLeft: `3px solid ${C.red}` }}>
                 <div style={{ fontSize: 11, color: C.red, fontWeight: 600, marginBottom: 6 }}>
@@ -173,13 +181,18 @@ export function RunDetail({ runId }: { runId: string }) {
             />
             {tab === 'timeline' && (
               <Card style={{ padding: 20, display: 'flex', flexDirection: 'column', minHeight: 320 }}>
-                <RunTimeline events={events} active={active} connected={live.connected} />
+                <RunTimeline
+                  events={events}
+                  active={active}
+                  connected={live.connected}
+                  baseTs={baseTs}
+                />
               </Card>
             )}
             {tab === 'narrate' && <RunNarrate runId={runId} />}
             {tab === 'cp-audit' && <RunCpAudit runId={runId} />}
             {tab === 'cp-sessions' && <RunCpSessions runId={runId} />}
-            {tab === 'deliveries' && <RunDeliveries runId={runId} />}
+            {tab === 'deliveries' && <RunDeliveries runId={runId} baseTs={baseTs} />}
           </div>
         </div>
       )}

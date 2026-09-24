@@ -5,6 +5,7 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { useRunDeliveries } from '@/hooks/use-run-extras';
 import { C } from '@/lib/colors';
+import { formatOffset, runOffsetMs } from '@/lib/utils';
 
 function asString(v: unknown): string | null {
   return typeof v === 'string' ? v : null;
@@ -14,7 +15,16 @@ function asNumber(v: unknown): number | null {
   return typeof v === 'number' ? v : null;
 }
 
-export function RunDeliveries({ runId }: { runId: string }) {
+/** `baseTs` is the run's time base (see `useRunTimeBase`, threaded down from
+ *  `RunDetail`). Each delivery row is the raw `cp.webhook.delivered` event
+ *  dict, and playground stamps its `ts` the same way as every other run
+ *  event — epoch seconds from `time.time()` (`api/webhooks.py:91`) — so this
+ *  column is the same unit bug Phase 4 fixed on the Timeline tab, fixed the
+ *  same way: `runOffsetMs`/`formatOffset` against the run's shared base,
+ *  never a bare `ts / 1000`. `baseTs` is optional (undefined until the first
+ *  event arrives, or if a caller never threads it), in which case the row
+ *  renders no offset rather than a wrong one. */
+export function RunDeliveries({ runId, baseTs }: { runId: string; baseTs?: number }) {
   const { data, isLoading, error } = useRunDeliveries(runId);
 
   if (isLoading) return <LoadingSkeleton rows={4} />;
@@ -116,7 +126,9 @@ export function RunDeliveries({ runId }: { runId: string }) {
                 >
                   <td style={{ padding: '10px 14px' }}>
                     <span className="mono" style={{ fontSize: 11, color: C.textMuted }}>
-                      {ts !== null ? `+${(ts / 1000).toFixed(1)}s` : '—'}
+                      {ts !== null && baseTs !== undefined
+                        ? formatOffset(runOffsetMs(ts, baseTs))
+                        : '—'}
                     </span>
                   </td>
                   <td style={{ padding: '10px 14px' }}>

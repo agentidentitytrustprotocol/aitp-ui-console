@@ -176,12 +176,7 @@ export function EventCard({ evt, baseTs }: { evt: RunEvent; baseTs?: number }) {
               {offset}
             </span>
           </div>
-          <div style={{ fontSize: 12, color: C.textDim }}>
-            Total elapsed:{' '}
-            {baseTs === undefined
-              ? '—'
-              : `${(runOffsetMs(evt.ts, baseTs) / 1_000).toFixed(1)}s`}
-          </div>
+          <div style={{ fontSize: 12, color: C.textDim }}>Total elapsed: {offset ?? '—'}</div>
         </Card>
       );
 
@@ -291,6 +286,14 @@ export interface TrustVerdict {
  * - `malformed` needs no branch here: it is *also* an SDK code, and the
  *   predicate already classifies it amber (a parse failure reaches no
  *   signature check).
+ * - **`expired`** needs its own branch for the same reason `manifestVerdictBadge`
+ *   gives it one (`verification-display.ts:166`): `isUnassessedManifestCode`
+ *   deliberately excludes `expired` (it is independently meaningful, not a
+ *   generic "couldn't get far enough to check" code), so leaving it to that
+ *   predicate would fall through to the generic red branch below and render an
+ *   expired-but-unassessed manifest as an authenticity failure on this
+ *   run-timeline surface — the very overclaim the CP badge was fixed to remove,
+ *   reintroduced here by trusting the predicate's name too literally.
  *
  * `pop_failed` / `identity_hint_malformed` — the two codes `verify_manifest`
  * can only construct *after* the outer signature has verified — get the same
@@ -305,6 +308,13 @@ export function manifestVerifyFailedVerdict(cause?: string | null): TrustVerdict
       color: C.amber,
       headline: 'MANIFEST NOT VERIFIED',
       text: 'the SDK raised an error carrying no code — signature not assessed (unknown)',
+    };
+  }
+  if (cause === 'expired') {
+    return {
+      color: C.amber,
+      headline: 'MANIFEST NOT VERIFIED',
+      text: 'the manifest lapsed before it could be checked — signature not assessed (expired)',
     };
   }
   if (cause && isUnassessedManifestCode(cause)) {
@@ -345,10 +355,9 @@ export function manifestVerifyFailedVerdict(cause?: string | null): TrustVerdict
  * last branch has to be an honest default that names an unrecognised cause
  * and claims nothing about it, not an exhaustive-looking map.
  *
- * Three of the four literals are playground's own, not SDK codes, and each
- * gets its own named branch *ahead* of the predicate. None of them may reach
- * its severity by falling through `isUnassessedRevocationCode` returning
- * `false`:
+ * Four of the causes get their own named branch *ahead* of the predicate.
+ * None of them may reach its severity by falling through
+ * `isUnassessedRevocationCode` returning `false`:
  *
  * - **`no_expected_issuer`** (`:116`) — no CP AID was pinned, so the agent
  *   refused to apply a snapshot it could not verify. Nothing was checked:
@@ -363,13 +372,32 @@ export function manifestVerifyFailedVerdict(cause?: string | null): TrustVerdict
  *   to the predicate's `false` would render an authentically-signed snapshot
  *   as a signature failure — the exact conflation the CP badges were fixed to
  *   remove, reintroduced on the other artifact.
+ * - **`expired`** — the SDK's own pre-signature code (`verify_revocation_list`
+ *   checks expiry before the signature, the same ordering `verify_manifest`
+ *   uses). `isUnassessedRevocationCode('expired')` is `false` — `expired` is
+ *   independently meaningful, not folded into that Set — so leaving it to the
+ *   predicate falls through to the generic red branch below and renders an
+ *   expired-but-unassessed snapshot exactly like a genuine signature failure.
+ *   `revocationVerdictBadge` gives `expired` its own amber branch
+ *   (`verification-display.ts:265`) for this same reason; this card has to
+ *   agree, or the identical SDK code reads as two different verdicts
+ *   depending on which panel an operator happens to be looking at.
+ *
+ * The one remaining pre-signature code, `issuer_mismatch`, deliberately gets
+ * **no** bespoke branch here: `revocationVerdictBadge` colours it red anyway,
+ * because a declared-issuer mismatch is independently actionable (a
+ * misconfigured pin, a rotated key, a forged issuer field) even though
+ * nothing about the signature was established — RFC-AITP-0008 §1.5 makes
+ * discarding the snapshot a MUST regardless. `isUnassessedRevocationCode`
+ * correctly returns `false` for it, so it reaches the same red verdict here
+ * by falling through to the generic branch below, just with plainer wording
+ * ("verification failed (issuer_mismatch)" vs. the badge's own "ISSUER
+ * MISMATCH") — same colour, same claim, no branch needed to keep them
+ * agreeing.
  *
  * Everything else at `:130` is an SDK `.code` (or the literal
  * `signature_invalid` fallback when the throw carried none) and routes
- * through the predicate. Note that red here means "the snapshot was
- * discarded" — RFC-AITP-0008 §1.5 makes that a MUST for *any* verification
- * failure, including pre-signature ones like `expired` — so the wording never
- * upgrades that to a signature verdict.
+ * through the predicate.
  */
 export function revocationVerifyFailedVerdict(cause?: string | null): TrustVerdict {
   if (cause === 'no_expected_issuer') {
@@ -391,6 +419,13 @@ export function revocationVerifyFailedVerdict(cause?: string | null): TrustVerdi
       color: C.red,
       headline: 'SNAPSHOT DISCARDED',
       text: 'signature verified · snapshot body is malformed (malformed_body)',
+    };
+  }
+  if (cause === 'expired') {
+    return {
+      color: C.amber,
+      headline: 'SNAPSHOT NOT VERIFIED',
+      text: 'signature not assessed (expired)',
     };
   }
   if (cause && isUnassessedRevocationCode(cause)) {

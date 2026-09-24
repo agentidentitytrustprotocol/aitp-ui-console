@@ -118,7 +118,7 @@ describe('CpIdentityCard manifest verdict', () => {
     const aid = await screen.findByText('aid:pubkey:test');
     expect(aid).toHaveStyle({ color: C.textMuted });
     expect(
-      screen.getByText('· REJECTED · signature verified · proof-of-possession did not (pop_failed)'),
+      screen.getByText('· REJECTED · signature verified · proof-of-possession failed (pop_failed)'),
     ).toHaveStyle({ color: C.red });
   });
 

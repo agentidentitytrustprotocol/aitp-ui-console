@@ -295,9 +295,22 @@ describe('EventCard type switch', () => {
       <EventCard evt={evt({ type: 'run.complete', ts: BASE_TS + 5 })} baseTs={BASE_TS} />,
     );
     expect(screen.getByText('Run complete')).toBeInTheDocument();
-    expect(container).toHaveTextContent('Total elapsed: 5.0s');
+    expect(container).toHaveTextContent('Total elapsed: +5.0s');
     // Pre-fix this was `evt.ts / 1000` — 1774000.0s for this frame.
     expect(container).not.toHaveTextContent('1774000.0s');
+  });
+
+  it('run.complete never disagrees with its own header on units, past the minute boundary', () => {
+    // Regression pin: "Total elapsed" used to hand-roll seconds via
+    // `toFixed(1)` while the header badge above it went through `formatOffset`
+    // (which switches to minutes past 60s) — so a run over a minute showed
+    // e.g. header "+1.5m" next to body "Total elapsed: 90.0s", same number in
+    // two different units. Both now render the same pre-computed `offset`.
+    const { container } = render(
+      <EventCard evt={evt({ type: 'run.complete', ts: BASE_TS + 90 })} baseTs={BASE_TS} />,
+    );
+    expect(container).toHaveTextContent('Total elapsed: +1.5m');
+    expect(container).not.toHaveTextContent('90.0s');
   });
 
   it('run.complete says the elapsed time is unknown rather than inventing one', () => {
@@ -473,15 +486,18 @@ describe('manifestVerifyFailedVerdict', () => {
     // SDK codes that never reach the signature check, via Phase 2's predicate.
     ['malformed', C.amber, 'signature not assessed (malformed)'],
     ['version_unknown', C.amber, 'signature not assessed (version_unknown)'],
+    // `expired` is pre-signature (same ordering as `verify_manifest`), so it
+    // gets the same amber treatment as `manifestVerdictBadge` — never the
+    // generic red branch, which would read as an authenticity failure.
+    ['expired', C.amber, 'the manifest lapsed before it could be checked — signature not assessed (expired)'],
     // Everything else: honest red that names the cause and claims no verdict.
-    ['expired', C.red, 'verification failed (expired)'],
     ['signature_invalid', C.red, 'verification failed (signature_invalid)'],
     ['a_future_sdk_code', C.red, 'verification failed (a_future_sdk_code)'],
     // The two codes `verify_manifest` can only construct *after* the outer
     // signature verified — same post-signature-aware wording as the CP badge
     // (`verification-display.ts`'s `MANIFEST_POST_SIGNATURE_DETAIL`), reused
     // via the exported `manifestPostSignatureDetail`, not a second copy.
-    ['pop_failed', C.red, 'signature verified · proof-of-possession did not (pop_failed)'],
+    ['pop_failed', C.red, 'signature verified · proof-of-possession failed (pop_failed)'],
     [
       'identity_hint_malformed',
       C.red,
@@ -523,6 +539,9 @@ describe('revocationVerifyFailedVerdict', () => {
       'the installed SDK cannot verify revocation lists — nothing was checked (sdk_cannot_verify)',
     ],
     ['malformed_body', C.red, 'signature verified · snapshot body is malformed (malformed_body)'],
+    // `expired` is pre-signature, same as the manifest side — amber, matching
+    // `revocationVerdictBadge`, never the generic red branch.
+    ['expired', C.amber, 'signature not assessed (expired)'],
     // SDK codes, via Phase 2's predicate.
     ['malformed', C.amber, 'signature not assessed (malformed)'],
     ['version_unknown', C.amber, 'signature not assessed (version_unknown)'],
@@ -615,8 +634,23 @@ describe('manifest.verify_failed card', () => {
     expect(container).not.toHaveTextContent(/invalid/i);
   });
 
+  it('cause "expired" is amber and says signature not assessed, matching the CP badge — not a rejection', () => {
+    // Regression pin, mirroring the revocation-side test below: `expired` is
+    // pre-signature, so falling through to the generic red branch would render
+    // this exact SDK code as "MANIFEST REJECTED · verification failed" here
+    // while the CP identity badge calls it amber "signature not assessed" for
+    // the identical cause — the overclaim this card exists to prevent.
+    const { container } = render(
+      <EventCard evt={evt({ type: 'manifest.verify_failed', cause: 'expired' })} />,
+    );
+    expect(screen.getByText('MANIFEST NOT VERIFIED')).toHaveStyle({ color: C.amber });
+    expect(container).toHaveTextContent('signature not assessed (expired)');
+    expect(container).not.toHaveTextContent('MANIFEST REJECTED');
+    expect(container).not.toHaveTextContent(/verification failed/i);
+  });
+
   it.each([
-    ['pop_failed', 'proof-of-possession did not'],
+    ['pop_failed', 'proof-of-possession failed'],
     ['identity_hint_malformed', 'identity hint is malformed'],
   ])(
     '%s renders as post-signature, not as a signature failure — same wording as the CP badge',
@@ -675,6 +709,21 @@ describe('revocation.verify_failed card', () => {
     );
     expect(screen.getByText('SNAPSHOT NOT VERIFIED')).toHaveStyle({ color: C.amber });
     expect(container).toHaveTextContent('nothing was checked (sdk_cannot_verify)');
+  });
+
+  it('expired is amber and says signature not assessed, matching the CP badge — not a rejection', () => {
+    // Regression pin: `expired` is pre-signature, same as the manifest side.
+    // Falling through to the generic red branch would render this exact SDK
+    // code as "SNAPSHOT DISCARDED · verification failed" here while the CP
+    // identity/revocation badges call it amber "signature not assessed" for
+    // the identical cause — the overclaim this card exists to prevent.
+    const { container } = render(
+      <EventCard evt={evt({ type: 'revocation.verify_failed', cause: 'expired' })} />,
+    );
+    expect(screen.getByText('SNAPSHOT NOT VERIFIED')).toHaveStyle({ color: C.amber });
+    expect(container).toHaveTextContent('signature not assessed (expired)');
+    expect(container).not.toHaveTextContent('SNAPSHOT DISCARDED');
+    expect(container).not.toHaveTextContent(/verification failed/i);
   });
 
   it('signature_invalid is red', () => {

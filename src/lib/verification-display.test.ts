@@ -69,7 +69,7 @@ describe('manifestVerdictBadge', () => {
       expect(badge.color).toBe(C.red);
       expect(badge.aidColor).toBe(C.textMuted);
       expect(badge.text).toBe(
-        '· REJECTED · signature verified · proof-of-possession did not (pop_failed)',
+        '· REJECTED · signature verified · proof-of-possession failed (pop_failed)',
       );
       expect(badge.text).toContain('signature verified');
       expect(badge.text).toContain('proof-of-possession');
@@ -434,7 +434,7 @@ describe('unassessed-code predicates', () => {
   // `manifest.verify_failed` run-timeline card) reuse instead of a second copy
   // of `MANIFEST_POST_SIGNATURE_DETAIL`'s two-entry map.
   it.each([
-    ['pop_failed', 'proof-of-possession did not'],
+    ['pop_failed', 'proof-of-possession failed'],
     ['identity_hint_malformed', 'identity hint is malformed'],
   ])('manifestPostSignatureDetail(%s) → %s', (code, detail) => {
     expect(manifestPostSignatureDetail(code)).toBe(detail);

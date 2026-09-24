@@ -110,7 +110,7 @@ export function isUnassessedManifestCode(code: string): boolean {
  *  of falling through to the catch-all. `Object.hasOwn` rather than `in`:
  *  `in` walks the prototype chain, so `'toString'` would test true. */
 const MANIFEST_POST_SIGNATURE_DETAIL: Record<string, string> = {
-  pop_failed: 'proof-of-possession did not',
+  pop_failed: 'proof-of-possession failed',
   identity_hint_malformed: 'identity hint is malformed',
 };
 

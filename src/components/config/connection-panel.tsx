@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { LucideIcon } from 'lucide-react';
 import { Server, Terminal, Activity } from 'lucide-react';
 import { Card } from '@/components/shared/card';
 import { TimeAgo } from '@/components/shared/time-ago';
+import { useHydrated } from '@/hooks/use-hydrated';
 import { C } from '@/lib/colors';
 import { REFETCH } from '@/lib/query-options';
 
@@ -61,14 +61,7 @@ function ServiceRow({ label, path, readyPath, icon: Icon, displayUrl }: ServiceC
   // renders the pre-fetch state). Gate the query-derived text behind
   // `mounted` so hydration always compares against the same "checking…"
   // placeholder the server rendered, then swap to live status right after.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    // Not a derived-state anti-pattern: this flips exactly once, from the
-    // fixed SSR-safe value to "hydration is done," and nothing else in this
-    // component could set it. That's the standard mount-detection idiom.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMounted(true);
-  }, []);
+  const mounted = useHydrated();
 
   const { data, isError, dataUpdatedAt, isFetching } = useQuery({
     queryKey: ['health', path],

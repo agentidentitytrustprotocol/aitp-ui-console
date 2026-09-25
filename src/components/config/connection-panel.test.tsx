@@ -40,12 +40,12 @@ describe('ConnectionPanel', () => {
   });
 
   it('renders "healthy" once the health check resolves ok, and never flashes "unreachable" first', async () => {
-    // Regression guard: the pre-fix version derived this text straight from
-    // `isFetching`/`data`, which could resolve before hydration finished and
-    // throw a hydration-mismatch error (React #418) in production -- see
-    // connection-panel.tsx's `mounted` comment. This only proves the
-    // post-settle text is correct; the hydration race itself isn't
-    // reproducible in jsdom (there's no separate server render pass here).
+    // This only covers the resolved-state text, not the hydration-safety
+    // gate itself -- RTL's render() flushes useEffect synchronously, so
+    // `mounted` (via useHydrated()) is already true before any assertion
+    // here runs, whether or not the gate exists. The actual
+    // server-render-then-hydrate regression test lives in
+    // src/hooks/use-hydrated.test.tsx.
     wireFetch({
       '/api/playground/health': () => Promise.resolve(fakeResponse(200)),
       '/api/cp/health': () => new Promise(() => {}),

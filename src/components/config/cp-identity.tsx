@@ -5,6 +5,7 @@ import { Lock, Shield } from 'lucide-react';
 import { Card } from '@/components/shared/card';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
+import { useHydrated } from '@/hooks/use-hydrated';
 import { getJSON } from '@/lib/api/client';
 import { C } from '@/lib/colors';
 import { REFETCH } from '@/lib/query-options';
@@ -23,6 +24,15 @@ function expiresIn(expiresAt: number | string | undefined): string {
 }
 
 export function CpIdentityCard() {
+  // Both queries below start fetching immediately and can resolve before
+  // hydration finishes, so the client's first render can already jump past
+  // the loading branch straight to content/empty-state while the server
+  // (which always captures the pre-fetch state) rendered the skeleton --
+  // an element-tree mismatch, not just a text one. Force the loading
+  // branch until hydrated so the first client render always matches SSR.
+  // See use-hydrated.ts / ConnectionPanel for the same race.
+  const hydrated = useHydrated();
+
   const manifest = useQuery({
     queryKey: ['cp-manifest'],
     queryFn: () => getJSON<VerifiedManifestEnvelope>('/api/cp/well-known/aitp-manifest'),
@@ -51,7 +61,7 @@ export function CpIdentityCard() {
         <Shield size={15} color={C.teal} /> CP Identity
       </div>
 
-      {manifest.isLoading ? (
+      {!hydrated || manifest.isLoading ? (
         <LoadingSkeleton rows={3} />
       ) : manifest.error || !manifest.data ? (
         <EmptyState
@@ -103,7 +113,7 @@ export function CpIdentityCard() {
         <Lock size={12} color={C.textDim} /> Revocation list
       </div>
       <div style={{ padding: 12, background: C.bg3, borderRadius: 6 }}>
-        {revocation.isLoading ? (
+        {!hydrated || revocation.isLoading ? (
           <div style={{ fontSize: 11, color: C.textMuted }}>Loading…</div>
         ) : revocation.error || !revocation.data ? (
           <div style={{ fontSize: 11, color: C.textMuted }}>Revocation list unavailable.</div>

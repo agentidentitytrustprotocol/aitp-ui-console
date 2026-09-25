@@ -10,6 +10,7 @@ import { WebhookForm } from './webhook-form';
 import { useDeleteWebhook, useUpdateWebhook, useWebhooks } from '@/hooks/use-webhooks';
 import { useSelection } from '@/hooks/use-selection';
 import { useResetCircuitBreaker } from '@/hooks/use-circuit-breaker';
+import { useHydrated } from '@/hooks/use-hydrated';
 import { getJSON } from '@/lib/api/client';
 import { useToast } from '@/components/shared/toast';
 import { C } from '@/lib/colors';
@@ -106,6 +107,12 @@ function BreakerPill({ id }: { id: string }) {
 }
 
 export function WebhookList() {
+  // useWebhooks() fetches immediately on mount and can resolve before
+  // hydration finishes, so the client's first render can already jump past
+  // the loading branch straight to the list/empty-state while the server
+  // (which always captures the pre-fetch state) rendered the skeleton --
+  // an element-tree mismatch, same as CpIdentityCard. See use-hydrated.ts.
+  const hydrated = useHydrated();
   const toast = useToast();
   const { data, isLoading, error } = useWebhooks();
   const update = useUpdateWebhook();
@@ -219,7 +226,7 @@ export function WebhookList() {
             </span>
           )}
         </div>
-        {trippedCount > 0 && (
+        {hydrated && trippedCount > 0 && (
           <div
             role="alert"
             style={{
@@ -281,7 +288,7 @@ export function WebhookList() {
         </div>
       )}
 
-      {isLoading ? (
+      {!hydrated || isLoading ? (
         <LoadingSkeleton rows={2} />
       ) : error ? (
         <EmptyState title="Couldn't load webhooks" description="Check the Control Plane connection." />

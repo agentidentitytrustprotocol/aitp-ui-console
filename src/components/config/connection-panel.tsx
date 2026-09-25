@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { LucideIcon } from 'lucide-react';
 import { Server, Terminal, Activity } from 'lucide-react';
@@ -54,6 +55,21 @@ export function ConnectionPanel() {
 }
 
 function ServiceRow({ label, path, readyPath, icon: Icon, displayUrl }: ServiceConfig) {
+  // The health/ready queries below start fetching immediately and can
+  // resolve before hydration finishes, so the client's first render
+  // sometimes disagrees with the server-rendered snapshot (SSR always
+  // renders the pre-fetch state). Gate the query-derived text behind
+  // `mounted` so hydration always compares against the same "checking…"
+  // placeholder the server rendered, then swap to live status right after.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    // Not a derived-state anti-pattern: this flips exactly once, from the
+    // fixed SSR-safe value to "hydration is done," and nothing else in this
+    // component could set it. That's the standard mount-detection idiom.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
+
   const { data, isError, dataUpdatedAt, isFetching } = useQuery({
     queryKey: ['health', path],
     queryFn: async () => {
@@ -79,8 +95,11 @@ function ServiceRow({ label, path, readyPath, icon: Icon, displayUrl }: ServiceC
     enabled: !!readyPath,
   });
 
-  const ok = !isError && data?.ok === true;
-  const ready = readyQuery.data?.status === 200 && readyQuery.data?.body?.ready === true;
+  // `mounted` gates every one of these on the render actually being
+  // post-hydration -- see the comment above `mounted`'s declaration.
+  const ok = mounted && !isError && data?.ok === true;
+  const ready =
+    mounted && readyQuery.data?.status === 200 && readyQuery.data?.body?.ready === true;
   const notReadyReason =
     readyQuery.data?.body?.reason ?? readyQuery.data?.body?.error ?? null;
 
@@ -108,7 +127,7 @@ function ServiceRow({ label, path, readyPath, icon: Icon, displayUrl }: ServiceC
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11 }}>
           <Dot ok={ok} />
           <span style={{ color: ok ? C.green : C.red }}>
-            {isFetching && !data ? 'checking…' : ok ? 'healthy' : 'unreachable'}
+            {!mounted || (isFetching && !data) ? 'checking…' : ok ? 'healthy' : 'unreachable'}
           </span>
           {readyPath && (
             <>
@@ -116,9 +135,11 @@ function ServiceRow({ label, path, readyPath, icon: Icon, displayUrl }: ServiceC
               <Activity size={11} color={ready ? C.green : C.amber} />
               <span
                 style={{ color: ready ? C.green : C.amber }}
-                title={notReadyReason ?? undefined}
+                title={(mounted && notReadyReason) || undefined}
               >
-                {ready
+                {!mounted
+                  ? 'not ready'
+                  : ready
                   ? 'ready'
                   : notReadyReason
                   ? `not ready (${notReadyReason})`
@@ -143,7 +164,7 @@ function ServiceRow({ label, path, readyPath, icon: Icon, displayUrl }: ServiceC
         }}
       />
       <div style={{ fontSize: 10, color: C.textMuted, marginTop: 6 }}>
-        Last checked: {dataUpdatedAt ? <TimeAgo ts={dataUpdatedAt} /> : 'never'}
+        Last checked: {mounted && dataUpdatedAt ? <TimeAgo ts={dataUpdatedAt} /> : 'never'}
       </div>
     </div>
   );

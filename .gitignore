@@ -16,3 +16,4 @@ plans/
 .drive.lock
 temp/
 CLAUDE.md
+.vercel

@@ -12,8 +12,9 @@
  * Run with: RUN_INTEGRATION=1 npm run test:integration
  *
  * The suite cleans up after itself (afterAll deletes the webhook it
- * created), and the target URL is a reserved-by-RFC .invalid domain so
- * the CP can never deliver to a real host.
+ * created). The target URL is example.com, not a .invalid host: the CP's
+ * SSRF guard rejects unresolvable hosts. The subscription is only for
+ * `handshake.complete`, which this suite never triggers, so nothing is sent.
  */
 import { consoleUrl, describeIntegration } from './integration-utils';
 
@@ -45,7 +46,7 @@ async function jsonFetch(
 }
 
 describeIntegration('CP write flows — webhook lifecycle', () => {
-  const hookUrl = 'https://console-integration-test.invalid/aitp-hook';
+  const hookUrl = 'https://example.com/console-integration-test/aitp-hook';
   let created: WebhookShape | null = null;
 
   afterAll(async () => {

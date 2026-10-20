@@ -1,6 +1,6 @@
 /**
- * Evidence for the `aitp` SDK floor bump `0.10.0 -> ^0.12.0`
- * (see `package.json`'s `//aitp` key for the full rationale).
+ * Evidence for the `aitp` SDK floor (`^0.17.0`; first raised `0.10.0 ->
+ * ^0.12.0`) — see `package.json`'s `//aitp` key for the full rationale.
  *
  * This lives in the *integration* suite, not the unit suite, for one
  * non-negotiable reason: the `aitp` SDK is a native NAPI addon and only
@@ -22,9 +22,10 @@
  *     there, so they prove the bump BREAKS NOTHING and cannot prove what it
  *     fixes.
  *
- *   Tier 1 (below) — invariants. Pinned so a future bump that *does* change
- *     them fails loudly. These behave identically on 0.10.0 and 0.12.0
- *     (measured, both versions); they are NOT evidence of the bump.
+ *   Tier 1 (below) — how wire-parse and version failures are classified.
+ *     The INVARIANT cases hold on every floor so far; the PINNED cases assert
+ *     the literal 0.15.0+ codes, so a future retaxonomy fails loudly; the
+ *     CUTOVER case pins the aitp/0.2 -> aitp/0.3 mixed-version window.
  *
  *   Tier 1a (upstream) — `aitp-rs` ships named end-to-end regression tests
  *     for both deltas: `crates/aitp-manifest/tests/round_trip.rs:254`
@@ -52,26 +53,38 @@ function codeOf(err: unknown): string | undefined {
   return typeof code === 'string' ? code : undefined;
 }
 
-describe('aitp SDK floor — Tier 1: invariants across the 0.10.0 -> 0.12.0 bump', () => {
-  // These are pins, not deltas. Round 2 of this plan's review claimed
-  // 0.12.0's `UnknownField` / `UNKNOWN_FIELD` work tightened unknown-member
-  // handling for this console; round 3 retracted it and round 4 confirmed the
-  // retraction. `UnknownField`'s only construction site is
-  // `parse_manifest_wire` (`crates/aitp-manifest/src/verifier.rs:174,181,185`),
-  // which has no caller anywhere under `bindings/` —
-  // `verify_manifest_json` (`bindings/aitp-node/src/lib.rs:71-88`) goes
-  // straight through `serde_json::from_str` — and
-  // `#[serde(deny_unknown_fields)]` sits on `Manifest` at `types.rs:11` at
-  // every tag checked while implementing this phase (`aitp-v0.7.0` through
-  // `aitp-v0.13.0`, plus `c7a7159`, the real npm-0.10.0 tree; `git log -S`
-  // dates it to `v0.1.0-alpha.4`). So a stray top-level member is rejected
-  // identically before and after. Measured on both SDK versions while
-  // implementing this phase: `malformed` either way.
+/** The `.code` a call throws, or a test failure if it does not throw. */
+function codeOfCall(fn: () => unknown): string | undefined {
+  try {
+    fn();
+  } catch (err) {
+    return codeOf(err);
+  }
+  throw new Error('expected the SDK to reject this input');
+}
+
+const MANIFEST_OPTS = {
+  displayName: 'Pinned CP',
+  handshakeEndpoint: 'https://cp.example/handshake',
+  offeredCaps: [],
+  ttlSecs: 3600,
+};
+
+describe('aitp SDK floor — Tier 1: wire-parse and version codes render amber', () => {
+  // Since `0.15.0` both entry points run the hardened wire parser before
+  // verifying (`wire::manifest` / `wire::revocation_snapshot`,
+  // `bindings/aitp-node/src/lib.rs:79-95`): a member outside the schema is
+  // `unknown_field`, a duplicate key is `malformed`. On `0.10.0`–`0.14.x` the
+  // stray-member case was `malformed` instead (serde `deny_unknown_fields`;
+  // the parser that types `UnknownField` had no caller under `bindings/`).
+  // Both run before the version check, so both are pre-signature.
   //
-  // Deliberately asserted as "a string, landing in the amber bucket", never
-  // as the literal `'malformed'` — the same forward-compat discipline
+  // The INVARIANT tests assert only "a string, landing in the amber bucket",
+  // the same forward-compat discipline
   // `aitp-control-plane/src/lib/registry/enrollment.test.ts:26-43` documents
-  // for exactly this class of error.
+  // for this class of error. The PINNED tests assert the literal codes the
+  // installed SDK emits, so the next retaxonomy fails loudly here instead of
+  // silently changing a badge.
 
   it('INVARIANT: a stray top-level member on a validly-signed manifest is rejected with a typed string code that renders amber, not red', () => {
     const { AitpAgent } = require('aitp');
@@ -88,8 +101,8 @@ describe('aitp SDK floor — Tier 1: invariants across the 0.10.0 -> 0.12.0 bump
         ttlSecs: 3600,
       }),
     );
-    // No re-signing needed: `deny_unknown_fields` fails during
-    // deserialization, strictly before any signature check runs.
+    // No re-signing needed: the wire parser rejects the member strictly
+    // before any signature check runs.
     envelope.manifest.bogus = true;
 
     const verdict = verifyManifestEnvelope(JSON.stringify(envelope));
@@ -146,6 +159,109 @@ describe('aitp SDK floor — Tier 1: invariants across the 0.10.0 -> 0.12.0 bump
     expect(badge.text).not.toContain('SIGNATURE INVALID');
   });
 
+  it('PINNED: a stray member is `unknown_field` on both entry points (0.10.0-0.14.x: `malformed`)', () => {
+    const {
+      AitpAgent,
+      verifyManifestJson,
+      verifyRevocationList,
+    } = require('aitp');
+    const agent = AitpAgent.generate();
+    const manifest = JSON.parse(agent.buildManifest(MANIFEST_OPTS));
+    manifest.manifest.bogus = true;
+    const snapshot = JSON.parse(agent.signRevocationList([], 3600));
+    snapshot.revocation_list.bogus = true;
+
+    expect(codeOfCall(() => verifyManifestJson(JSON.stringify(manifest)))).toBe(
+      'unknown_field',
+    );
+    expect(
+      codeOfCall(() =>
+        verifyRevocationList(JSON.stringify(snapshot), agent.aid),
+      ),
+    ).toBe('unknown_field');
+  });
+
+  it('PINNED: a duplicate key is `malformed` on both entry points, and renders amber', () => {
+    const {
+      AitpAgent,
+      verifyManifestJson,
+      verifyRevocationList,
+    } = require('aitp');
+    const {
+      manifestVerdictBadge,
+      revocationVerdictBadge,
+    } = require('@/lib/verification-display');
+    const { C } = require('@/lib/colors');
+    const agent = AitpAgent.generate();
+    const manifest = agent
+      .buildManifest(MANIFEST_OPTS)
+      .replace('{"manifest":{', '{"manifest":{"aid":"dup",');
+    const snapshot = agent
+      .signRevocationList([], 3600)
+      .replace('{"revocation_list":{', '{"revocation_list":{"issuer":"dup",');
+
+    const manifestCode = codeOfCall(() => verifyManifestJson(manifest));
+    const revocationCode = codeOfCall(() =>
+      verifyRevocationList(snapshot, agent.aid),
+    );
+    expect(manifestCode).toBe('malformed');
+    expect(revocationCode).toBe('malformed');
+    expect(
+      manifestVerdictBadge({ checked: true, ok: false, code: manifestCode! })
+        .color,
+    ).toBe(C.amber);
+    expect(
+      revocationVerdictBadge({
+        checked: true,
+        ok: false,
+        code: revocationCode!,
+        tier: 'pinned',
+      }).color,
+    ).toBe(C.amber);
+  });
+
+  it('CUTOVER: an `aitp/0.2` manifest or snapshot is `version_unknown` and renders amber, never red', () => {
+    // Pins the mixed-version window of the aitp/0.3 cutover: a console on
+    // 0.17 reading a CP still on aitp/0.2. The signature is irrelevant
+    // (version is checked before expiry and signature), so restamping a
+    // 0.3 artifact is a faithful stand-in for a real 0.2 one.
+    const { AitpAgent, verifyRevocationList } = require('aitp');
+    const { verifyManifestEnvelope } = require('@/lib/api/verify-manifest');
+    const {
+      manifestVerdictBadge,
+      revocationVerdictBadge,
+    } = require('@/lib/verification-display');
+    const { C } = require('@/lib/colors');
+    const agent = AitpAgent.generate();
+    const manifest = JSON.parse(agent.buildManifest(MANIFEST_OPTS));
+    manifest.manifest.version = 'aitp/0.2';
+    const snapshot = JSON.parse(agent.signRevocationList([], 3600));
+    snapshot.revocation_list.version = 'aitp/0.2';
+
+    const verdict = verifyManifestEnvelope(JSON.stringify(manifest));
+    expect(verdict).toEqual({
+      checked: true,
+      ok: false,
+      code: 'version_unknown',
+    });
+    const badge = manifestVerdictBadge(verdict);
+    expect(badge.color).toBe(C.amber);
+    expect(badge.text).toContain('signature not assessed (version_unknown)');
+
+    const revocationCode = codeOfCall(() =>
+      verifyRevocationList(JSON.stringify(snapshot), agent.aid),
+    );
+    expect(revocationCode).toBe('version_unknown');
+    const rBadge = revocationVerdictBadge({
+      checked: true,
+      ok: false,
+      code: revocationCode!,
+      tier: 'pinned',
+    });
+    expect(rBadge.color).toBe(C.amber);
+    expect(rBadge.text).not.toContain('SIGNATURE INVALID');
+  });
+
   it('INVARIANT: the two imported symbols are callable, so the native addon actually loaded', () => {
     // The napi-rs v3 loader regeneration that rides along with this bump
     // resolves the addon by try/catch rather than `existsSync`. A resolution
@@ -173,7 +289,7 @@ describe('aitp SDK floor — Tier 1: invariants across the 0.10.0 -> 0.12.0 bump
   });
 });
 
-describe('aitp SDK floor — Tier 2: the two false rejections 0.12.0 fixes', () => {
+describe('aitp SDK floor — Tier 2: externally-minted aitp/0.3 manifests (the two false rejections 0.12.0 fixed)', () => {
   // Every case here calls `verifyManifestJson` DIRECTLY with a pinned
   // `nowUnixSecs`, not through `verifyManifestEnvelope`, which takes no clock
   // and would report these long-past fixtures as `expired` before reaching

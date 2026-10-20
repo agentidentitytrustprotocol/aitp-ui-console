@@ -30,7 +30,7 @@ describe('manifestVerdictBadge', () => {
   // Pins the pre-signature output as unchanged by the post-signature work
   // below: a future edit must not quietly move a pre-signature code out of
   // the amber row and into one of the red ones.
-  it.each(['version_unknown', 'malformed'])(
+  it.each(['version_unknown', 'malformed', 'unknown_field'])(
     'checked:true, ok:false, code:%s (MANIFEST_UNASSESSED_CODES) → amber, muted AID, NOT VERIFIED — never SIGNATURE INVALID or REJECTED',
     (code) => {
       const verdict: Verdict = { checked: true, ok: false, code };
@@ -197,9 +197,9 @@ describe('manifestVerdictBadge', () => {
     },
   );
 
-  // The six codes `verifyManifestJson` can actually produce — the reachable
-  // subset of the Node binding's documented eight
-  // (`bindings/aitp-node/src/lib.rs:62-66`); `aid_mismatch` and
+  // The seven codes `verifyManifestJson` can actually produce — the reachable
+  // subset of the Node binding's documented nine
+  // (`bindings/aitp-node/src/lib.rs:64-67`); `aid_mismatch` and
   // `incompatible_identity_type` are unreachable and covered by the
   // catch-all cases instead. Each must land on a row that is explicitly
   // modelled, never on a row that guesses.
@@ -207,6 +207,7 @@ describe('manifestVerdictBadge', () => {
     ['expired', C.amber],
     ['version_unknown', C.amber],
     ['malformed', C.amber],
+    ['unknown_field', C.amber],
     ['signature_invalid', C.red],
     ['pop_failed', C.red],
     ['identity_hint_malformed', C.red],
@@ -248,7 +249,7 @@ describe('revocationVerdictBadge', () => {
     expect(badge.text).not.toContain('SIGNATURE INVALID');
   });
 
-  it.each(['version_unknown', 'malformed'])(
+  it.each(['version_unknown', 'malformed', 'unknown_field'])(
     'checked:true, ok:false, code:%s (REVOCATION_UNASSESSED_CODES) → amber, entries greyed, NOT VERIFIED (never SIGNATURE INVALID)',
     (code) => {
       const verdict: RevocationVerdict = { checked: true, ok: false, code, tier: 'pinned' };
@@ -362,7 +363,7 @@ describe('revocationVerdictBadge', () => {
  * what "the signature was never assessed" means.
  */
 describe('unassessed-code predicates', () => {
-  it.each(['version_unknown', 'malformed'])(
+  it.each(['version_unknown', 'malformed', 'unknown_field'])(
     'isUnassessedManifestCode(%s) → true',
     (code) => {
       expect(isUnassessedManifestCode(code)).toBe(true);
@@ -382,7 +383,7 @@ describe('unassessed-code predicates', () => {
     expect(isUnassessedManifestCode(code)).toBe(false);
   });
 
-  it.each(['version_unknown', 'malformed'])(
+  it.each(['version_unknown', 'malformed', 'unknown_field'])(
     'isUnassessedRevocationCode(%s) → true',
     (code) => {
       expect(isUnassessedRevocationCode(code)).toBe(true);
@@ -419,6 +420,7 @@ describe('unassessed-code predicates', () => {
   it.each([
     'version_unknown',
     'malformed',
+    'unknown_field',
     'signature_invalid',
     'pop_failed',
     'identity_hint_malformed',
@@ -443,6 +445,7 @@ describe('unassessed-code predicates', () => {
   it.each([
     'version_unknown',
     'malformed',
+    'unknown_field',
     'signature_invalid',
     'expired',
     'aid_mismatch',
@@ -477,6 +480,7 @@ describe('unassessed-code predicates', () => {
   it.each([
     'version_unknown',
     'malformed',
+    'unknown_field',
     'issuer_mismatch',
     'signature_invalid',
     'malformed_body',
@@ -546,34 +550,40 @@ describe('unmodelled SDK codes — the default seam', () => {
     },
   );
 
-  // `malformed` is the code an unknown top-level member produces, on 0.10.0
-  // and on 0.12.0 alike — measured on both while raising the floor, and
-  // pinned end-to-end through the real addon in
-  // `src/test/sdk-verification.integration.test.ts`. It must stay on the
+  // An unknown member was `malformed` on 0.10.0-0.14.x and is
+  // `unknown_field` from 0.15.0; a duplicate key is `malformed` either way.
+  // Both are pinned end-to-end through the real addon in
+  // `src/test/sdk-verification.integration.test.ts`. They must stay on the
   // amber side of this seam: a parse failure establishes nothing about
   // authenticity in either direction.
-  it("manifest, code:'malformed' → amber and never claims 'verified'", () => {
-    const badge = manifestVerdictBadge({ checked: true, ok: false, code: 'malformed' });
-    expect(badge.color).toBe(C.amber);
-    expect(badge.aidColor).toBe(C.textMuted);
-    expect(badge.text).toContain('signature not assessed');
-    // Case-sensitive: lowercase "verified" is the claim, "NOT VERIFIED" is
-    // the honest negative. Same invariant as line 72 above.
-    expect(badge.text).not.toContain('verified');
-    expect(badge.text).not.toContain('VERIFICATION FAILED');
-  });
+  it.each(['malformed', 'unknown_field'])(
+    "manifest, code:'%s' → amber and never claims 'verified'",
+    (code) => {
+      const badge = manifestVerdictBadge({ checked: true, ok: false, code });
+      expect(badge.color).toBe(C.amber);
+      expect(badge.aidColor).toBe(C.textMuted);
+      expect(badge.text).toContain('signature not assessed');
+      // Case-sensitive: lowercase "verified" is the claim, "NOT VERIFIED" is
+      // the honest negative. Same invariant as line 72 above.
+      expect(badge.text).not.toContain('verified');
+      expect(badge.text).not.toContain('VERIFICATION FAILED');
+    },
+  );
 
-  it("revocation, code:'malformed' → amber and never claims 'verified'", () => {
-    const badge = revocationVerdictBadge({
-      checked: true,
-      ok: false,
-      code: 'malformed',
-      tier: 'pinned',
-    });
-    expect(badge.color).toBe(C.amber);
-    expect(badge.entriesGreyed).toBe(true);
-    expect(badge.text).toContain('signature not assessed');
-    expect(badge.text).not.toContain('verified');
-    expect(badge.text).not.toContain('SIGNATURE INVALID');
-  });
+  it.each(['malformed', 'unknown_field'])(
+    "revocation, code:'%s' → amber and never claims 'verified'",
+    (code) => {
+      const badge = revocationVerdictBadge({
+        checked: true,
+        ok: false,
+        code,
+        tier: 'pinned',
+      });
+      expect(badge.color).toBe(C.amber);
+      expect(badge.entriesGreyed).toBe(true);
+      expect(badge.text).toContain('signature not assessed');
+      expect(badge.text).not.toContain('verified');
+      expect(badge.text).not.toContain('SIGNATURE INVALID');
+    },
+  );
 });

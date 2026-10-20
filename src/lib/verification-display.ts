@@ -11,24 +11,26 @@ export interface VerdictBadge {
 }
 
 /** Manifest codes that occur strictly *before* `verify_manifest` reaches
- *  the outer signature check, plus `malformed` (a parse failure before any
- *  of that runs). None of these establish anything about authenticity in
- *  either direction — rendering them the same as a real signature failure
- *  is the exact overclaim this plan exists to remove. Found while
+ *  the outer signature check, plus `malformed` and `unknown_field` (wire
+ *  parse failures before any of that runs). None of these establish
+ *  anything about authenticity in either direction — rendering them the
+ *  same as a real signature failure is the exact overclaim this plan exists
+ *  to remove. Found while
  *  implementing Phase 4 (flagged there as `[O1]`, for the revocation side
  *  of the same defect) and back-ported here before merge, since it's the
  *  identical bug for the manifest side.
  *
  *  ## The check order every branch below rests on
  *
- *  Read from `aitp-rs` at tag `aitp-v0.12.0` — the floor `package.json`'s
- *  `//aitp` key pins — in `crates/aitp-manifest/src/verifier.rs`:
+ *  Read from `aitp-rs` at tag `aitp-v0.17.0` — the floor `package.json`'s
+ *  `//aitp` key pins — in `crates/aitp-manifest/src/verifier.rs`
+ *  (unchanged in order since `aitp-v0.12.0`; only line numbers moved):
  *
- *      version `:53` → expiry `:58` → AID→key parse `:66`
- *        → OUTER SIGNATURE `:68` → PoP `:101` → identity-hint `:113`
+ *      version `:53` → expiry `:58` → AID→key parse `:65`
+ *        → OUTER SIGNATURE `:67` → PoP `:84` → identity-hint `:96`
  *
- *  with the errors constructed at `:96`/`:99` (`SignatureInvalid`),
- *  `:105`/`:108`/`:111` (`PopFailed`) and `:117`/`:122`/`:129`
+ *  with the errors constructed at `:79`/`:82` (`SignatureInvalid`),
+ *  `:88`/`:91`/`:94` (`PopFailed`) and `:100`/`:105`/`:112`
  *  (`IdentityHintMalformed`). That is why `pop_failed` and
  *  `identity_hint_malformed` each *imply a verified outer signature*, and
  *  why they get their own row rather than sharing `signature_invalid`'s —
@@ -39,41 +41,50 @@ export interface VerdictBadge {
  *  read.** That rustdoc lists PoP as step 3 and the outer signature as
  *  step 4 — RFC-AITP-0003 §5's *nominal* order, the reverse of what the
  *  implementation does. The numbered step comments and the
- *  error-construction sites above govern; `verifier.rs:68-75` carries the
+ *  error-construction sites above govern; `verifier.rs:67-75` carries the
  *  `mh-002` conformance rationale for the deliberate inversion. **The
  *  rustdoc is stale. Do not revert the post-signature row on the strength
- *  of it** — re-read `:68` and `:101` first.
+ *  of it** — re-read `:67` and `:84` first.
  *
  *  ## Codes deliberately left to the generic red catch-all
  *
- *  Two entries in the Node binding's documented eight-code taxonomy
- *  (`bindings/aitp-node/src/lib.rs:62-66`) are not modelled here, because
- *  neither is constructible through `verifyManifestJson` as of `0.12.0`:
+ *  Two entries in the Node binding's documented nine-code taxonomy
+ *  (`bindings/aitp-node/src/lib.rs:64-67`) are not modelled here, because
+ *  neither is constructible through `verifyManifestJson` as of `0.17.0`:
  *
  *  - `aid_mismatch` — the variant is declared
- *    (`crates/aitp-manifest/src/error.rs:18`) and mapped by the binding
- *    (`bindings/aitp-node/src/lib.rs:50`), so it appears in the binding's
- *    documented `.code` contract, but it has **no construction site
- *    anywhere in `aitp-rs`**: every other reference is a match arm, a
- *    doc comment, or a test. Unreachable, not merely unlikely. The spec's
- *    conformance suite treats it as equivalent to a signature failure, so
- *    the generic red bucket stays the safe-side choice if it ever does
- *    start arriving.
+ *    (`crates/aitp-manifest/src/error.rs:20`) and mapped by the binding
+ *    (`bindings/aitp-node/src/lib.rs:52`), so it appears in the binding's
+ *    documented `.code` contract, but its only construction sites are in
+ *    `crates/aitp-manifest/src/resolver.rs:91,153`, which neither
+ *    `verify_manifest` nor the Node binding calls. Unreachable from this
+ *    console, not merely unlikely. The spec's conformance suite treats it
+ *    as equivalent to a signature failure, so the generic red bucket stays
+ *    the safe-side choice if it ever does start arriving.
  *  - `incompatible_identity_type` — produced only by
- *    `check_identity_type_compatibility` (`verifier.rs:213`), which
+ *    `check_identity_type_compatibility` (`verifier.rs:197`), which
  *    `verify_manifest` never calls and the Node binding does not export
- *    (its one non-test caller is `crates/aitp/src/facade.rs:506`).
+ *    (its one non-test caller is `crates/aitp/src/facade.rs:509`).
  *
- *  And `ManifestError::UnknownField` cannot reach this console at all. Its
- *  only construction site is `parse_manifest_wire`, which
- *  `verify_manifest_json` (`bindings/aitp-node/src/lib.rs:71-88`) never
- *  calls — that entry point runs `serde_json::from_str` and then
- *  `verify_manifest`. An unknown top-level member is caught earlier, by
- *  `#[serde(deny_unknown_fields)]` on `Manifest`
- *  (`crates/aitp-manifest/src/types.rs:11`), and arrives here as
- *  `malformed` — identically before and after the floor bump, which is
- *  what `src/test/sdk-verification.integration.test.ts` pins end-to-end. */
-const MANIFEST_UNASSESSED_CODES = new Set(['version_unknown', 'malformed']);
+ *  Two codes come from the wire parse that `verifyManifestJson` runs
+ *  *before* `verify_manifest` (from `0.15.0`: `wire::manifest` →
+ *  `parse_manifest_wire`, `bindings/aitp-node/src/lib.rs:79-95`), so
+ *  neither reaches the version check, let alone the signature:
+ *
+ *  - `unknown_field` — a member outside the schema (top-level or inside
+ *    `manifest`). On `0.10.0`–`0.14.x` the same input arrived as
+ *    `malformed` (serde `deny_unknown_fields`); `0.15.0`+ types it.
+ *  - `malformed` — everything else the wire parse rejects, including a
+ *    duplicate key.
+ *
+ *  Both are amber, with `version_unknown`;
+ *  `src/test/sdk-verification.integration.test.ts` pins the literals
+ *  end-to-end. */
+const MANIFEST_UNASSESSED_CODES = new Set([
+  'version_unknown',
+  'malformed',
+  'unknown_field',
+]);
 
 /** Whether a manifest code means "the signature was never assessed" — the
  *  classification rule behind this module's amber bucket, exported so other
@@ -215,12 +226,17 @@ export interface RevocationBadge {
 }
 
 /** Revocation codes that occur strictly before `verify_revocation_list`
- *  reaches the signature check (`aitp-tct/src/revocation.rs`: version →
- *  expiry → issuer → key parse → signature) and that carry no actionable
+ *  reaches the signature check (the binding's wire parse — member set,
+ *  duplicate keys, UUID-v4 `entries[].jti` — then `aitp-tct/src/revocation.rs`:
+ *  version → expiry → issuer → key parse → signature) and that carry no actionable
  *  signal of their own beyond "we couldn't get far enough to check" --
  *  unlike `issuer_mismatch`, which is pre-signature too but *is*
  *  independently meaningful (see below). */
-const REVOCATION_UNASSESSED_CODES = new Set(['version_unknown', 'malformed']);
+const REVOCATION_UNASSESSED_CODES = new Set([
+  'version_unknown',
+  'malformed',
+  'unknown_field',
+]);
 
 /** Whether a revocation code means "the signature was never assessed" —
  *  the revocation twin of `isUnassessedManifestCode`, exported for the same

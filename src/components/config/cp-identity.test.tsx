@@ -122,8 +122,8 @@ describe('CpIdentityCard manifest verdict', () => {
     ).toHaveStyle({ color: C.red });
   });
 
-  it('does not overclaim for a pre-signature code: version_unknown and malformed render as not-verified, not a failure', async () => {
-    for (const code of ['version_unknown', 'malformed']) {
+  it('does not overclaim for a pre-signature code: version_unknown, malformed and unknown_field render as not-verified, not a failure', async () => {
+    for (const code of ['version_unknown', 'malformed', 'unknown_field']) {
       wireApi(manifest({ checked: true, ok: false, code }), revocationList());
       const { unmount } = renderWithClient(<CpIdentityCard />);
       expect(await screen.findByText(`· NOT VERIFIED · signature not assessed (${code})`)).toHaveStyle({

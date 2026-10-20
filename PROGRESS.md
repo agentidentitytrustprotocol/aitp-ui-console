@@ -69,11 +69,11 @@ diff): 36 files changed, ~6,200 insertions, ~130 deletions.
 
 ### Dependency surface (Phase 1) — shipped
 
-- `package.json:24` — `"aitp": "npm:@agentidentitytrustprotocol/aitp@^0.17.0"` (2026-10-20, protocol
-  `aitp/0.3`; was `^0.12.0`, raised from the unbounded `>=0.7.0` before that). `package.json:21`
+- `package.json:24` — `"aitp": "npm:@agentidentitytrustprotocol/aitp@^0.18.0"` (2026-10-20, protocol
+  `aitp/0.3`; `^0.17.0` earlier that day, `^0.12.0` before, the unbounded `>=0.7.0` before that). `package.json:21`
   carries the `//aitp` sibling key documenting each floor's rationale. See the "aitp 0.17 adoption"
-  log entry below.
-- `package-lock.json` — `node_modules/aitp` and all four platform packages resolve to **`0.17.0`**.
+  and "aitp 0.18" log entries below.
+- `package-lock.json` — `node_modules/aitp` and all four platform packages resolve to **`0.18.0`**.
 - Evidence for the floor is now checked in, not just argued: `src/test/sdk-verification.integration.test.ts`
   (ungated Tier-0, exercises the real installed SDK) and `src/test/fixtures/minted-manifests.ts`
   (Tier-2, externally-minted fixtures with a provenance header, verified against both `0.10.0` and
@@ -701,3 +701,16 @@ Shipped in wave 2 (Phase 5) after CP #142 (`adebf4f`) and playground `ae62c15` w
   re-captured from playground `ae62c15` (aitp-sdk 0.17.0) with the documented recorder recipe (key sets
   identical). Now `aitp/0.3`. The run-offset test uses `delegation.rejected` instead, since the new
   `ts` comes from another run.
+
+### aitp 0.18 bump — 2026-10-20
+
+Routine: still `aitp/0.3`, no wire change, no coordinated deploy (`aitp-rs/docs/upgrading-0.18.md`).
+The two breaking items are issuer- or Rust-side. Signing refuses a non-lowercase or non-v4 `jti`, but
+the console never signs. `REVOCATION_SNAPSHOT_INVALID` for an unknown snapshot version applies to the
+Rust adapter and `RevocationCache` only; the Node cause stays `version_unknown`, still amber, and the
+CUTOVER test passes unchanged.
+
+- **Lockfile** — npm 11's in-place update pruned three of the four platform packages, including
+  `linux-x64-gnu`, which Vercel runs. Re-resolved by dropping the `aitp` lock entries and reinstalling.
+  All four are at `0.18.0` and `libc` is kept. The `//aitp` note records the recipe.
+- **Gate** — typecheck, lint, unit (696), integration (44 passed, 28 env-gated skips), build: green.

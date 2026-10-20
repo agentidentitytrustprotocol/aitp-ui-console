@@ -29,7 +29,12 @@ type RevocationEntries = NonNullable<VerifiedRevocationList['revocation_list']>[
 
 function list(verification: RevocationVerdict, entries: RevocationEntries = []): VerifiedRevocationList {
   return {
-    revocation_list: { entries, version: 'aitp/0.2', issuer: 'aid:pubkey:cp', expires_at: undefined },
+    revocation_list: {
+      entries,
+      version: 'aitp/0.3',
+      issuer: 'aid:pubkey:cp',
+      expires_at: undefined,
+    },
     signature: 'sig-bytes',
     _verification: verification,
   };
@@ -90,10 +95,20 @@ describe('RevocationView verdict rendering', () => {
     ).toHaveStyle({ color: C.amber });
   });
 
-  it('does not overclaim for issuer_mismatch, version_unknown or malformed -- only signature_invalid says "SIGNATURE INVALID"', async () => {
+  it('does not overclaim for issuer_mismatch, version_unknown, malformed or unknown_field -- only signature_invalid says "SIGNATURE INVALID"', async () => {
     const notAssessed: Array<{ code: string; text: string }> = [
-      { code: 'version_unknown', text: '· NOT VERIFIED · signature not assessed (version_unknown)' },
-      { code: 'malformed', text: '· NOT VERIFIED · signature not assessed (malformed)' },
+      {
+        code: 'version_unknown',
+        text: '· NOT VERIFIED · signature not assessed (version_unknown)',
+      },
+      {
+        code: 'malformed',
+        text: '· NOT VERIFIED · signature not assessed (malformed)',
+      },
+      {
+        code: 'unknown_field',
+        text: '· NOT VERIFIED · signature not assessed (unknown_field)',
+      },
     ];
     for (const { code, text } of notAssessed) {
       wireApi(list({ checked: true, ok: false, code, tier: 'pinned' }));

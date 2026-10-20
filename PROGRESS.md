@@ -69,15 +69,13 @@ diff): 36 files changed, ~6,200 insertions, ~130 deletions.
 
 ### Dependency surface (Phase 1) — shipped
 
-- `package.json:24` — `"aitp": "npm:@agentidentitytrustprotocol/aitp@^0.12.0"`, raised from the
-  unbounded `>=0.7.0`. `package.json:21` carries the `//aitp` sibling key documenting the floor's
-  rationale (the two false-rejection fixes 0.12.0 brings a *verifier*, and why CP's own `//aitp`
-  reaches the opposite conclusion about the same release).
-- `package-lock.json:4221` — `node_modules/aitp` now resolves to **`0.12.0`** (was `0.10.0`).
-  `0.13.0` is deliberately declined; see the `//aitp` comment and the plan's Open question 2 for
-  why raising the range is a decision for a human, not an automatic lockfile refresh.
+- `package.json:24` — `"aitp": "npm:@agentidentitytrustprotocol/aitp@^0.17.0"` (2026-10-20, protocol
+  `aitp/0.3`; was `^0.12.0`, raised from the unbounded `>=0.7.0` before that). `package.json:21`
+  carries the `//aitp` sibling key documenting each floor's rationale. See the "aitp 0.17 adoption"
+  log entry below.
+- `package-lock.json` — `node_modules/aitp` and all four platform packages resolve to **`0.17.0`**.
 - Evidence for the floor is now checked in, not just argued: `src/test/sdk-verification.integration.test.ts`
-  (ungated Tier-0, exercises the real `0.12.0` install) and `src/test/fixtures/minted-manifests.ts`
+  (ungated Tier-0, exercises the real installed SDK) and `src/test/fixtures/minted-manifests.ts`
   (Tier-2, externally-minted fixtures with a provenance header, verified against both `0.10.0` and
   `0.12.0` — including a third `CONTROL` fixture that verifies on both, isolating which SDK member
   actually caused each 0.10.0 failure).
@@ -662,3 +660,32 @@ _(appended by `/implement` as phases land)_
   with numbers matching exactly. No gaps found; no fixes needed.
 - pushed feature/absorb-cp-playground-changes 7cdffcc
 - PR #50 opened: https://github.com/agentidentitytrustprotocol/aitp-ui-console/pull/50
+
+### aitp 0.17 adoption (`plans/aitp-rs-0.17-adoption.md`, Phases 1–4) — 2026-10-20 — PR open, NOT merged
+
+Wave 1 of the `aitp/0.3` sibling rollout. `aitp/0.3` is a strict wire break: the console must deploy
+together with `aitp-control-plane` (CP first, console minutes after), coordinated from `aitp-rs`. Do
+not merge or deploy this branch on its own (plan Phase 5).
+
+- **Bump** `^0.12.0 -> ^0.17.0`. Lockfile churn limited to `aitp` plus its four platform packages.
+- **Gate on the bump alone** failed 9 integration tests, not the plan's predicted 7: the 2 stray-member
+  INVARIANT tests (now `unknown_field`, unclassified -> red), the 5 Tier-2 fixture tests
+  (`version_unknown` on the `aitp/0.2` fixtures), and **2 unplanned** revocation-route tests (cases 1
+  and 4), whose fixture `jti`s (`11111111-1111-1111-…`) are not UUID v4. 0.15's wire parser rejects them
+  as `malformed`. Fixed the fixtures to valid v4. Live consequence: a CP snapshot with a non-v4 `jti`
+  would render amber `malformed` here.
+- **Classification** — `unknown_field` added to `MANIFEST_UNASSESSED_CODES` and
+  `REVOCATION_UNASSESSED_CODES` (amber, with `malformed` / `version_unknown`). Measured on 0.17.0:
+  stray member -> `unknown_field` (both entry points); duplicate key -> `malformed`; `aitp/0.2`
+  artifact -> `version_unknown`; non-v4 `jti` -> `malformed`. Header comment citations refreshed to
+  `aitp-v0.17.0` (check order unchanged; `aid_mismatch` now has construction sites, but only in
+  `resolver.rs`, which the binding does not call).
+- **Tests** — new PINNED (`unknown_field`, duplicate-key `malformed`) and CUTOVER (`aitp/0.2` ->
+  amber `version_unknown`, never red) cases in `sdk-verification.integration.test.ts`; `unknown_field`
+  rows added to the unit suites.
+- **Fixtures** — `minted-manifests.ts` re-minted as `aitp/0.3` with `aitp-verifier-py` @ `f335f4f`
+  against the spec @ `bf00e75` (clean detached worktrees; the live verifier-py checkout had unrelated
+  uncommitted edits). Only `version` and the outer `signature` changed. `revocation.test.tsx` restamped.
+  The event-card samples (`event-cards.test.tsx:457,459`) stay `aitp/0.2` recorded playground output
+  (plan Open question 3: replace after the playground cuts over).
+- **Gate** — typecheck, lint, unit (696), integration (44 passed, 28 env-gated skips), build: green.

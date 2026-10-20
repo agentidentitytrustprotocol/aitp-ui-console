@@ -90,7 +90,7 @@ describe('GET /api/cp/well-known/aitp-revocation-list — verifying proxy', () =
     const { AitpAgent } = require('aitp');
     const cp = AitpAgent.generate();
     revocationText = cp.signRevocationList(
-      [{ jti: '11111111-1111-1111-1111-111111111111' }],
+      [{ jti: '11111111-1111-4111-8111-111111111111' }],
       3600,
     );
 
@@ -141,7 +141,10 @@ describe('GET /api/cp/well-known/aitp-revocation-list — verifying proxy', () =
     const { AitpAgent } = require('aitp');
     const cp = AitpAgent.generate();
     revocationText = tamperSignature(
-      cp.signRevocationList([{ jti: '22222222-2222-2222-2222-222222222222' }], 3600),
+      cp.signRevocationList(
+        [{ jti: '22222222-2222-4222-8222-222222222222' }],
+        3600,
+      ),
     );
 
     const route = requireRoute(cp.aid);

@@ -499,6 +499,7 @@ describe('manifestVerifyFailedVerdict', () => {
     // SDK codes that never reach the signature check, via Phase 2's predicate.
     ['malformed', C.amber, 'signature not assessed (malformed)'],
     ['version_unknown', C.amber, 'signature not assessed (version_unknown)'],
+    ['unknown_field', C.amber, 'signature not assessed (unknown_field)'],
     // `expired` is pre-signature (same ordering as `verify_manifest`), so it
     // gets the same amber treatment as `manifestVerdictBadge` — never the
     // generic red branch, which would read as an authenticity failure.
@@ -558,6 +559,7 @@ describe('revocationVerifyFailedVerdict', () => {
     // SDK codes, via Phase 2's predicate.
     ['malformed', C.amber, 'signature not assessed (malformed)'],
     ['version_unknown', C.amber, 'signature not assessed (version_unknown)'],
+    ['unknown_field', C.amber, 'signature not assessed (unknown_field)'],
     ['signature_invalid', C.red, 'verification failed (signature_invalid)'],
     ['issuer_mismatch', C.red, 'verification failed (issuer_mismatch)'],
     // The set is OPEN: any future code flows through revocation_refresh.py:130

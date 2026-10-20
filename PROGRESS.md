@@ -661,11 +661,12 @@ _(appended by `/implement` as phases land)_
 - pushed feature/absorb-cp-playground-changes 7cdffcc
 - PR #50 opened: https://github.com/agentidentitytrustprotocol/aitp-ui-console/pull/50
 
-### aitp 0.17 adoption (`plans/aitp-rs-0.17-adoption.md`, Phases 1–4) — 2026-10-20 — PR open, NOT merged
+### aitp 0.17 adoption (`plans/aitp-rs-0.17-adoption.md`, Phases 1–5) — 2026-10-20 — merged, deployed
 
 Wave 1 of the `aitp/0.3` sibling rollout. `aitp/0.3` is a strict wire break: the console must deploy
-together with `aitp-control-plane` (CP first, console minutes after), coordinated from `aitp-rs`. Do
-not merge or deploy this branch on its own (plan Phase 5).
+together with `aitp-control-plane` (CP first, console minutes after), coordinated from `aitp-rs`.
+Shipped in wave 2 (Phase 5) after CP #142 (`adebf4f`) and playground `ae62c15` went live; see
+**Cutover** below.
 
 - **Bump** `^0.12.0 -> ^0.17.0`. Lockfile churn limited to `aitp` plus its four platform packages.
 - **Gate on the bump alone** failed 9 integration tests, not the plan's predicted 7: the 2 stray-member
@@ -686,6 +687,17 @@ not merge or deploy this branch on its own (plan Phase 5).
 - **Fixtures** — `minted-manifests.ts` re-minted as `aitp/0.3` with `aitp-verifier-py` @ `f335f4f`
   against the spec @ `bf00e75` (clean detached worktrees; the live verifier-py checkout had unrelated
   uncommitted edits). Only `version` and the outer `signature` changed. `revocation.test.tsx` restamped.
-  The event-card samples (`event-cards.test.tsx:457,459`) stay `aitp/0.2` recorded playground output
-  (plan Open question 3: replace after the playground cuts over).
+  The event-card samples (`event-cards.test.tsx:457,459`) stayed `aitp/0.2` recorded playground output
+  until the playground cut over (plan Open question 3); re-captured in #66, see **Cutover**.
 - **Gate** — typecheck, lint, unit (696), integration (44 passed, 28 env-gated skips), build: green.
+- **Cutover (wave 2)** — #65 squash-merged as `6efc77c` and deployed to prod by hand
+  (`aitp-ui-console-754edsrch`). Verified live on `console.agentidentitytrustprotocol.io`: CP
+  Manifest, revocation list and a registry Manifest all `aitp/0.3`, `{checked: true, ok: true}`, no
+  amber. Then `CP_AID` was pinned in Vercel **Production** to the live CP AID
+  (`aid:pubkey:kRbFFewDiPkgqbVLBWmyUQxF955vsmVjYiF53G7a4Pg`) and redeployed
+  (`aitp-ui-console-r2dqfwmlp`). The revocation list now verifies `tier: 'pinned'` (Tier 2), green.
+  Preview has no `CP_AID`, so it stays Tier 1 (`self-consistent`).
+- **Event-card re-capture** — #66 (`6f659a6`): `delegation.redeemed` site 2 and `delegation.issued`
+  re-captured from playground `ae62c15` (aitp-sdk 0.17.0) with the documented recorder recipe (key sets
+  identical). Now `aitp/0.3`. The run-offset test uses `delegation.rejected` instead, since the new
+  `ts` comes from another run.

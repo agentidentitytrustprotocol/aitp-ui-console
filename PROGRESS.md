@@ -1,7 +1,8 @@
 # Progress: absorb-cp-playground-changes
 
 Plan: `plans/absorb-cp-playground-changes.md` — the **merged** plan. All its phases are DONE, so no
-plan is currently active. Archiving it to `plans/archive/` is pending the owner.
+plan is currently active. Its last open item (ASSUMPTIONS: seven event types without a time, #56) is
+resolved, and the plan is archived to `plans/archive/` (2026-10-21).
 
 > Two independent sessions wrote competing plans for the same upstream drift. They were merged
 > on 2026-09-23. `plans/upstream-drift-absorption.SUPERSEDED.md` is retained for reference only;
@@ -723,3 +724,13 @@ The break (#279) is in binding signing and deny-list input: canonical v4 `messag
 and normalized `revokedJtis` where a non-UUID throws. The console calls none of those APIs. Its only
 `revokedJtis` is a CP response field in `use-trust.test.tsx`, which never reaches the SDK. Lockfile
 re-resolved with the `//aitp` recipe: all four platform packages are at `0.19.0` and `libc` is kept.
+
+### Closeout — 2026-10-21
+
+- **#56 resolved:** `run.failed` and the six trust cards now show the run-relative offset,
+  right-aligned in the card header like `run.complete`. That clears this plan's last
+  UNCONFIRMED item, and the plan is archived.
+- **aitp bumps automated** (#71): `bump-aitp.yml` (aitp-ci `bump-consume@v1`, the same as CP). It
+  runs on the `aitp-released` dispatch (aitp-rs#288), on a weekly schedule, or by hand. CI now
+  runs `scripts/check-aitp-lock.mjs`. Dependabot ignores the SDK and `@types/node` majors (#64
+  closed; the runtime is Node 22).

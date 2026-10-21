@@ -1,6 +1,7 @@
 # Progress: absorb-cp-playground-changes
 
-Plan: `plans/absorb-cp-playground-changes.md` — the **merged** plan, and the only active one.
+Plan: `plans/absorb-cp-playground-changes.md` — the **merged** plan. All its phases are DONE, so no
+plan is currently active. Archiving it to `plans/archive/` is pending the owner.
 
 > Two independent sessions wrote competing plans for the same upstream drift. They were merged
 > on 2026-09-23. `plans/upstream-drift-absorption.SUPERSEDED.md` is retained for reference only;

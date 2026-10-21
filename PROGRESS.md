@@ -69,11 +69,11 @@ diff): 36 files changed, ~6,200 insertions, ~130 deletions.
 
 ### Dependency surface (Phase 1) — shipped
 
-- `package.json:24` — `"aitp": "npm:@agentidentitytrustprotocol/aitp@^0.18.0"` (2026-10-20, protocol
-  `aitp/0.3`; `^0.17.0` earlier that day, `^0.12.0` before, the unbounded `>=0.7.0` before that). `package.json:21`
+- `package.json:24` — `"aitp": "npm:@agentidentitytrustprotocol/aitp@^0.19.0"` (protocol `aitp/0.3`;
+  `^0.18.0` and `^0.17.0` on 2026-10-20, `^0.12.0` before, the unbounded `>=0.7.0` before that). `package.json:21`
   carries the `//aitp` sibling key documenting each floor's rationale. See the "aitp 0.17 adoption"
-  and "aitp 0.18" log entries below.
-- `package-lock.json` — `node_modules/aitp` and all four platform packages resolve to **`0.18.0`**.
+  and "aitp 0.18" / "aitp 0.19" log entries below.
+- `package-lock.json` — `node_modules/aitp` and all four platform packages resolve to **`0.19.0`**.
 - Evidence for the floor is now checked in, not just argued: `src/test/sdk-verification.integration.test.ts`
   (ungated Tier-0, exercises the real installed SDK) and `src/test/fixtures/minted-manifests.ts`
   (Tier-2, externally-minted fixtures with a provenance header, verified against both `0.10.0` and
@@ -714,3 +714,11 @@ CUTOVER test passes unchanged.
   `linux-x64-gnu`, which Vercel runs. Re-resolved by dropping the `aitp` lock entries and reinstalling.
   All four are at `0.18.0` and `libc` is kept. The `//aitp` note records the recipe.
 - **Gate** — typecheck, lint, unit (696), integration (44 passed, 28 env-gated skips), build: green.
+
+### aitp 0.19 bump — 2026-10-20
+
+Routine: still `aitp/0.3`, no wire change, interoperates with 0.18 (`aitp-rs/docs/upgrading-0.19.md`).
+The break (#279) is in binding signing and deny-list input: canonical v4 `messageId` / `sessionId`,
+and normalized `revokedJtis` where a non-UUID throws. The console calls none of those APIs. Its only
+`revokedJtis` is a CP response field in `use-trust.test.tsx`, which never reaches the SDK. Lockfile
+re-resolved with the `//aitp` recipe: all four platform packages are at `0.19.0` and `libc` is kept.

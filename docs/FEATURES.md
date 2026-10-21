@@ -137,12 +137,11 @@ narrates and counts none of them.
 
 Event timestamps (`ts`) are epoch seconds, the way the playground stamps
 them — not milliseconds since the run started — and the console converts
-each to a run-relative offset from the run's own first observed event. Of
-the seven trust/delegation types above, only `delegation.redeeming`
-currently renders that offset; `manifest.verify_failed`,
-`revocation.verify_failed`, `revocation.degraded_serve`,
-`delegation.issued`, `delegation.redeemed`, `delegation.rejected`, and the
-generic `run.failed` card do not yet show a timestamp.
+each to a run-relative offset from the run's own first observed event.
+Every timeline event that carries a time shows that offset: row events at
+the start of the row, and the bordered cards (the trust/delegation cards,
+`run.complete` and `run.failed`) right-aligned in the card header. Until the
+first event sets the run's time base, no offset is shown.
 
 The view **auto-scrolls** to the newest event unless you've scrolled up,
 in which case a **jump-to-latest** control appears; a small indicator

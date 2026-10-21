@@ -79,6 +79,8 @@ cards or `run.failed`, exactly as before this phase. If a reviewer decides the t
 scope after all, the work is additive (one prop, six components) and no part of the existing
 `baseTs` threading has to be redone to accommodate it.
 
-**Status:** UNCONFIRMED — DEFERRED (2026-09-23). Evidence that would settle it: a product decision
-on whether these seven event types should carry a timestamp and in what visual treatment. Worth a
-tracked GitHub issue if the team wants it actioned.
+**Status:** RESOLVED (2026-10-21), issue #56. Decision: yes, they carry a timestamp. It goes in
+the card header, right-aligned, the same slot `run.complete` uses; trust cards keep their distinct
+weight and gain no `Line` dot. The change was additive, as predicted. `EventCard` passes `offset`
+to the six trust cards, and through `TrustCard` and `run.failed` it renders in the header.
+Covered by `event-cards.test.tsx` ("trust cards and run.failed carry the run offset (#56)").

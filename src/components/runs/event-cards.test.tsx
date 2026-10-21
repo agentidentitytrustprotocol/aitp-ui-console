@@ -483,6 +483,35 @@ const RUN_EVENT_KEYS: Record<keyof RunEvent, true> = {
   scope: true,
 };
 
+describe('trust cards and run.failed carry the run offset (#56)', () => {
+  // These seven used to render no time at all; the offset now sits right-aligned
+  // in the card header, the same slot `run.complete` uses. Real captured frames
+  // for the six trust cards, so the card renders its genuine body too.
+  const cases: [string, Partial<RunEvent> & { type: string }][] = [
+    ['manifest.verify_failed', CAPTURED_FRAMES.manifest_verify_failed_agent as unknown as RunEvent],
+    [
+      'revocation.verify_failed',
+      CAPTURED_FRAMES.revocation_verify_failed_sdk_code as unknown as RunEvent,
+    ],
+    ['revocation.degraded_serve', CAPTURED_FRAMES.revocation_degraded_serve as unknown as RunEvent],
+    ['delegation.rejected', CAPTURED_FRAMES.delegation_rejected as unknown as RunEvent],
+    ['delegation.issued', CAPTURED_FRAMES.delegation_issued as unknown as RunEvent],
+    ['delegation.redeemed', CAPTURED_FRAMES.delegation_redeemed_site3 as unknown as RunEvent],
+    ['run.failed', { type: 'run.failed', error: 'boom', ts: BASE_TS }],
+  ];
+
+  it.each(cases)('%s renders +2.5s against a base 2.5 s earlier', (type, frame) => {
+    const e = evt({ ...frame, type });
+    render(<EventCard evt={e} baseTs={e.ts - 2.5} />);
+    expect(screen.getByText('+2.5s')).toBeInTheDocument();
+  });
+
+  it.each(cases)('%s renders no offset before the time base is known', (type, frame) => {
+    const { container } = render(<EventCard evt={evt({ ...frame, type })} />);
+    expect(container).not.toHaveTextContent(/\+\d/);
+  });
+});
+
 describe('captured wire shapes', () => {
   it.each(Object.keys(CAPTURED_FRAMES))('%s: every key is modelled on RunEvent', (name) => {
     const unmodelled = Object.keys(CAPTURED_FRAMES[name]).filter(
@@ -1075,15 +1104,9 @@ describe('the discretionary delegation.issued / delegation.redeeming pair', () =
     expect(container.querySelector('.pulse')).not.toBeNull();
   });
 
-  // Finalization-pass addition. Of the trust cards Phase 3 added,
-  // `delegation.redeeming` is the ONLY one rendered through `<Line ts={offset}>`
-  // rather than a bare `TrustCard` — see the ASSUMPTIONS.md entry for Phase 4
-  // ("...seven event types render no time at all, and still do"), which
-  // enumerates the other six/seven new-or-touched cards as never calling
-  // `formatOffset` at all. That makes this the one place Phase 3's new
-  // vocabulary and Phase 4's epoch-seconds fix actually compose in the same
-  // rendered row, and the test above never passes `baseTs`, so `offset` is
-  // always `undefined` there and `Line`'s `{ts && ...}` guard never fires.
+  // `delegation.redeeming` is the one trust event rendered as a `<Line ts>`
+  // row rather than a `TrustCard`; the cards' header offset is covered by the
+  // #56 block above. The test above never passes `baseTs`, so this one does.
   it('delegation.redeeming renders a Phase-4-correct run-relative offset, not just the pulsing dot', () => {
     render(
       <EventCard

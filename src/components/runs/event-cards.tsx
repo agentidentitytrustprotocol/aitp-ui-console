@@ -186,22 +186,28 @@ export function EventCard({ evt, baseTs }: { evt: RunEvent; baseTs?: number }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <AlertTriangle size={16} color={C.red} />
             <span style={{ fontSize: 14, fontWeight: 600, color: C.red }}>Run failed</span>
+            <span
+              className="mono"
+              style={{ fontSize: 10, color: C.textMuted, marginLeft: 'auto' }}
+            >
+              {offset}
+            </span>
           </div>
           {evt.error && <div style={{ fontSize: 12, color: C.textDim }}>{evt.error}</div>}
         </Card>
       );
 
     case 'manifest.verify_failed':
-      return <ManifestVerifyFailedCard evt={evt} />;
+      return <ManifestVerifyFailedCard evt={evt} offset={offset} />;
 
     case 'revocation.verify_failed':
-      return <RevocationVerifyFailedCard evt={evt} />;
+      return <RevocationVerifyFailedCard evt={evt} offset={offset} />;
 
     case 'revocation.degraded_serve':
-      return <RevocationDegradedServeCard evt={evt} />;
+      return <RevocationDegradedServeCard evt={evt} offset={offset} />;
 
     case 'delegation.issued':
-      return <DelegationIssuedCard evt={evt} />;
+      return <DelegationIssuedCard evt={evt} offset={offset} />;
 
     case 'delegation.redeeming':
       return (
@@ -214,10 +220,10 @@ export function EventCard({ evt, baseTs }: { evt: RunEvent; baseTs?: number }) {
       );
 
     case 'delegation.redeemed':
-      return <DelegationRedeemedCard evt={evt} />;
+      return <DelegationRedeemedCard evt={evt} offset={offset} />;
 
     case 'delegation.rejected':
-      return <DelegationRejectedCard evt={evt} />;
+      return <DelegationRejectedCard evt={evt} offset={offset} />;
 
     // Anything this console does not model — including a future `trust.*` or
     // `delegation.*` member — lands here deliberately. The row names the type
@@ -462,14 +468,18 @@ function VerdictIcon({ color }: { color: string }) {
 }
 
 /** Shared frame for the trust cards: a coloured left rule, a headline, and the
- *  honest sentence. `children` carries whatever fields the event actually had. */
+ *  honest sentence. `children` carries whatever fields the event actually had.
+ *  `offset` is the run-relative time, right-aligned in the header like
+ *  `run.complete`; absent (no time base yet, or rendered standalone) it is omitted. */
 function TrustCard({
   verdict,
   icon,
+  offset,
   children,
 }: {
   verdict: TrustVerdict;
   icon?: React.ReactNode;
+  offset?: string;
   children?: React.ReactNode;
 }) {
   return (
@@ -490,6 +500,11 @@ function TrustCard({
           {verdict.headline}
         </span>
         <span style={{ fontSize: 12, color: C.textDim }}>{verdict.text}</span>
+        {offset && (
+          <span className="mono" style={{ fontSize: 10, color: C.textMuted, marginLeft: 'auto' }}>
+            {offset}
+          </span>
+        )}
       </div>
       {children}
     </Card>
@@ -603,10 +618,10 @@ function TokenClaims({ tct }: { tct: RunEvent['tct'] }) {
  *  orchestrator (`engine.py:641-645`, carrying `step_id`/`agent_id`) and from
  *  an agent (`agent_admin.py:127-132`, without them), so both are optional and
  *  one card renders either. */
-export function ManifestVerifyFailedCard({ evt }: { evt: RunEvent }) {
+export function ManifestVerifyFailedCard({ evt, offset }: { evt: RunEvent; offset?: string }) {
   const verdict = manifestVerifyFailedVerdict(evt.cause);
   return (
-    <TrustCard verdict={verdict}>
+    <TrustCard verdict={verdict} offset={offset}>
       {evt.source_url && (
         <Detail label="MANIFEST">
           <span className="mono" style={{ fontSize: 10, color: C.textDim }}>
@@ -625,10 +640,10 @@ export function ManifestVerifyFailedCard({ evt }: { evt: RunEvent }) {
 }
 
 /** A revocation snapshot was discarded at ingest (RFC-AITP-0008 §1.5). */
-export function RevocationVerifyFailedCard({ evt }: { evt: RunEvent }) {
+export function RevocationVerifyFailedCard({ evt, offset }: { evt: RunEvent; offset?: string }) {
   const verdict = revocationVerifyFailedVerdict(evt.cause);
   return (
-    <TrustCard verdict={verdict}>
+    <TrustCard verdict={verdict} offset={offset}>
       {evt.detail && <Detail label="DETAIL">{evt.detail}</Detail>}
     </TrustCard>
   );
@@ -652,14 +667,14 @@ export function RevocationVerifyFailedCard({ evt }: { evt: RunEvent }) {
  *  stays true across all three causes instead of asserting the one that
  *  happens to hold for two of them; `evt.reason` (rendered below, verbatim,
  *  never parsed) is what carries the specific cause. */
-export function RevocationDegradedServeCard({ evt }: { evt: RunEvent }) {
+export function RevocationDegradedServeCard({ evt, offset }: { evt: RunEvent; offset?: string }) {
   const verdict: TrustVerdict = {
     color: C.amber,
     headline: 'SERVED WITHOUT CURRENT REVOCATION DATA',
     text: 'a call was answered while revocation checking was degraded',
   };
   return (
-    <TrustCard verdict={verdict} icon={<AlertTriangle size={14} color={C.amber} />}>
+    <TrustCard verdict={verdict} offset={offset} icon={<AlertTriangle size={14} color={C.amber} />}>
       {evt.reason && <Detail label="REASON">{evt.reason}</Detail>}
       {evt.fail_mode && (
         <Detail label="FAIL MODE">
@@ -681,14 +696,14 @@ export function RevocationDegradedServeCard({ evt }: { evt: RunEvent }) {
  *  Carries only `error`, a stringified exception. It is rendered as-is: there
  *  is no code to parse out of free text, and guessing one would invent a
  *  taxonomy the producer never emitted. */
-export function DelegationRejectedCard({ evt }: { evt: RunEvent }) {
+export function DelegationRejectedCard({ evt, offset }: { evt: RunEvent; offset?: string }) {
   const verdict: TrustVerdict = {
     color: C.red,
     headline: 'DELEGATION REJECTED',
     text: 'a delegation redemption was refused',
   };
   return (
-    <TrustCard verdict={verdict} icon={<XCircle size={14} color={C.red} />}>
+    <TrustCard verdict={verdict} offset={offset} icon={<XCircle size={14} color={C.red} />}>
       {evt.error && <Detail label="ERROR">{evt.error}</Detail>}
     </TrustCard>
   );
@@ -699,14 +714,14 @@ export function DelegationRejectedCard({ evt }: { evt: RunEvent }) {
  *
  *  Blue, not the `verified` teal and not the success green: this console
  *  checked nothing here, it is relaying an agent's self-reported milestone. */
-export function DelegationIssuedCard({ evt }: { evt: RunEvent }) {
+export function DelegationIssuedCard({ evt, offset }: { evt: RunEvent; offset?: string }) {
   const verdict: TrustVerdict = {
     color: C.blue,
     headline: 'DELEGATION ISSUED',
     text: 'an agent signed a delegation for a delegatee',
   };
   return (
-    <TrustCard verdict={verdict} icon={<KeyRound size={14} color={C.blue} />}>
+    <TrustCard verdict={verdict} offset={offset} icon={<KeyRound size={14} color={C.blue} />}>
       {evt.delegatee_aid && (
         <Detail label="DELEGATEE">
           <AidCell aid={evt.delegatee_aid} />
@@ -742,7 +757,7 @@ export function DelegationIssuedCard({ evt }: { evt: RunEvent }) {
  * or the green it uses for completed work: nothing here was verified by this
  * console.
  */
-export function DelegationRedeemedCard({ evt }: { evt: RunEvent }) {
+export function DelegationRedeemedCard({ evt, offset }: { evt: RunEvent; offset?: string }) {
   const tct = evt.tct && typeof evt.tct === 'object' ? evt.tct : undefined;
   const isIssuer = evt.role === 'issuer' || (!!evt.delegatee_aid && !tct);
   const isDelegatee = !isIssuer && (!!tct || !!evt.peer_aid || !!evt.jti);
@@ -762,7 +777,7 @@ export function DelegationRedeemedCard({ evt }: { evt: RunEvent }) {
   const verdict: TrustVerdict = { color: C.blue, headline: 'DELEGATION REDEEMED', text };
 
   return (
-    <TrustCard verdict={verdict} icon={<KeyRound size={14} color={C.blue} />}>
+    <TrustCard verdict={verdict} offset={offset} icon={<KeyRound size={14} color={C.blue} />}>
       {isIssuer && evt.delegatee_aid && (
         <Detail label="DELEGATEE">
           <AidCell aid={evt.delegatee_aid} />

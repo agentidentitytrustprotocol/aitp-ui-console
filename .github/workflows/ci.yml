@@ -30,6 +30,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The aitp SDK's native addon ships as four platform packages; a bad
+      # re-lock has dropped linux-x64-gnu before, which only fails at runtime.
+      - name: Lockfile pins all aitp platform packages
+        run: node scripts/check-aitp-lock.mjs
+
       - name: Typecheck
         run: npm run typecheck
 

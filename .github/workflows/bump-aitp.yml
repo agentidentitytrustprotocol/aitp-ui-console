@@ -1,0 +1,29 @@
+name: bump aitp
+# Adopt a new aitp SDK release (npm) through the shared aitp-ci workflow, the
+# same one aitp-control-plane uses. It rewrites the `npm:@agentidentitytrustprotocol/aitp@…`
+# alias, re-locks with `npm install --package-lock-only` (keeps all four
+# platform packages), and opens a PR as aitp-deps-bot. On 0.x every minor is
+# treated as breaking, so auto-merge is NOT armed for those: review the
+# upgrading guide, merge, then deploy prod by hand (merging does not deploy).
+on:
+  # Fired by aitp-rs bindings-release on npm publish, once it dispatches here.
+  repository_dispatch:
+    types: [aitp-released]
+  # Fallback until then, and a safety net after: a no-op when already current
+  # or when the deps/aitp-<version> branch is already open.
+  schedule:
+    - cron: '17 14 * * 1'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Exact aitp version (blank = latest / event payload)'
+        required: false
+        default: ''
+jobs:
+  bump:
+    uses: agentidentitytrustprotocol/aitp-ci/.github/workflows/bump-consume.yml@v1
+    with:
+      ecosystem: npm
+      package: '@agentidentitytrustprotocol/aitp'
+      version: ${{ github.event.inputs.version }}
+    secrets: inherit

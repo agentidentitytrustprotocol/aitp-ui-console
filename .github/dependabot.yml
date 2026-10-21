@@ -14,6 +14,15 @@ updates:
       # jsx-a11y also peer on eslint <=9. Revisit once eslint-config-next supports 10.
       - dependency-name: eslint
         update-types: ['version-update:semver-major']
+      # @types/node tracks the Node RUNTIME, not the latest Node: engines is
+      # >=22.13.0, CI and Vercel run 22. A major past 22 types APIs prod lacks
+      # (#64 proposed 26). Raise it by hand with the runtime.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+      # The aitp SDK (an `npm:` alias) is bumped by bump-aitp.yml, which is
+      # event-driven from aitp-rs and keeps the four platform packages locked.
+      - dependency-name: '@agentidentitytrustprotocol/*'
+      - dependency-name: aitp
     groups:
       # One PR for minor+patch across the tree; majors held separately.
       minor-and-patch:

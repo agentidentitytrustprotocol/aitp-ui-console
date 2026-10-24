@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { RefreshCw } from 'lucide-react';
+import { LogOut, RefreshCw } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { C } from '@/lib/colors';
 import { ConnectionStatus } from './connection-status';
@@ -59,6 +59,25 @@ export function Topbar() {
         >
           <RefreshCw size={14} />
         </button>
+        {/* A plain form post: same-origin, so it carries the Origin the
+            proxy requires on mutations, and the 303 lands on /login. */}
+        <form method="post" action="/logout" style={{ display: 'flex' }}>
+          <button
+            type="submit"
+            title="Sign out"
+            aria-label="Sign out"
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: C.textDim,
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            <LogOut size={14} />
+          </button>
+        </form>
       </div>
     </header>
   );

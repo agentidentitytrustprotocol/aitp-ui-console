@@ -48,16 +48,18 @@ layer or the SSE hook. See [`TESTING.md`](./TESTING.md).
 
    | Variable | Required | Notes |
    | --- | --- | --- |
+   | `CONSOLE_PASSWORD` | yes | Operator password (24+ random chars). Unset → 503 on every route. |
+   | `CONSOLE_SESSION_SECRET` | yes | HMAC key for the session cookie (`openssl rand -hex 32`). Unset → 503 on every route. Rotating it signs everyone out. |
    | `PLAYGROUND_URL` | yes | Public HTTPS URL of the playground (no trailing slash). |
    | `PLAYGROUND_API_KEY` | if upstream enforces | Bearer token forwarded to the playground. |
    | `CP_URL` | yes | Public HTTPS URL of the control plane. |
    | `CP_API_KEY` | if upstream enforces | Bearer token forwarded to the CP. |
    | `CP_AID` | optional | Pins the CP's identity for revocation-snapshot verification (Tier 2 — see `plans/cp-signed-artifact-verification.md`, Phase 4). Not a secret. Obtain it from the CP's verified manifest on the Config page — only sound because of Phase 3. Leave blank for Tier 1 (self-consistency only). |
-   | `TRUSTED_ORIGINS` | optional | Comma-separated extra `Origin`s the CSRF guard should allow. Only needed if the console is reachable on multiple hostnames (e.g. behind a CDN with a custom domain that differs from the Vercel one). |
+   | `TRUSTED_ORIGINS` | optional | Comma-separated extra `Origin`s the mutation Origin check should allow. Only needed if the console is reachable on multiple hostnames (e.g. behind a CDN with a custom domain that differs from the Vercel one). |
 
-   None of these are referenced at build time, so previews can deploy
-   without any of them set — the BFF will return 502 on every request,
-   but the static shell still loads.
+   None of these are referenced at build time. Without the two
+   `CONSOLE_*` variables a deployment serves 503 on every route, so set
+   them on Preview as well as Production.
 
 3. **Pick a plan that supports the SSE function duration you need.**
    Vercel kills serverless functions at the plan timeout:

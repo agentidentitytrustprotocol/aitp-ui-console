@@ -84,6 +84,25 @@ cp .env.example .env.local   # API keys can stay blank for local
 npm run dev                  # → :3001
 ```
 
+Set `CONSOLE_PASSWORD` and `CONSOLE_SESSION_SECRET` in `.env.local` first:
+the console serves 503 on every route until both are set. Sign in at
+`/login`. For scripts, send HTTP Basic with the password (any username);
+mutations also need an `Origin` header matching the console's origin.
+
+### Deploying
+
+Set these on every Vercel environment you deploy to (Production **and**
+Preview, or previews serve 503):
+
+| Variable | Notes |
+| --- | --- |
+| `CONSOLE_PASSWORD` | Operator password, 24+ random characters. |
+| `CONSOLE_SESSION_SECRET` | Session-cookie HMAC key, e.g. `openssl rand -hex 32`. Rotating it signs every operator out. |
+
+The upstream variables (`PLAYGROUND_URL`, `CP_URL`, `*_API_KEY`, `CP_AID`,
+`TRUSTED_ORIGINS`) are in `.env.example` and
+[`internal_docs/DEPLOYMENT.md`](https://github.com/agentidentitytrustprotocol/aitp-ui-console/blob/main/internal_docs/DEPLOYMENT.md).
+
 The console runs on its own — if an upstream is down the topbar shows a
 red dot and the relevant section falls back to an empty state (no
 crashes). To drive live data, bring up the two siblings per their own

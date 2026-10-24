@@ -25,8 +25,11 @@ npm install
 cp .env.example .env.local       # both API keys can stay blank for local
 ```
 
-The console reads `PLAYGROUND_URL`, `CP_URL`, optional `*_API_KEY`s, and
-`TRUSTED_ORIGINS` from the environment — all documented in `.env.example`.
+The console reads `CONSOLE_PASSWORD`, `CONSOLE_SESSION_SECRET`,
+`PLAYGROUND_URL`, `CP_URL`, optional `*_API_KEY`s, and `TRUSTED_ORIGINS`
+from the environment — all documented in `.env.example`. Set the two
+`CONSOLE_*` values in `.env.local` (any values work locally); without them
+every route returns 503.
 For local development the defaults (`localhost:8000` / `localhost:4000`)
 and blank keys are correct.
 

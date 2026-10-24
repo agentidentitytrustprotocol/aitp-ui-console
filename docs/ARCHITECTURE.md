@@ -87,14 +87,29 @@ one is configured — never against the snapshot's own self-declared issuer.
 See the "Trust" section of [FEATURES.md](https://agentidentitytrustprotocol.io/console/features)
 for what each tier actually proves.
 
-### CSRF guard
+### Operator login and Origin check
 
-`src/proxy.ts` (renamed from `middleware.ts` in Next 16) runs on every `/api/**` mutation (POST/PUT/PATCH/
-DELETE) and rejects requests whose `Origin` doesn't match the request
-`Host` (or an entry in `TRUSTED_ORIGINS`). GETs and SSE are unguarded —
-they're not state-changing and `EventSource` can't attach headers. Absent
-`Origin` (curl, server-to-server, integration tests) is allowed because
-CSRF requires a victim's *browser*.
+`src/proxy.ts` (renamed from `middleware.ts` in Next 16) runs on every
+route except build assets, and applies three checks in order:
+
+1. **Fail closed.** If `CONSOLE_PASSWORD` or `CONSOLE_SESSION_SECRET` is
+   unset, every route returns 503 `console not configured`.
+2. **Authentication.** Every route except `/login` needs either the
+   session cookie that `POST /login` issues or HTTP Basic with the
+   operator password (any username; for scripts). API routes answer 401;
+   pages redirect to `/login?next=…`. The cookie
+   (`__Host-aitp-console-session`) is HttpOnly, Secure, SameSite=Strict,
+   host-only and lasts 12 hours. It is HMAC-SHA256-signed with
+   `CONSOLE_SESSION_SECRET` via Web Crypto (`src/lib/auth/session.ts`), so
+   rotating the secret signs everyone out. `POST /login` is rate-limited to
+   10 attempts per IP per minute (in memory, per instance).
+3. **Origin on mutations.** POST/PUT/PATCH/DELETE (including `/login` and
+   `/logout`) must carry an `Origin` equal to this deployment's origin or
+   listed in `TRUSTED_ORIGINS`. A missing or `null` Origin is rejected
+   with 403, so scripted mutations must send one too.
+
+Passing requests continue untouched (`NextResponse.next()`), so SSE
+streams aren't buffered.
 
 ## Layering
 

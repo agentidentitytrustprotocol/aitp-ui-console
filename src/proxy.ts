@@ -1,17 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { consoleAuthConfig } from './lib/config';
+import {
+  SESSION_COOKIE,
+  basicAuthMatches,
+  verifySession,
+} from './lib/auth/session';
 
-/** Reject cross-site mutation requests to the BFF proxy by checking
- *  Origin against the request Host. Browsers always send Origin on
- *  POST/PUT/PATCH/DELETE from script (CORS), and same-origin form posts
- *  match Host — so this catches CSRF-style cross-site form submissions
- *  without needing a token round-trip.
+/** Gate for every console route: pages, `/api/cp/*` and `/api/playground/*`.
  *
- *  GETs (incl. SSE) are intentionally unguarded because they are not
- *  state-changing and EventSource cannot attach custom headers.
+ *  In order:
+ *  1. Fail closed: if CONSOLE_PASSWORD or CONSOLE_SESSION_SECRET is unset,
+ *     every route returns 503.
+ *  2. Authenticate: a valid signed session cookie (issued by `POST /login`)
+ *     or, for scripted use, HTTP Basic with the operator password. API
+ *     routes get 401; pages redirect to `/login`. `/login` itself is the
+ *     only route exempt from this step.
+ *  3. Origin check on mutations: POST/PUT/PATCH/DELETE must carry an
+ *     `Origin` that exactly matches this deployment's origin or an entry
+ *     in TRUSTED_ORIGINS. A missing or opaque (`null`) Origin is rejected,
+ *     so a mutation always proves it came from a page on this origin.
  *
- *  Trusted origins can be added via TRUSTED_ORIGINS (comma-separated)
- *  for environments behind a reverse proxy with a different external
- *  host than the internal Host header. */
+ *  Passing requests continue with `NextResponse.next()`, which neither
+ *  reads nor buffers the response, so SSE routes stream as before.
+ *
+ *  TRUSTED_ORIGINS (comma-separated) is for environments behind a reverse
+ *  proxy whose external origin differs from the request Host. */
 const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 function trustedOrigins(): Set<string> {
@@ -24,40 +37,82 @@ function trustedOrigins(): Set<string> {
   );
 }
 
-function originHost(origin: string | null): string | null {
-  if (!origin) return null;
-  try {
-    return new URL(origin).host;
-  } catch {
-    return null;
-  }
+function isApi(pathname: string): boolean {
+  return pathname === '/api' || pathname.startsWith('/api/');
 }
 
-export function proxy(req: NextRequest): NextResponse {
-  if (!MUTATION_METHODS.has(req.method)) return NextResponse.next();
+function isLogin(pathname: string): boolean {
+  return pathname === '/login';
+}
 
+/** The origin this request was addressed to: scheme from the URL, host from
+ *  the Host header (what the browser compares its own Origin against). */
+function selfOrigin(req: NextRequest): string {
+  const host = req.headers.get('host') ?? req.nextUrl.host;
+  return `${req.nextUrl.protocol}//${host}`;
+}
+
+function originAllowed(req: NextRequest): boolean {
   const origin = req.headers.get('origin');
-  const host = req.headers.get('host');
-  const allow = trustedOrigins();
+  if (!origin || origin === 'null') return false;
+  if (origin === selfOrigin(req)) return true;
+  return trustedOrigins().has(origin);
+}
 
-  // No Origin header at all → not a browser (curl, server-to-server,
-  // integration tests, mobile clients). CSRF requires an attacker who can
-  // make a victim's *browser* submit a cross-site request, so absent
-  // Origin is not a CSRF vector. Modern browsers always set Origin on
-  // POST/PUT/PATCH/DELETE.
-  if (!origin) return NextResponse.next();
+function notConfigured(req: NextRequest): NextResponse {
+  if (isApi(req.nextUrl.pathname)) {
+    return NextResponse.json(
+      { error: 'console not configured', code: 'console_not_configured' },
+      { status: 503 },
+    );
+  }
+  return new NextResponse('console not configured', {
+    status: 503,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+  });
+}
 
-  if (allow.has(origin)) return NextResponse.next();
+function unauthenticated(req: NextRequest): NextResponse {
+  const { pathname, search } = req.nextUrl;
+  if (isApi(pathname) || req.method !== 'GET') {
+    return NextResponse.json(
+      { error: 'Authentication required', code: 'unauthenticated' },
+      { status: 401 },
+    );
+  }
+  const login = new URL('/login', req.nextUrl);
+  login.searchParams.set('next', `${pathname}${search}`);
+  return NextResponse.redirect(login);
+}
 
-  const oHost = originHost(origin);
-  if (oHost && host && oHost === host) return NextResponse.next();
-
+function crossSite(): NextResponse {
   return NextResponse.json(
     { error: 'Cross-site request rejected', code: 'csrf_blocked' },
     { status: 403 },
   );
 }
 
+export async function proxy(req: NextRequest): Promise<NextResponse> {
+  const auth = consoleAuthConfig();
+  if (!auth) return notConfigured(req);
+
+  if (!isLogin(req.nextUrl.pathname)) {
+    const session = req.cookies.get(SESSION_COOKIE)?.value;
+    const ok =
+      (await verifySession(session, auth.sessionSecret)) ||
+      (await basicAuthMatches(req.headers.get('authorization'), auth.password));
+    if (!ok) return unauthenticated(req);
+  }
+
+  if (MUTATION_METHODS.has(req.method) && !originAllowed(req))
+    return crossSite();
+
+  return NextResponse.next();
+}
+
 export const config = {
-  matcher: ['/api/cp/:path*', '/api/playground/:path*'],
+  // Everything except build output and the favicon. `/login` is matched
+  // too, so the fail-closed and Origin checks cover it; only the
+  // authentication step skips it.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };

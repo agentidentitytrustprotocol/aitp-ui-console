@@ -7,6 +7,7 @@ import type {
   Delegation,
   IssuerRevocations,
   PinnedKey,
+  RevocationIssuers,
   Tct,
   TrustAnchor,
 } from '@/lib/types/cp';
@@ -130,10 +131,24 @@ export function useDeletePinnedKey() {
   });
 }
 
-/** One query per issuer AID. The CP keeps no issuer index, so the caller
- *  supplies the issuers (TCT issuers, plus any the operator names). Only
- *  issuers for which `isOpen` is true are fetched: a CP can know hundreds
- *  of issuers, and each is a separate proxied request. */
+/** The CP's largest page. One page keeps the read exact: an issuer that
+ *  gains its first entry between two page requests shifts later pages. */
+export const REVOCATION_ISSUERS_LIMIT = 1000;
+
+/** The issuers that have revocation entries, with their counts. */
+export function useRevocationIssuers() {
+  return useQuery({
+    queryKey: ['cp-revocation-issuers'],
+    queryFn: () =>
+      getJSON<RevocationIssuers>(
+        `/api/cp/revocation/issuers?limit=${REVOCATION_ISSUERS_LIMIT}`,
+      ),
+    refetchInterval: REFETCH.slow,
+  });
+}
+
+/** One query per issuer AID. Only issuers for which `isOpen` is true are
+ *  fetched: each is a separate proxied request. */
 export function useIssuerRevocations(issuers: string[], isOpen: (iss: string) => boolean = () => true) {
   return useQueries({
     queries: issuers.map((iss) => ({
@@ -155,6 +170,7 @@ export function useCreateRevocation() {
         input,
       ),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cp-revocation-issuers'] });
       qc.invalidateQueries({ queryKey: ['cp-revocations'] });
       qc.invalidateQueries({ queryKey: ['cp-delegations'] });
       qc.invalidateQueries({ queryKey: ['cp-tcts'] });

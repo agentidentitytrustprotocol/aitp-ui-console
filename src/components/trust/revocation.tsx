@@ -1,28 +1,69 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Ban } from 'lucide-react';
 import { Card } from '@/components/shared/card';
+import { AidCell } from '@/components/shared/aid-cell';
 import { EmptyState } from '@/components/shared/empty-state';
 import { LoadingSkeleton, InlineSpinner } from '@/components/shared/loading-skeleton';
 import { TimeAgo } from '@/components/shared/time-ago';
-import { useCreateRevocation, useRevocationList } from '@/hooks/use-trust';
+import { useCreateRevocation, useIssuerRevocations, useTcts } from '@/hooks/use-trust';
+import { useCpMetrics } from '@/hooks/use-playground-meta';
 import { useToast } from '@/components/shared/toast';
 import { C } from '@/lib/colors';
-import { revocationVerdictBadge } from '@/lib/verification-display';
+import { parseIssuerLastPulls } from '@/lib/revocation-relay';
+import type { IssuerRevocations } from '@/lib/types/cp';
 
+/** The CP's TCT projection is the only issuer index it has; the CP caps a
+ *  page at 1000. */
+const TCT_SCAN_LIMIT = 1000;
+
+/**
+ * Revocations grouped by issuer AID. The CP is a registry and relay
+ * (RFC-AITP-0008 §1.5): it records entries per issuer and each issuer pulls,
+ * signs and serves its own list. There is no CP-signed list.
+ */
 export function RevocationView() {
   const toast = useToast();
-  const { data, isLoading, error } = useRevocationList();
+  const tcts = useTcts({ limit: TCT_SCAN_LIMIT });
+  const metrics = useCpMetrics();
   const create = useCreateRevocation();
   const [jti, setJti] = useState('');
+  const [iss, setIss] = useState('');
   const [reason, setReason] = useState('');
   const [confirmStep, setConfirmStep] = useState(false);
+  // Issuers the operator revoked against this session: shown even when the
+  // CP has no TCT from them in its projection.
+  const [named, setNamed] = useState<string[]>([]);
+
+  const tctIssuers = useMemo(() => {
+    const byJti = new Map<string, string>();
+    for (const t of tcts.data?.tcts ?? []) byJti.set(t.jti, t.issuer);
+    return byJti;
+  }, [tcts.data]);
+
+  const issuers = useMemo(
+    () =>
+      [...new Set([...tctIssuers.values(), ...named])]
+        .filter((a) => a.startsWith('aid:'))
+        .sort(),
+    [tctIssuers, named],
+  );
+  const results = useIssuerRevocations(issuers);
+  const lastPulls = useMemo(() => parseIssuerLastPulls(metrics.data ?? ''), [metrics.data]);
 
   function reset() {
     setJti('');
+    setIss('');
     setReason('');
     setConfirmStep(false);
+  }
+
+  function onJti(value: string) {
+    setJti(value);
+    // Prefill the issuer from the TCT the CP recorded for this jti.
+    const known = tctIssuers.get(value.trim());
+    if (known) setIss(known);
   }
 
   function startConfirm(e: React.FormEvent) {
@@ -31,11 +72,13 @@ export function RevocationView() {
   }
 
   function actuallyRevoke() {
+    const issuer = iss.trim();
     create.mutate(
-      { jti, reason: reason || undefined },
+      { jti: jti.trim(), iss: issuer, reason: reason || undefined },
       {
         onSuccess: () => {
           toast.success('Revocation recorded', jti);
+          setNamed((n) => (n.includes(issuer) ? n : [...n, issuer]));
           reset();
         },
         onError: (err) => toast.error('Revocation failed', String(err)),
@@ -43,19 +86,8 @@ export function RevocationView() {
     );
   }
 
-  const entries = data?.revocation_list?.entries ?? [];
-
-  const badge = isLoading
-    ? { text: '· checking revocation list signature…', color: C.textMuted, entriesGreyed: true }
-    : error
-      ? {
-          text: '· signature not checked — revocation list failed to load',
-          color: C.amber,
-          entriesGreyed: true,
-        }
-      : data
-        ? revocationVerdictBadge(data._verification)
-        : null;
+  const total = results.reduce((n, r) => n + (r.data?.entries.length ?? 0), 0);
+  const ready = !!jti.trim() && !!iss.trim();
 
   return (
     <Card style={{ padding: 0 }}>
@@ -71,10 +103,23 @@ export function RevocationView() {
           gap: 8,
         }}
       >
-        <Ban size={14} color={C.red} /> Revocation list
+        <Ban size={14} color={C.red} /> Revocations by issuer
         <span className="mono" style={{ fontSize: 11, color: C.textMuted, marginLeft: 'auto' }}>
-          {entries.length}
+          {total}
         </span>
+      </div>
+
+      <div
+        style={{
+          padding: '8px 18px',
+          fontSize: 10,
+          color: C.textDim,
+          borderBottom: `1px solid ${C.border}`,
+          lineHeight: 1.5,
+        }}
+      >
+        The CP records and relays entries; each issuer pulls its own, signs them and serves its
+        list (RFC-AITP-0008 §1.5). An entry takes effect at the issuer&apos;s next pull.
       </div>
 
       <form
@@ -84,7 +129,7 @@ export function RevocationView() {
           background: C.bg3,
           borderBottom: `1px solid ${C.border}`,
           display: 'grid',
-          gridTemplateColumns: '2fr 2fr auto',
+          gridTemplateColumns: '2fr 2fr 2fr auto',
           gap: 8,
           alignItems: 'end',
         }}
@@ -92,11 +137,26 @@ export function RevocationView() {
         <Field label="JTI to revoke">
           <input
             value={jti}
-            onChange={(e) => setJti(e.target.value)}
+            onChange={(e) => onJti(e.target.value)}
             required
             placeholder="UUID of a TCT or delegation"
             style={{ ...inputStyle, fontFamily: 'JetBrains Mono' }}
           />
+        </Field>
+        <Field label="Issuer AID">
+          <input
+            value={iss}
+            onChange={(e) => setIss(e.target.value)}
+            required
+            list="revocation-issuers"
+            placeholder="aid:… (prefilled from the TCT)"
+            style={{ ...inputStyle, fontFamily: 'JetBrains Mono' }}
+          />
+          <datalist id="revocation-issuers">
+            {issuers.map((a) => (
+              <option key={a} value={a} />
+            ))}
+          </datalist>
         </Field>
         <Field label="Reason (optional, ≤500 chars)">
           <input
@@ -108,7 +168,7 @@ export function RevocationView() {
         </Field>
         <button
           type="submit"
-          disabled={!jti || create.isPending}
+          disabled={!ready || create.isPending}
           style={{
             background: C.red,
             border: 'none',
@@ -116,11 +176,11 @@ export function RevocationView() {
             fontSize: 12,
             padding: '8px 14px',
             borderRadius: 5,
-            cursor: jti ? 'pointer' : 'not-allowed',
+            cursor: ready ? 'pointer' : 'not-allowed',
             display: 'flex',
             alignItems: 'center',
             gap: 4,
-            opacity: jti ? 1 : 0.5,
+            opacity: ready ? 1 : 0.5,
           }}
         >
           <Ban size={12} /> Revoke
@@ -139,9 +199,11 @@ export function RevocationView() {
             Confirm revocation
           </div>
           <div style={{ fontSize: 11, color: C.textDim, marginBottom: 10, lineHeight: 1.6 }}>
-            Revoking <span className="mono" style={{ color: C.red }}>{jti}</span> propagates to any
-            downstream delegation that includes this jti. The operation is logged in the admin
-            audit trail and cannot be reversed.
+            Revoking <span className="mono" style={{ color: C.red }}>{jti}</span> as issuer{' '}
+            <span className="mono" style={{ color: C.text }}>{iss}</span> propagates to any
+            downstream delegation that includes this jti. It takes effect when that issuer next
+            pulls and re-signs its list. The operation is logged in the admin audit trail and
+            cannot be reversed.
           </div>
           {create.error && (
             <div
@@ -197,34 +259,83 @@ export function RevocationView() {
         </div>
       )}
 
-      {badge && (
-        <div
-          style={{
-            padding: '8px 18px',
-            fontSize: 10,
-            color: badge.color,
-            borderBottom: `1px solid ${C.border}`,
-          }}
-        >
-          {badge.text}
-        </div>
-      )}
-
-      {isLoading ? (
+      {tcts.isLoading ? (
         <div style={{ padding: 20 }}>
           <LoadingSkeleton rows={3} />
         </div>
-      ) : error ? (
-        <EmptyState title="Couldn't load revocation list" description="Check Control Plane connection." />
-      ) : entries.length === 0 ? (
+      ) : issuers.length === 0 ? (
         <EmptyState
-          title="No revocations"
+          title={tcts.error ? "Couldn't load issuers" : 'No issuers yet'}
           description={
-            badge && !badge.entriesGreyed
-              ? 'A signed empty revocation list is a meaningful assertion under RFC-AITP-0008 (Draft).'
-              : undefined
+            tcts.error
+              ? 'Check Control Plane connection.'
+              : 'Issuers appear once the CP has recorded a TCT, or after you revoke against one.'
           }
         />
+      ) : (
+        issuers.map((aid, i) => (
+          <IssuerGroup
+            key={aid}
+            aid={aid}
+            data={results[i]?.data}
+            isLoading={!!results[i]?.isLoading}
+            error={!!results[i]?.error}
+            lastPull={lastPulls.get(aid)}
+          />
+        ))
+      )}
+    </Card>
+  );
+}
+
+function IssuerGroup({
+  aid,
+  data,
+  isLoading,
+  error,
+  lastPull,
+}: {
+  aid: string;
+  data: IssuerRevocations | undefined;
+  isLoading: boolean;
+  error: boolean;
+  lastPull: number | undefined;
+}) {
+  const entries = data?.entries ?? [];
+  return (
+    <section aria-label={`Issuer ${aid}`} style={{ borderBottom: `1px solid ${C.border}` }}>
+      <div
+        style={{
+          padding: '10px 14px',
+          background: C.bg2,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          fontSize: 11,
+        }}
+      >
+        <AidCell aid={aid} headLen={12} tailLen={6} />
+        <span style={{ color: C.textMuted }}>
+          {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
+        </span>
+        <span style={{ marginLeft: 'auto', color: lastPull ? C.textDim : C.amber }}>
+          {lastPull ? (
+            <>
+              last pull <TimeAgo ts={lastPull} />
+            </>
+          ) : (
+            'no pull recorded'
+          )}
+        </span>
+      </div>
+      {isLoading ? (
+        <div style={{ padding: '8px 14px', fontSize: 11, color: C.textMuted }}>Loading…</div>
+      ) : error ? (
+        <div style={{ padding: '8px 14px', fontSize: 11, color: C.amber }}>
+          Couldn&apos;t load this issuer&apos;s entries.
+        </div>
+      ) : entries.length === 0 ? (
+        <div style={{ padding: '8px 14px', fontSize: 11, color: C.textMuted }}>No revocations.</div>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
@@ -258,14 +369,14 @@ export function RevocationView() {
                   {e.reason ?? '—'}
                 </td>
                 <td style={{ padding: '10px 14px', fontSize: 11, color: C.textDim }}>
-                  <TimeAgo ts={e.revoked_at ?? e.revokedAt} />
+                  <TimeAgo ts={e.revoked_at} />
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
-    </Card>
+    </section>
   );
 }
 

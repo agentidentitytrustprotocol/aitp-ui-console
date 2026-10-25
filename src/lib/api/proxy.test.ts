@@ -417,7 +417,7 @@ describe('proxyGetVerified', () => {
 
   it('awaits an async verify function, sharing the same signal proxyGetVerified used', async () => {
     global.fetch = (async () =>
-      new Response('{"revocation_list":{}}', { status: 200 })) as unknown as typeof fetch;
+      new Response('{"manifest":{}}', { status: 200 })) as unknown as typeof fetch;
     const verify = jest.fn(
       async (_text: string, signal: AbortSignal): Promise<Verdict> => {
         expect(signal).toBeInstanceOf(AbortSignal);
@@ -425,8 +425,8 @@ describe('proxyGetVerified', () => {
       },
     );
 
-    const req = asNextReq('http://localhost:3001/api/cp/well-known/aitp-revocation-list');
-    const res = await proxyGetVerified('cp', '/.well-known/aitp-revocation-list', req, verify);
+    const req = asNextReq('http://localhost:3001/api/cp/well-known/aitp-manifest');
+    const res = await proxyGetVerified('cp', '/.well-known/aitp-manifest', req, verify);
 
     expect(verify).toHaveBeenCalledTimes(1);
     expect((await res.json())._verification).toEqual({ checked: true, ok: true });

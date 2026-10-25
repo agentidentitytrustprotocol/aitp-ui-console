@@ -1,14 +1,14 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { delJSON, getJSON, patchJSON, postJSON } from '@/lib/api/client';
 import { REFETCH } from '@/lib/query-options';
 import type {
   Delegation,
+  IssuerRevocations,
   PinnedKey,
   Tct,
   TrustAnchor,
-  VerifiedRevocationList,
 } from '@/lib/types/cp';
 
 interface TctsResponse {
@@ -28,10 +28,19 @@ interface PinnedKeysResponse {
   pinnedKeys: PinnedKey[];
 }
 
-export function useTcts(params?: { issuer?: string; subject?: string; capability?: string }) {
+export function useTcts(params?: {
+  issuer?: string;
+  subject?: string;
+  capability?: string;
+  limit?: number;
+}) {
   const qs = params
     ? `?${new URLSearchParams(
-        Object.fromEntries(Object.entries(params).filter(([, v]) => !!v)) as Record<string, string>,
+        Object.fromEntries(
+          Object.entries(params)
+            .filter(([, v]) => !!v)
+            .map(([k, v]) => [k, String(v)]),
+        ),
       ).toString()}`
     : '';
   return useQuery({
@@ -121,27 +130,29 @@ export function useDeletePinnedKey() {
   });
 }
 
-/** The CP `/api/revocation/entries` route is POST-only. The list of
- *  revoked jtis lives in the signed well-known revocation list, which
- *  the console already proxies. */
-export function useRevocationList() {
-  return useQuery({
-    queryKey: ['cp-revocation-list'],
-    queryFn: () => getJSON<VerifiedRevocationList>('/api/cp/well-known/aitp-revocation-list'),
-    refetchInterval: REFETCH.veryslow,
+/** One query per issuer AID. The CP keeps no issuer index, so the caller
+ *  supplies the issuers (TCT issuers, plus any the operator names). */
+export function useIssuerRevocations(issuers: string[]) {
+  return useQueries({
+    queries: issuers.map((iss) => ({
+      queryKey: ['cp-revocations', iss],
+      queryFn: () =>
+        getJSON<IssuerRevocations>(`/api/cp/revocations?iss=${encodeURIComponent(iss)}`),
+      refetchInterval: REFETCH.slow,
+    })),
   });
 }
 
 export function useCreateRevocation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { jti: string; reason?: string }) =>
+    mutationFn: (input: { jti: string; iss: string; reason?: string }) =>
       postJSON<{ jti: string; revokedAt: string; reason: string | null }>(
         '/api/cp/revocation/entries',
         input,
       ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['cp-revocation-list'] });
+      qc.invalidateQueries({ queryKey: ['cp-revocations'] });
       qc.invalidateQueries({ queryKey: ['cp-delegations'] });
       qc.invalidateQueries({ queryKey: ['cp-tcts'] });
     },

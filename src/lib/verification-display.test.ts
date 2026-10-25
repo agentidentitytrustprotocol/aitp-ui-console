@@ -4,9 +4,8 @@ import {
   isUnassessedRevocationCode,
   manifestPostSignatureDetail,
   manifestVerdictBadge,
-  revocationVerdictBadge,
 } from './verification-display';
-import type { RevocationVerdict, Verdict } from './types/cp';
+import type { Verdict } from './types/cp';
 
 describe('manifestVerdictBadge', () => {
   it('checked:true, ok:true → verified, green, teal AID', () => {
@@ -221,146 +220,13 @@ describe('manifestVerdictBadge', () => {
   });
 });
 
-describe('revocationVerdictBadge', () => {
-  it("checked:true, ok:true, tier:'pinned' → green, entries not greyed, verified wording", () => {
-    const verdict: RevocationVerdict = { checked: true, ok: true, tier: 'pinned' };
-    const badge = revocationVerdictBadge(verdict);
-    expect(badge.color).toBe(C.green);
-    expect(badge.entriesGreyed).toBe(false);
-    expect(badge.text).toContain('verified');
-  });
-
-  it("checked:true, ok:true, tier:'self-consistent' → dim color, entries not greyed, never says 'verified'", () => {
-    const verdict: RevocationVerdict = { checked: true, ok: true, tier: 'self-consistent' };
-    const badge = revocationVerdictBadge(verdict);
-    expect(badge.color).toBe(C.textDim);
-    expect(badge.entriesGreyed).toBe(false);
-    expect(badge.text).toContain('self-consistent');
-    // Documented invariant: the self-consistent tier must never claim "verified".
-    expect(badge.text).not.toContain('verified');
-  });
-
-  it('checked:true, ok:false, code:expired → amber, entries greyed, expiry wording', () => {
-    const verdict: RevocationVerdict = { checked: true, ok: false, code: 'expired', tier: 'pinned' };
-    const badge = revocationVerdictBadge(verdict);
-    expect(badge.color).toBe(C.amber);
-    expect(badge.entriesGreyed).toBe(true);
-    expect(badge.text).toContain('EXPIRED');
-    expect(badge.text).not.toContain('SIGNATURE INVALID');
-  });
-
-  it.each(['version_unknown', 'malformed', 'unknown_field'])(
-    'checked:true, ok:false, code:%s (REVOCATION_UNASSESSED_CODES) → amber, entries greyed, NOT VERIFIED (never SIGNATURE INVALID)',
-    (code) => {
-      const verdict: RevocationVerdict = { checked: true, ok: false, code, tier: 'pinned' };
-      const badge = revocationVerdictBadge(verdict);
-      expect(badge.color).toBe(C.amber);
-      expect(badge.entriesGreyed).toBe(true);
-      expect(badge.text).toContain('NOT VERIFIED');
-      expect(badge.text).toContain(code);
-      expect(badge.text).not.toContain('SIGNATURE INVALID');
-    },
-  );
-
-  it('checked:true, ok:false, code:issuer_mismatch → its own red row, entries greyed, distinct from generic signature failure', () => {
-    const verdict: RevocationVerdict = {
-      checked: true,
-      ok: false,
-      code: 'issuer_mismatch',
-      tier: 'pinned',
-    };
-    const badge = revocationVerdictBadge(verdict);
-    expect(badge.color).toBe(C.red);
-    expect(badge.entriesGreyed).toBe(true);
-    expect(badge.text).toContain('ISSUER MISMATCH');
-    expect(badge.text).not.toContain('SIGNATURE INVALID');
-  });
-
-  it('checked:true, ok:false, arbitrary other code → red, entries greyed, SIGNATURE INVALID', () => {
-    const verdict: RevocationVerdict = {
-      checked: true,
-      ok: false,
-      code: 'signature_invalid',
-      tier: 'pinned',
-    };
-    const badge = revocationVerdictBadge(verdict);
-    expect(badge.color).toBe(C.red);
-    expect(badge.entriesGreyed).toBe(true);
-    expect(badge.text).toContain('SIGNATURE INVALID');
-    expect(badge.text).toContain('signature_invalid');
-  });
-
-  it("checked:false, reason:'no_trusted_issuer', manifestCode:'expired' → amber, entries greyed, states what was observed and attributes it to nobody", () => {
-    const verdict: RevocationVerdict = {
-      checked: false,
-      reason: 'no_trusted_issuer',
-      manifestCode: 'expired',
-    };
-    const badge = revocationVerdictBadge(verdict);
-    expect(badge.color).toBe(C.amber);
-    expect(badge.entriesGreyed).toBe(true);
-    expect(badge.text).toBe(
-      "· signature not checked · the CP's manifest has expired, so no trusted issuer is available",
-    );
-    // The observed facts stay: the manifestCode, and that nothing was checked.
-    expect(badge.text).toContain('expired');
-    expect(badge.text).toContain('signature not checked');
-    // The diagnosis goes, and must not come back. This console observed that
-    // the CP manifest didn't verify; it never observed *why* -- a stale proxy
-    // cache, a misconfigured CP_URL or local clock skew fit the evidence just
-    // as well as a broken upstream. Same absence-assertion style as the
-    // self-consistent-tier case above.
-    expect(badge.text).not.toMatch(/verified/);
-    expect(badge.text).not.toMatch(/aitp-control-plane/);
-    expect(badge.text).not.toMatch(/defect/);
-  });
-
-  it("checked:false, reason:'no_trusted_issuer', manifestCode:<other> → amber, entries greyed, mentions that manifestCode and still attributes nothing", () => {
-    const verdict: RevocationVerdict = {
-      checked: false,
-      reason: 'no_trusted_issuer',
-      manifestCode: 'signature_invalid',
-    };
-    const badge = revocationVerdictBadge(verdict);
-    expect(badge.color).toBe(C.amber);
-    expect(badge.entriesGreyed).toBe(true);
-    expect(badge.text).toBe(
-      "· signature not checked · the CP's manifest failed verification (signature_invalid), so no trusted issuer is available",
-    );
-    expect(badge.text).toContain('manifest failed verification (signature_invalid)');
-    expect(badge.text).not.toMatch(/aitp-control-plane/);
-    expect(badge.text).not.toMatch(/defect/);
-    // Still unambiguously "nothing was checked" -- the copy must not read as
-    // *more* certain now that the parenthetical is gone.
-    expect(badge.text).toContain('signature not checked');
-  });
-
-  it("checked:false, reason:'no_trusted_issuer' with no manifestCode → falls through to the generic unchecked branch", () => {
-    const verdict: RevocationVerdict = { checked: false, reason: 'no_trusted_issuer' };
-    const badge = revocationVerdictBadge(verdict);
-    expect(badge.color).toBe(C.amber);
-    expect(badge.entriesGreyed).toBe(true);
-    expect(badge.text).toBe('· signature not checked (no_trusted_issuer)');
-  });
-
-  it('checked:false, arbitrary other reason, no manifestCode → amber, entries greyed, generic wording', () => {
-    const verdict: RevocationVerdict = { checked: false, reason: 'native addon failed to load' };
-    const badge = revocationVerdictBadge(verdict);
-    expect(badge.color).toBe(C.amber);
-    expect(badge.entriesGreyed).toBe(true);
-    expect(badge.text).toContain('signature not checked');
-    expect(badge.text).toContain('native addon failed to load');
-  });
-});
-
 /**
  * The exported classification rule.
  *
  * The `Set`s themselves stay module-private so a caller can neither mutate
  * them nor read them for something other than the rule; the predicates are
- * the shared surface, and both badge functions route through these same
- * functions, so a reusing surface and the badge can never disagree about
- * what "the signature was never assessed" means.
+ * the shared surface, so every caller agrees about what "the signature was
+ * never assessed" means.
  */
 describe('unassessed-code predicates', () => {
   it.each(['version_unknown', 'malformed', 'unknown_field'])(
@@ -476,20 +342,6 @@ describe('unassessed-code predicates', () => {
       expect(badge.text).toContain(`signature verified · ${detail} (${code})`);
     },
   );
-
-  it.each([
-    'version_unknown',
-    'malformed',
-    'unknown_field',
-    'issuer_mismatch',
-    'signature_invalid',
-    'malformed_body',
-  ])('revocationVerdictBadge agrees with isUnassessedRevocationCode for %s', (code) => {
-    const badge = revocationVerdictBadge({ checked: true, ok: false, code, tier: 'pinned' });
-    expect(badge.text.includes('NOT VERIFIED · signature not assessed')).toBe(
-      isUnassessedRevocationCode(code),
-    );
-  });
 });
 
 /**
@@ -501,7 +353,7 @@ describe('unassessed-code predicates', () => {
  * enrollment.test.ts:26-43` documents. So every Rust error this console has
  * never heard of — a code added in a future SDK minor, or one of the
  * binding's documented-but-currently-unreachable causes — arrives at exactly
- * one place: each badge function's final `checked` catch-all.
+ * one place: the badge function's final `checked` catch-all.
  *
  * Added with the `0.10.0 -> ^0.12.0` floor bump, whose whole risk profile is
  * "the SDK's error vocabulary may move underneath us". Pinning the default
@@ -538,18 +390,6 @@ describe('unmodelled SDK codes — the default seam', () => {
     },
   );
 
-  it.each(unmodelled)(
-    'revocation, checked:true, ok:false, unmodelled code %s → red SIGNATURE INVALID carrying the raw code',
-    (code) => {
-      const badge = revocationVerdictBadge({ checked: true, ok: false, code, tier: 'pinned' });
-      expect(badge.color).toBe(C.red);
-      expect(badge.entriesGreyed).toBe(true);
-      expect(badge.text).toContain('SIGNATURE INVALID');
-      expect(badge.text).toContain(code);
-      expect(badge.text).not.toContain('verified');
-    },
-  );
-
   // An unknown member was `malformed` on 0.10.0-0.14.x and is
   // `unknown_field` from 0.15.0; a duplicate key is `malformed` either way.
   // Both are pinned end-to-end through the real addon in
@@ -567,23 +407,6 @@ describe('unmodelled SDK codes — the default seam', () => {
       // the honest negative. Same invariant as line 72 above.
       expect(badge.text).not.toContain('verified');
       expect(badge.text).not.toContain('VERIFICATION FAILED');
-    },
-  );
-
-  it.each(['malformed', 'unknown_field'])(
-    "revocation, code:'%s' → amber and never claims 'verified'",
-    (code) => {
-      const badge = revocationVerdictBadge({
-        checked: true,
-        ok: false,
-        code,
-        tier: 'pinned',
-      });
-      expect(badge.color).toBe(C.amber);
-      expect(badge.entriesGreyed).toBe(true);
-      expect(badge.text).toContain('signature not assessed');
-      expect(badge.text).not.toContain('verified');
-      expect(badge.text).not.toContain('SIGNATURE INVALID');
     },
   );
 });

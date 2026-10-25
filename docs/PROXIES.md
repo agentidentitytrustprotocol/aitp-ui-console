@@ -7,20 +7,14 @@ lives here — the proxy exists only to keep credentials off the browser and
 collapse two upstreams to one origin (see
 [ARCHITECTURE.md](https://agentidentitytrustprotocol.io/console/architecture#why-a-bff-proxy)).
 
-**Exception: the three routes below use `proxyGetVerified`, not
+**Exception: the two manifest routes below use `proxyGetVerified`, not
 `proxyGet`.** They forward the upstream body unchanged but run it through
 the `aitp` SDK server-side first, attaching the result as a sibling
 `_verification` key (`{checked, ok, code}` / `{checked: false, reason}`) —
 never re-serializing the upstream bytes, so the response the browser sees
-is byte-identical to what was verified. The two manifest routes
+is byte-identical to what was verified. Both
 (`well-known/aitp-manifest`, `registry/agents/[aid]/manifest`) verify with
-`verifyManifestJson` alone; the revocation route
-(`well-known/aitp-revocation-list`) is **not** a bare `verifyManifestJson`
-call — it verifies in two tiers instead, self-consistently against the CP's
-own co-served manifest by default or against a pinned `CP_AID` when one is
-configured. See the "Trust" section of
-[FEATURES.md](https://agentidentitytrustprotocol.io/console/features#trust)
-for what each revocation tier actually proves. This is the one case in this
+`verifyManifestJson`. This is the one case in this
 table with real logic in the proxy layer: rendering a CP-signed artifact as
 trusted without checking it is exactly the defect
 `plans/cp-signed-artifact-verification.md` exists to fix. See
@@ -93,7 +87,8 @@ server-side, never sent to the browser.
 | GET | `/api/cp/metrics` | `/api/metrics` |
 | GET | `/api/cp/tcts` | `/api/tcts` |
 | GET | `/api/cp/delegations` | `/api/delegations` |
-| POST | `/api/cp/revocation/entries` | `/api/revocation/entries` (POST-only — list comes from `.well-known/aitp-revocation-list`) |
+| POST | `/api/cp/revocation/entries` | `/api/revocation/entries` (POST-only; the body carries `iss`) |
+| GET | `/api/cp/revocations` | `/api/revocations?iss=<aid>` (one issuer's entries, unsigned) |
 | GET, POST | `/api/cp/trust-anchors` | `/api/trust-anchors` |
 | GET, PATCH, DELETE | `/api/cp/trust-anchors/[id]` | `/api/trust-anchors/:id` |
 | GET, POST, DELETE | `/api/cp/pinned-keys` | `/api/pinned-keys` (DELETE takes `?namespace=&aid=`) |
@@ -102,7 +97,6 @@ server-side, never sent to the browser.
 | GET, POST | `/api/cp/webhooks/[id]/circuit-breaker` | `/api/webhooks/:id/circuit-breaker` |
 | POST | `/api/cp/webhooks/[id]/circuit-breaker/reset` | `/api/webhooks/:id/circuit-breaker/reset` |
 | GET | `/api/cp/well-known/aitp-manifest` | `/.well-known/aitp-manifest` (verifying — see note above) |
-| GET | `/api/cp/well-known/aitp-revocation-list` | `/.well-known/aitp-revocation-list` (verifying — see note above) |
 
 ## Adding a new proxy
 

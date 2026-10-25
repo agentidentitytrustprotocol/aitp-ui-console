@@ -22,7 +22,7 @@ import {
   useDeletePinnedKey,
   useDeleteTrustAnchor,
   usePinnedKeys,
-  useRevocationList,
+  useIssuerRevocations,
   useTcts,
   useTrustAnchors,
   useUpdateTrustAnchor,
@@ -136,13 +136,14 @@ describe('useCreateRevocation', () => {
     const invalidate = jest.spyOn(client, 'invalidateQueries');
 
     const { result } = renderHook(() => useCreateRevocation(), { wrapper: wrapper(client) });
-    await result.current.mutateAsync({ jti: 'j1', reason: 'compromise' });
+    await result.current.mutateAsync({ jti: 'j1', iss: 'aid:pubkey:i', reason: 'compromise' });
 
     expect(postMock).toHaveBeenCalledWith('/api/cp/revocation/entries', {
       jti: 'j1',
+      iss: 'aid:pubkey:i',
       reason: 'compromise',
     });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['cp-revocation-list'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['cp-revocations'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['cp-delegations'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['cp-tcts'] });
   });
@@ -169,17 +170,24 @@ describe('useTcts', () => {
   });
 });
 
+describe('useIssuerRevocations', () => {
+  it('queries the relay once per issuer, AID URL-encoded', async () => {
+    getMock.mockImplementation(async (url: string) => ({ iss: url, entries: [] }));
+    const { result } = renderHook(
+      () => useIssuerRevocations(['aid:pubkey:a', 'aid:pubkey:b']),
+      { wrapper: wrapper(makeClient()) },
+    );
+    await waitFor(() => expect(result.current.every((q) => q.isSuccess)).toBe(true));
+    expect(getMock).toHaveBeenCalledWith('/api/cp/revocations?iss=aid%3Apubkey%3Aa');
+    expect(getMock).toHaveBeenCalledWith('/api/cp/revocations?iss=aid%3Apubkey%3Ab');
+  });
+});
+
 describe('trust read lists', () => {
   it.each([
     ['useDelegations', useDelegations, '/api/cp/delegations', { delegations: [] }],
     ['useTrustAnchors', useTrustAnchors, '/api/cp/trust-anchors', { trustAnchors: [] }],
     ['usePinnedKeys', usePinnedKeys, '/api/cp/pinned-keys', { pinnedKeys: [] }],
-    [
-      'useRevocationList',
-      useRevocationList,
-      '/api/cp/well-known/aitp-revocation-list',
-      { revokedJtis: [] },
-    ],
   ] as const)('%s fetches its endpoint', async (_name, hook, path, payload) => {
     getMock.mockResolvedValue(payload);
     const { result } = renderHook(() => hook(), { wrapper: wrapper(makeClient()) });

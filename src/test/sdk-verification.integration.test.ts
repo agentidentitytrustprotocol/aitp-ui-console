@@ -14,10 +14,10 @@
  * exists to remove; a test that overclaims about verification evidence is the
  * same defect one level up.
  *
- *   Tier 0 (elsewhere) — the four SDK-exercising suites that sign AND verify
- *     with the same SDK: `src/app/api/cp/well-known/aitp-manifest/`,
- *     `.../aitp-revocation-list/`, `.../cp/registry/agents/[aid]/manifest/`
- *     `route.integration.test.ts`, plus the two `aitp`-signed cases in
+ *   Tier 0 (elsewhere) — the SDK-exercising suites that sign AND verify
+ *     with the same SDK: `src/app/api/cp/well-known/aitp-manifest/` and
+ *     `.../cp/registry/agents/[aid]/manifest/` `route.integration.test.ts`,
+ *     plus the `aitp`-signed manifest case in
  *     `bff-routes.integration.test.ts`. Signer and verifier move together
  *     there, so they prove the bump BREAKS NOTHING and cannot prove what it
  *     fixes.
@@ -46,7 +46,7 @@ import {
   PINNED_NOW_UNIX_SECS,
 } from './fixtures/minted-manifests';
 
-/** Mirrors `verify-manifest.ts:22-23` / `verify-revocation.ts:6-9`: the code
+/** Mirrors `verify-manifest.ts:22-23`: the code
  *  is an opaque string, never a pinned union. */
 function codeOf(err: unknown): string | undefined {
   const code = (err as { code?: unknown } | null)?.code;
@@ -125,18 +125,18 @@ describe('aitp SDK floor — Tier 1: wire-parse and version codes render amber',
     expect(badge.text).not.toContain('VERIFICATION FAILED');
   });
 
-  it('INVARIANT: a stray member on a validly-signed revocation snapshot is rejected with a typed string code that renders amber, not SIGNATURE INVALID', () => {
+  // The console verifies no revocation list itself (the CP signs none since
+  // CP1.1). These revocation cases pin the SDK codes a playground agent
+  // reports in `revocation_verify_failed`, which the run cards classify
+  // through `isUnassessedRevocationCode`.
+  it('INVARIANT: a stray member on a validly-signed revocation snapshot is rejected with a typed string code classified as unassessed', () => {
     const { AitpAgent, verifyRevocationList } = require('aitp');
-    const { revocationVerdictBadge } = require('@/lib/verification-display');
-    const { C } = require('@/lib/colors');
+    const { isUnassessedRevocationCode } = require('@/lib/verification-display');
 
     const cp = AitpAgent.generate();
     const envelope = JSON.parse(cp.signRevocationList([], 3600));
     envelope.revocation_list.bogus = true;
 
-    // Mirrors `verify-revocation.ts`'s `verifyAgainst` (`:11-22`) rather than
-    // calling `verifyRevocationEnvelope`, which would drag in `serverConfig`
-    // and an upstream fetch this pin has no use for.
     let code: string | undefined;
     try {
       verifyRevocationList(JSON.stringify(envelope), cp.aid);
@@ -145,18 +145,7 @@ describe('aitp SDK floor — Tier 1: wire-parse and version codes render amber',
       code = codeOf(err);
     }
     expect(typeof code).toBe('string');
-
-    const badge = revocationVerdictBadge({
-      checked: true,
-      ok: false,
-      code: code!,
-      tier: 'pinned',
-    });
-    expect(badge.color).toBe(C.amber);
-    expect(badge.entriesGreyed).toBe(true);
-    expect(badge.text).toContain('signature not assessed');
-    expect(badge.text).not.toContain('verified');
-    expect(badge.text).not.toContain('SIGNATURE INVALID');
+    expect(isUnassessedRevocationCode(code!)).toBe(true);
   });
 
   it('PINNED: a stray member is `unknown_field` on both entry points (0.10.0-0.14.x: `malformed`)', () => {
@@ -188,8 +177,8 @@ describe('aitp SDK floor — Tier 1: wire-parse and version codes render amber',
       verifyRevocationList,
     } = require('aitp');
     const {
+      isUnassessedRevocationCode,
       manifestVerdictBadge,
-      revocationVerdictBadge,
     } = require('@/lib/verification-display');
     const { C } = require('@/lib/colors');
     const agent = AitpAgent.generate();
@@ -210,14 +199,7 @@ describe('aitp SDK floor — Tier 1: wire-parse and version codes render amber',
       manifestVerdictBadge({ checked: true, ok: false, code: manifestCode! })
         .color,
     ).toBe(C.amber);
-    expect(
-      revocationVerdictBadge({
-        checked: true,
-        ok: false,
-        code: revocationCode!,
-        tier: 'pinned',
-      }).color,
-    ).toBe(C.amber);
+    expect(isUnassessedRevocationCode(revocationCode!)).toBe(true);
   });
 
   it('CUTOVER: an `aitp/0.2` manifest or snapshot is `version_unknown` and renders amber, never red', () => {
@@ -228,8 +210,8 @@ describe('aitp SDK floor — Tier 1: wire-parse and version codes render amber',
     const { AitpAgent, verifyRevocationList } = require('aitp');
     const { verifyManifestEnvelope } = require('@/lib/api/verify-manifest');
     const {
+      isUnassessedRevocationCode,
       manifestVerdictBadge,
-      revocationVerdictBadge,
     } = require('@/lib/verification-display');
     const { C } = require('@/lib/colors');
     const agent = AitpAgent.generate();
@@ -252,17 +234,10 @@ describe('aitp SDK floor — Tier 1: wire-parse and version codes render amber',
       verifyRevocationList(JSON.stringify(snapshot), agent.aid),
     );
     expect(revocationCode).toBe('version_unknown');
-    const rBadge = revocationVerdictBadge({
-      checked: true,
-      ok: false,
-      code: revocationCode!,
-      tier: 'pinned',
-    });
-    expect(rBadge.color).toBe(C.amber);
-    expect(rBadge.text).not.toContain('SIGNATURE INVALID');
+    expect(isUnassessedRevocationCode(revocationCode!)).toBe(true);
   });
 
-  it('INVARIANT: the two imported symbols are callable, so the native addon actually loaded', () => {
+  it('INVARIANT: the imported symbol is callable, so the native addon actually loaded', () => {
     // The napi-rs v3 loader regeneration that rides along with this bump
     // resolves the addon by try/catch rather than `existsSync`. A resolution
     // regression would NOT fail the build; it surfaces at runtime as a
@@ -272,7 +247,6 @@ describe('aitp SDK floor — Tier 1: wire-parse and version codes render amber',
     // healthy state directly.
     const sdk = require('aitp');
     expect(typeof sdk.verifyManifestJson).toBe('function');
-    expect(typeof sdk.verifyRevocationList).toBe('function');
 
     const { verifyManifestEnvelope } = require('@/lib/api/verify-manifest');
     const { AitpAgent } = require('aitp');

@@ -65,9 +65,8 @@ Every console route's upstream mapping lives in [PROXIES.md](https://agentidenti
 
 ### What the BFF verifies
 
-The three routes serving CP-signed artifacts (`well-known/aitp-manifest`,
-the per-agent manifest route, and `well-known/aitp-revocation-list`) do
-more than hide credentials — they run the artifact through the `aitp` SDK
+The two routes serving signed manifests (`well-known/aitp-manifest` and
+the per-agent manifest route) do more than hide credentials — they run the artifact through the `aitp` SDK
 server-side before the browser ever sees it, and attach the result as
 `_verification` (see [PROXIES.md](https://agentidentitytrustprotocol.io/console/proxies)).
 This is deliberately server-side, never client-side: the browser is where
@@ -79,13 +78,15 @@ This is the console's one exception to "the BFF is credential-hiding and
 CORS-avoiding only, no business logic." Rendering a value copied out of an
 unauthenticated fetch as though it had been checked is a defect, not a
 layering purity question — see `plans/cp-signed-artifact-verification.md`
-(local, not tracked in this repo) for the fuller argument. The manifest
-routes verify a signature directly (`verifyManifestJson`); the revocation
-route verifies in one of two honest tiers — self-consistently against the
-CP's own co-served manifest by default, or against a pinned `CP_AID` when
-one is configured — never against the snapshot's own self-declared issuer.
-See the "Trust" section of [FEATURES.md](https://agentidentitytrustprotocol.io/console/features)
-for what each tier actually proves.
+(local, not tracked in this repo) for the fuller argument. Both routes
+verify a signature directly (`verifyManifestJson`).
+
+There is no revocation list to verify here. The CP is a registry and relay
+for revocations: it records entries per issuer and each issuing agent pulls
+its own (`GET /api/revocations?iss=<aid>`), signs them and serves its own
+list ([RFC-AITP-0008](https://agentidentitytrustprotocol.io/spec/revocation)
+§1.5). Verifiers fetch that list from the issuer, never from the CP or this
+console. The console only shows the CP's entries, grouped by issuer.
 
 ### Operator login and Origin check
 

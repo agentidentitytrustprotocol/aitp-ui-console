@@ -1,7 +1,6 @@
-import { screen } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { renderWithClient } from '@/test/test-utils';
-import { C } from '@/lib/colors';
-import type { RevocationVerdict, VerifiedRevocationList } from '@/lib/types/cp';
+import type { IssuerRevocations, Tct } from '@/lib/types/cp';
 
 const getMock = jest.fn();
 const postMock = jest.fn();
@@ -13,189 +12,124 @@ jest.mock('@/lib/api/client', () => ({
 
 import { RevocationView } from './revocation';
 
-beforeEach(() => {
-  getMock.mockReset();
-  postMock.mockReset();
-});
+const ISS_A = 'aid:pubkey:issuer-a';
+const ISS_B = 'aid:pubkey:issuer-b';
+const JTI_A = '11111111-1111-4111-8111-111111111111';
+const JTI_B = '22222222-2222-4222-8222-222222222222';
+const NOW_S = Math.floor(Date.now() / 1000);
 
-function wireApi(list: VerifiedRevocationList) {
+function tct(jti: string, issuer: string): Tct {
+  return {
+    jti,
+    issuer,
+    subject: 'aid:pubkey:sub',
+    audience: 'aud',
+    issuedAt: '2026-10-24T00:00:00Z',
+    expiresAt: '2026-10-26T00:00:00Z',
+    revoked: false,
+  };
+}
+
+let metricsText = '';
+
+function wireApi(tcts: Tct[], byIssuer: Record<string, IssuerRevocations['entries']>) {
   getMock.mockImplementation(async (url: string) => {
-    if (url === '/api/cp/well-known/aitp-revocation-list') return list;
+    if (url.startsWith('/api/cp/tcts')) return { tcts };
+    const m = url.match(/^\/api\/cp\/revocations\?iss=(.+)$/);
+    if (m) {
+      const iss = decodeURIComponent(m[1]);
+      return { iss, entries: byIssuer[iss] ?? [] };
+    }
     throw new Error(`unexpected GET ${url}`);
   });
 }
 
-type RevocationEntries = NonNullable<VerifiedRevocationList['revocation_list']>['entries'];
-
-function list(verification: RevocationVerdict, entries: RevocationEntries = []): VerifiedRevocationList {
-  return {
-    revocation_list: {
-      entries,
-      version: 'aitp/0.3',
-      issuer: 'aid:pubkey:cp',
-      expires_at: undefined,
-    },
-    signature: 'sig-bytes',
-    _verification: verification,
-  };
-}
-
-describe('RevocationView badge placement', () => {
-  it('shows a neutral badge while the list is still loading', async () => {
-    getMock.mockImplementation(() => new Promise(() => {}));
-    renderWithClient(<RevocationView />);
-
-    expect(
-      await screen.findByText('· checking revocation list signature…'),
-    ).toBeInTheDocument();
-  });
-
-  it('shows a provenance line when the list fails to load, not just the empty badge slot', async () => {
-    getMock.mockImplementation(async () => {
-      throw new Error('network error');
-    });
-    renderWithClient(<RevocationView />);
-
-    await screen.findByText("Couldn't load revocation list");
-    expect(
-      screen.getByText('· signature not checked — revocation list failed to load'),
-    ).toBeInTheDocument();
-  });
-
-  it('shows the badge above the empty-list state, not swallowed by it', async () => {
-    wireApi(list({ checked: true, ok: true, tier: 'self-consistent' }, []));
-    renderWithClient(<RevocationView />);
-
-    await screen.findByText('No revocations');
-    expect(
-      screen.getByText('· self-consistent with CP manifest · no CP_AID pinned'),
-    ).toBeInTheDocument();
-  });
-
-  it('shows the badge above the populated table', async () => {
-    wireApi(
-      list({ checked: true, ok: true, tier: 'pinned' }, [
-        { jti: 'jti-1', reason: 'key-compromise', revoked_at: '2026-08-01T00:00:00Z' },
-      ]),
-    );
-    renderWithClient(<RevocationView />);
-
-    await screen.findByText('jti-1');
-    expect(screen.getByText('· verified · signed by pinned CP identity')).toBeInTheDocument();
-  });
+beforeEach(() => {
+  getMock.mockReset();
+  postMock.mockReset();
+  metricsText = '';
+  global.fetch = jest.fn(async () => ({ text: async () => metricsText })) as unknown as typeof fetch;
 });
 
-describe('RevocationView verdict rendering', () => {
-  it('renders EXPIRED in amber, never red', async () => {
-    wireApi(list({ checked: true, ok: false, code: 'expired', tier: 'self-consistent' }));
-    renderWithClient(<RevocationView />);
-
-    expect(
-      await screen.findByText('· EXPIRED · signature not assessed (expired)'),
-    ).toHaveStyle({ color: C.amber });
-  });
-
-  it('does not overclaim for issuer_mismatch, version_unknown, malformed or unknown_field -- only signature_invalid says "SIGNATURE INVALID"', async () => {
-    const notAssessed: Array<{ code: string; text: string }> = [
-      {
-        code: 'version_unknown',
-        text: '· NOT VERIFIED · signature not assessed (version_unknown)',
-      },
-      {
-        code: 'malformed',
-        text: '· NOT VERIFIED · signature not assessed (malformed)',
-      },
-      {
-        code: 'unknown_field',
-        text: '· NOT VERIFIED · signature not assessed (unknown_field)',
-      },
-    ];
-    for (const { code, text } of notAssessed) {
-      wireApi(list({ checked: true, ok: false, code, tier: 'pinned' }));
-      const { unmount } = renderWithClient(<RevocationView />);
-      expect(await screen.findByText(text)).toHaveStyle({ color: C.amber });
-      unmount();
-    }
-
-    wireApi(list({ checked: true, ok: false, code: 'issuer_mismatch', tier: 'pinned' }));
-    const { unmount } = renderWithClient(<RevocationView />);
-    expect(await screen.findByText('· ISSUER MISMATCH (issuer_mismatch)')).toHaveStyle({
-      color: C.red,
+describe('RevocationView, per-issuer model', () => {
+  it('groups entries by issuer AID, one CP query per issuer', async () => {
+    wireApi([tct(JTI_A, ISS_A), tct(JTI_B, ISS_B)], {
+      [ISS_A]: [{ jti: JTI_A, revoked_at: NOW_S - 60, reason: 'key-compromise' }],
     });
-    unmount();
-
-    wireApi(list({ checked: true, ok: false, code: 'signature_invalid', tier: 'pinned' }));
     renderWithClient(<RevocationView />);
-    expect(await screen.findByText('· SIGNATURE INVALID (signature_invalid)')).toHaveStyle({
-      color: C.red,
+
+    const a = await screen.findByRole('region', { name: `Issuer ${ISS_A}` });
+    expect(await within(a).findByText(JTI_A)).toBeInTheDocument();
+    expect(within(a).getByText('key-compromise')).toBeInTheDocument();
+    const b = screen.getByRole('region', { name: `Issuer ${ISS_B}` });
+    expect(await within(b).findByText('No revocations.')).toBeInTheDocument();
+
+    expect(getMock).toHaveBeenCalledWith(`/api/cp/revocations?iss=${encodeURIComponent(ISS_A)}`);
+    expect(getMock).toHaveBeenCalledWith(`/api/cp/revocations?iss=${encodeURIComponent(ISS_B)}`);
+    expect(getMock).not.toHaveBeenCalledWith(expect.stringContaining('well-known'));
+  });
+
+  it('shows the last pull per issuer from the aid-labelled gauge, and "no pull recorded" otherwise', async () => {
+    metricsText = [
+      '# TYPE aitp_control_plane_revocation_last_pull_timestamp_seconds gauge',
+      `aitp_control_plane_revocation_last_pull_timestamp_seconds{issuer="a",aid="${ISS_A}"} ${NOW_S - 120}`,
+    ].join('\n');
+    wireApi([tct(JTI_A, ISS_A), tct(JTI_B, ISS_B)], {});
+    renderWithClient(<RevocationView />);
+
+    const a = await screen.findByRole('region', { name: `Issuer ${ISS_A}` });
+    expect(await within(a).findByText(/last pull 2m ago/)).toBeInTheDocument();
+    const b = screen.getByRole('region', { name: `Issuer ${ISS_B}` });
+    expect(within(b).getByText('no pull recorded')).toBeInTheDocument();
+  });
+
+  it('prefills the issuer from the TCT and sends iss with the revocation', async () => {
+    wireApi([tct(JTI_A, ISS_A)], {});
+    postMock.mockResolvedValue({ jti: JTI_A, revokedAt: '2026-10-25T00:00:00Z', reason: null });
+    renderWithClient(<RevocationView />);
+    await screen.findByRole('region', { name: `Issuer ${ISS_A}` });
+
+    fireEvent.change(screen.getByPlaceholderText('UUID of a TCT or delegation'), {
+      target: { value: JTI_A },
+    });
+    expect(screen.getByPlaceholderText(/aid:… \(prefilled/)).toHaveValue(ISS_A);
+
+    fireEvent.click(screen.getByRole('button', { name: /Revoke/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Yes, revoke/ }));
+
+    await screen.findByText('Revocation recorded');
+    expect(postMock).toHaveBeenCalledWith('/api/cp/revocation/entries', {
+      jti: JTI_A,
+      iss: ISS_A,
+      reason: undefined,
     });
   });
 
-  it('entries still render, visibly marked untrusted, on a signature failure', async () => {
-    wireApi(
-      list({ checked: true, ok: false, code: 'signature_invalid', tier: 'pinned' }, [
-        { jti: 'jti-tampered', revoked_at: '2026-08-01T00:00:00Z' },
-      ]),
-    );
+  it('cannot revoke without an issuer', async () => {
+    wireApi([], {});
     renderWithClient(<RevocationView />);
+    await screen.findByText('No issuers yet');
 
-    await screen.findByText('jti-tampered');
-    expect(screen.getByText('· SIGNATURE INVALID (signature_invalid)')).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText('UUID of a TCT or delegation'), {
+      target: { value: JTI_B },
+    });
+    expect(screen.getByRole('button', { name: /Revoke/ })).toBeDisabled();
   });
 
-  it('never contains the word "verified" for a self-consistent (unpinned) ok verdict', async () => {
-    wireApi(list({ checked: true, ok: true, tier: 'self-consistent' }));
+  it('lists an operator-named issuer after revoking against it', async () => {
+    wireApi([], { [ISS_B]: [{ jti: JTI_B, revoked_at: NOW_S }] });
+    postMock.mockResolvedValue({ jti: JTI_B, revokedAt: '2026-10-25T00:00:00Z', reason: null });
     renderWithClient(<RevocationView />);
+    await screen.findByText('No issuers yet');
 
-    await screen.findByText('· self-consistent with CP manifest · no CP_AID pinned');
-    expect(screen.queryByText(/verified/)).not.toBeInTheDocument();
-  });
+    fireEvent.change(screen.getByPlaceholderText('UUID of a TCT or delegation'), {
+      target: { value: JTI_B },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/aid:… \(prefilled/), { target: { value: ISS_B } });
+    fireEvent.click(screen.getByRole('button', { name: /Revoke/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Yes, revoke/ }));
 
-  it('states what it observed about the manifest, without attributing a cause, when no trusted issuer is available', async () => {
-    wireApi(list({ checked: false, reason: 'no_trusted_issuer', manifestCode: 'expired' }));
-    renderWithClient(<RevocationView />);
-
-    expect(
-      await screen.findByText(
-        "· signature not checked · the CP's manifest has expired, so no trusted issuer is available",
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it('renders a generic unchecked reason without a manifestCode', async () => {
-    wireApi(list({ checked: false, reason: 'manifest_unreachable' }));
-    renderWithClient(<RevocationView />);
-
-    expect(
-      await screen.findByText('· signature not checked (manifest_unreachable)'),
-    ).toBeInTheDocument();
-  });
-});
-
-describe('RevocationView RFC-AITP-0008 empty-state description', () => {
-  it('cites the spec as Draft and makes no compliance claim, when the list verified with zero entries', async () => {
-    wireApi(list({ checked: true, ok: true, tier: 'pinned' }, []));
-    renderWithClient(<RevocationView />);
-
-    const description = await screen.findByText(/RFC-AITP-0008/);
-    expect(description.textContent).toContain('RFC-AITP-0008');
-    expect(description.textContent).toContain('(Draft)');
-    expect(description.textContent).not.toContain('compliant');
-  });
-
-  it('suppresses the "meaningful assertion" description when no trusted issuer was available to verify the list', async () => {
-    wireApi(list({ checked: false, reason: 'no_trusted_issuer', manifestCode: 'expired' }, []));
-    renderWithClient(<RevocationView />);
-
-    await screen.findByText('No revocations');
-    expect(screen.queryByText(/meaningful assertion/)).not.toBeInTheDocument();
-  });
-
-  it('suppresses the "meaningful assertion" description when the list signature is invalid', async () => {
-    wireApi(list({ checked: true, ok: false, code: 'signature_invalid', tier: 'pinned' }, []));
-    renderWithClient(<RevocationView />);
-
-    await screen.findByText('No revocations');
-    expect(screen.queryByText(/meaningful assertion/)).not.toBeInTheDocument();
+    const b = await screen.findByRole('region', { name: `Issuer ${ISS_B}` });
+    expect(await within(b).findByText(JTI_B)).toBeInTheDocument();
   });
 });

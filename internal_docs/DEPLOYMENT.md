@@ -5,7 +5,7 @@
 > user-facing docs see [`docs/`](../docs) or
 > <https://agentidentitytrustprotocol.io/console>.
 
-This console is a stock Next.js 15 app and deploys cleanly to Vercel.
+This console is a stock Next.js 16 app and deploys cleanly to Vercel.
 The only deploy-time decisions are environment variables and which
 Vercel plan to pick (because of SSE).
 

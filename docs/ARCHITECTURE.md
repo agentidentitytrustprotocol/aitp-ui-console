@@ -25,7 +25,7 @@ this structure, see [CONVENTIONS.md](https://agentidentitytrustprotocol.io/conso
 └────────────────────┼─────────────────────────────────────────┘
                      ▼
 ┌──────────────────────────────────────────────────────────────┐
-│ Console — Next.js 15 app on :3001                            │
+│ Console — Next.js 16 app on :3001                            │
 │                                                              │
 │   src/app/api/playground/**   src/app/api/cp/**              │
 │            │                              │                  │

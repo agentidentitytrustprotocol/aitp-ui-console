@@ -1,6 +1,12 @@
 # aitp-console
 
-A Next.js 15 monitoring and control console for the AITP ecosystem.
+> **Operator demo console for the reference CP.** This is a demonstration
+> and operations UI for the reference AITP control plane and playground, not
+> a product and not a security boundary for anything beyond its own login.
+> Verifiers never depend on it: they fetch manifests and revocation lists
+> from the issuers themselves.
+
+A Next.js 16 monitoring and control console for the AITP ecosystem.
 
 It talks to two backend services — the **playground** (Python FastAPI,
 runs scenarios on `:8000`) and the **control plane** (Next.js, registry

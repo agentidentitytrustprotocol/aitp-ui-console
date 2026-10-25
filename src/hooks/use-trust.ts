@@ -131,13 +131,16 @@ export function useDeletePinnedKey() {
 }
 
 /** One query per issuer AID. The CP keeps no issuer index, so the caller
- *  supplies the issuers (TCT issuers, plus any the operator names). */
-export function useIssuerRevocations(issuers: string[]) {
+ *  supplies the issuers (TCT issuers, plus any the operator names). Only
+ *  issuers for which `isOpen` is true are fetched: a CP can know hundreds
+ *  of issuers, and each is a separate proxied request. */
+export function useIssuerRevocations(issuers: string[], isOpen: (iss: string) => boolean = () => true) {
   return useQueries({
     queries: issuers.map((iss) => ({
       queryKey: ['cp-revocations', iss],
       queryFn: () =>
         getJSON<IssuerRevocations>(`/api/cp/revocations?iss=${encodeURIComponent(iss)}`),
+      enabled: isOpen(iss),
       refetchInterval: REFETCH.slow,
     })),
   });

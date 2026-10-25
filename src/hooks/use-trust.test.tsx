@@ -23,6 +23,7 @@ import {
   useDeleteTrustAnchor,
   usePinnedKeys,
   useIssuerRevocations,
+  useRevocationIssuers,
   useTcts,
   useTrustAnchors,
   useUpdateTrustAnchor,
@@ -143,6 +144,7 @@ describe('useCreateRevocation', () => {
       iss: 'aid:pubkey:i',
       reason: 'compromise',
     });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['cp-revocation-issuers'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['cp-revocations'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['cp-delegations'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['cp-tcts'] });
@@ -167,6 +169,15 @@ describe('useTcts', () => {
     expect(getMock).toHaveBeenCalledWith(
       '/api/cp/tcts?issuer=aid%3Apubkey%3Ai&capability=research.query',
     );
+  });
+});
+
+describe('useRevocationIssuers', () => {
+  it('reads the CP issuer listing in one 1000-row page', async () => {
+    getMock.mockResolvedValue({ issuers: [], limit: 1000, offset: 0 });
+    const { result } = renderHook(() => useRevocationIssuers(), { wrapper: wrapper(makeClient()) });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(getMock).toHaveBeenCalledWith('/api/cp/revocation/issuers?limit=1000');
   });
 });
 

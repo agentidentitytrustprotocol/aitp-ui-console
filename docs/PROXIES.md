@@ -88,6 +88,7 @@ server-side, never sent to the browser.
 | GET | `/api/cp/tcts` | `/api/tcts` |
 | GET | `/api/cp/delegations` | `/api/delegations` |
 | POST | `/api/cp/revocation/entries` | `/api/revocation/entries` (POST-only; the body carries `iss`) |
+| GET | `/api/cp/revocation/issuers` | `/api/revocation/issuers` (issuers that have entries, with counts; admin key) |
 | GET | `/api/cp/revocations` | `/api/revocations?iss=<aid>` (one issuer's entries, unsigned) |
 | GET, POST | `/api/cp/trust-anchors` | `/api/trust-anchors` |
 | GET, PATCH, DELETE | `/api/cp/trust-anchors/[id]` | `/api/trust-anchors/:id` |

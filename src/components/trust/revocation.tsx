@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Ban } from 'lucide-react';
+import { Ban, ChevronDown, ChevronRight } from 'lucide-react';
 import { Card } from '@/components/shared/card';
 import { AidCell } from '@/components/shared/aid-cell';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -35,6 +35,8 @@ export function RevocationView() {
   // Issuers the operator revoked against this session: shown even when the
   // CP has no TCT from them in its projection.
   const [named, setNamed] = useState<string[]>([]);
+  // Issuers the operator expanded by hand.
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
 
   const tctIssuers = useMemo(() => {
     const byJti = new Map<string, string>();
@@ -42,15 +44,31 @@ export function RevocationView() {
     return byJti;
   }, [tcts.data]);
 
-  const issuers = useMemo(
-    () =>
-      [...new Set([...tctIssuers.values(), ...named])]
-        .filter((a) => a.startsWith('aid:'))
-        .sort(),
-    [tctIssuers, named],
-  );
-  const results = useIssuerRevocations(issuers);
   const lastPulls = useMemo(() => parseIssuerLastPulls(metrics.data ?? ''), [metrics.data]);
+  // A CP can know hundreds of TCT issuers, and each issuer's entries are a
+  // separate request, so a group is fetched only when it is open. Open by
+  // default: issuers that pull from the relay, issuers revoked against in
+  // this session, and the issuer named in the form.
+  const formIss = iss.trim();
+  const isOpen = (a: string) =>
+    opened.has(a) || lastPulls.has(a) || named.includes(a) || a === formIss;
+  const issuers = useMemo(() => {
+    const all = [...new Set([...tctIssuers.values(), ...named])].filter((a) =>
+      a.startsWith('aid:'),
+    );
+    const auto = (a: string) => lastPulls.has(a) || named.includes(a);
+    return all.sort((a, b) => Number(auto(b)) - Number(auto(a)) || a.localeCompare(b));
+  }, [tctIssuers, named, lastPulls]);
+  const results = useIssuerRevocations(issuers, isOpen);
+
+  function toggle(a: string) {
+    setOpened((prev) => {
+      const next = new Set(prev);
+      if (next.has(a)) next.delete(a);
+      else next.add(a);
+      return next;
+    });
+  }
 
   function reset() {
     setJti('');
@@ -86,7 +104,6 @@ export function RevocationView() {
     );
   }
 
-  const total = results.reduce((n, r) => n + (r.data?.entries.length ?? 0), 0);
   const ready = !!jti.trim() && !!iss.trim();
 
   return (
@@ -105,7 +122,7 @@ export function RevocationView() {
       >
         <Ban size={14} color={C.red} /> Revocations by issuer
         <span className="mono" style={{ fontSize: 11, color: C.textMuted, marginLeft: 'auto' }}>
-          {total}
+          {issuers.length} {issuers.length === 1 ? 'issuer' : 'issuers'}
         </span>
       </div>
 
@@ -277,6 +294,8 @@ export function RevocationView() {
           <IssuerGroup
             key={aid}
             aid={aid}
+            open={isOpen(aid)}
+            onToggle={() => toggle(aid)}
             data={results[i]?.data}
             isLoading={!!results[i]?.isLoading}
             error={!!results[i]?.error}
@@ -290,12 +309,16 @@ export function RevocationView() {
 
 function IssuerGroup({
   aid,
+  open,
+  onToggle,
   data,
   isLoading,
   error,
   lastPull,
 }: {
   aid: string;
+  open: boolean;
+  onToggle: () => void;
   data: IssuerRevocations | undefined;
   isLoading: boolean;
   error: boolean;
@@ -314,10 +337,28 @@ function IssuerGroup({
           fontSize: 11,
         }}
       >
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          aria-label={`${open ? 'Hide' : 'Show'} entries for ${aid}`}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            color: C.textDim,
+            cursor: 'pointer',
+            display: 'flex',
+          }}
+        >
+          {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+        </button>
         <AidCell aid={aid} headLen={12} tailLen={6} />
-        <span style={{ color: C.textMuted }}>
-          {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
-        </span>
+        {open && data && (
+          <span style={{ color: C.textMuted }}>
+            {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
+          </span>
+        )}
         <span style={{ marginLeft: 'auto', color: lastPull ? C.textDim : C.amber }}>
           {lastPull ? (
             <>
@@ -328,7 +369,7 @@ function IssuerGroup({
           )}
         </span>
       </div>
-      {isLoading ? (
+      {!open ? null : isLoading ? (
         <div style={{ padding: '8px 14px', fontSize: 11, color: C.textMuted }}>Loading…</div>
       ) : error ? (
         <div style={{ padding: '8px 14px', fontSize: 11, color: C.amber }}>

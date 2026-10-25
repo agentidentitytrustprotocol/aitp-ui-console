@@ -52,13 +52,26 @@ beforeEach(() => {
 });
 
 describe('RevocationView, per-issuer model', () => {
-  it('groups entries by issuer AID, one CP query per issuer', async () => {
+  it('lists every issuer but fetches none until its group is opened', async () => {
+    wireApi([tct(JTI_A, ISS_A), tct(JTI_B, ISS_B)], {});
+    renderWithClient(<RevocationView />);
+
+    await screen.findByRole('region', { name: `Issuer ${ISS_A}` });
+    expect(screen.getByRole('region', { name: `Issuer ${ISS_B}` })).toBeInTheDocument();
+    expect(screen.getByText('2 issuers')).toBeInTheDocument();
+    expect(getMock).not.toHaveBeenCalledWith(expect.stringContaining('/api/cp/revocations'));
+  });
+
+  it('groups entries by issuer AID, one CP query per opened issuer', async () => {
     wireApi([tct(JTI_A, ISS_A), tct(JTI_B, ISS_B)], {
       [ISS_A]: [{ jti: JTI_A, revoked_at: NOW_S - 60, reason: 'key-compromise' }],
     });
     renderWithClient(<RevocationView />);
 
-    const a = await screen.findByRole('region', { name: `Issuer ${ISS_A}` });
+    fireEvent.click(await screen.findByRole('button', { name: `Show entries for ${ISS_A}` }));
+    fireEvent.click(screen.getByRole('button', { name: `Show entries for ${ISS_B}` }));
+
+    const a = screen.getByRole('region', { name: `Issuer ${ISS_A}` });
     expect(await within(a).findByText(JTI_A)).toBeInTheDocument();
     expect(within(a).getByText('key-compromise')).toBeInTheDocument();
     const b = screen.getByRole('region', { name: `Issuer ${ISS_B}` });
@@ -67,6 +80,16 @@ describe('RevocationView, per-issuer model', () => {
     expect(getMock).toHaveBeenCalledWith(`/api/cp/revocations?iss=${encodeURIComponent(ISS_A)}`);
     expect(getMock).toHaveBeenCalledWith(`/api/cp/revocations?iss=${encodeURIComponent(ISS_B)}`);
     expect(getMock).not.toHaveBeenCalledWith(expect.stringContaining('well-known'));
+  });
+
+  it('opens issuers that pull from the relay by default', async () => {
+    metricsText = `aitp_control_plane_revocation_last_pull_timestamp_seconds{issuer="b",aid="${ISS_B}"} ${NOW_S}`;
+    wireApi([tct(JTI_A, ISS_A), tct(JTI_B, ISS_B)], { [ISS_B]: [{ jti: JTI_B, revoked_at: NOW_S }] });
+    renderWithClient(<RevocationView />);
+
+    const b = await screen.findByRole('region', { name: `Issuer ${ISS_B}` });
+    expect(await within(b).findByText(JTI_B)).toBeInTheDocument();
+    expect(getMock).not.toHaveBeenCalledWith(`/api/cp/revocations?iss=${encodeURIComponent(ISS_A)}`);
   });
 
   it('shows the last pull per issuer from the aid-labelled gauge, and "no pull recorded" otherwise', async () => {

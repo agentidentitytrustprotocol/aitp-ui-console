@@ -32,7 +32,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <Topbar />
               <main id="main" style={{ flex: 1, overflow: 'auto', padding: 24 }}>
-                {/* Suspense boundary required by Next 15 for any consumer
+                {/* Suspense boundary required by Next 16 for any consumer
                     of useSearchParams (e.g. our useUrlState hook). One
                     boundary at the layout level covers every page. */}
                 <Suspense>{children}</Suspense>

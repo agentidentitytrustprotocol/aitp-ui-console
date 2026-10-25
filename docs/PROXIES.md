@@ -119,7 +119,7 @@ server-side, never sent to the browser.
      return proxyGet('cp', '/api/your/path', req);
    }
    ```
-3. For routes with path params, await `params` (Next 15 returns it as a
+3. For routes with path params, await `params` (Next 16 passes it as a
    Promise) and `encodeURIComponent` user-controlled segments.
 4. For SSE, use `proxySse` and make sure the upstream sets
    `Content-Type: text/event-stream`. The proxy auto-rewrites

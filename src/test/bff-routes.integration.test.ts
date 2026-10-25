@@ -37,15 +37,12 @@ const recorded: RecordedRequest[] = [];
 let server: http.Server;
 let base: string;
 
-// Mutable per-test fixtures for the two verified `.well-known` CP routes
-// (aitp-manifest, aitp-revocation-list) — unlike the other mock-upstream
-// branches below (which return a fixed shape per path), these two need a
-// distinct signed body per test case, so each test sets these before
-// calling the route.
+// Mutable per-test fixtures for the verified `.well-known` CP manifest route
+// — unlike the other mock-upstream branches below (which return a fixed
+// shape per path), it needs a distinct signed body per test case, so each
+// test sets these before calling the route.
 let manifestUpstreamText = '';
 let manifestUpstreamStatus = 200;
-let revocationUpstreamText = '';
-let revocationUpstreamStatus = 200;
 
 // Same pattern, for the federation handshake route. It is the one route whose
 // *failures* are load-bearing on the UI: `federation-errors.ts` classifies
@@ -126,9 +123,13 @@ beforeAll(async () => {
       } else if (url.startsWith('/.well-known/aitp-manifest')) {
         res.writeHead(manifestUpstreamStatus, { 'Content-Type': 'application/json' });
         res.end(manifestUpstreamText);
-      } else if (url.startsWith('/.well-known/aitp-revocation-list')) {
-        res.writeHead(revocationUpstreamStatus, { 'Content-Type': 'application/json' });
-        res.end(revocationUpstreamText);
+      } else if (url.startsWith('/api/revocations?') && req.method === 'GET') {
+        const iss = new URL(url, 'http://x').searchParams.get('iss');
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ iss, entries: [{ jti: 'j1', revoked_at: 1700000000 }] }));
+      } else if (url === '/api/revocation/entries' && req.method === 'POST') {
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(body);
       } else if (url.startsWith('/api/events/stream')) {
         if (url.includes('full=1')) {
           res.writeHead(503, { 'Content-Type': 'application/json' });
@@ -430,30 +431,39 @@ describe('BFF route handlers against a mock upstream', () => {
     expect(body._verification).toEqual({ checked: true, ok: false, code: 'malformed' });
   });
 
-  it('GET /api/cp/well-known/aitp-revocation-list attaches a well-formed _verification for a validly-signed envelope', async () => {
-    const { AitpAgent } = require('aitp');
-    const cp = AitpAgent.generate();
-    manifestUpstreamStatus = 200;
-    manifestUpstreamText = cp.buildManifest({
-      displayName: 'Mock CP',
-      handshakeEndpoint: 'https://cp.example/handshake',
-      offeredCaps: [],
-      ttlSecs: 3600,
-    });
-    revocationUpstreamStatus = 200;
-    revocationUpstreamText = cp.signRevocationList([], 3600);
-
-    // No CP_AID is set anywhere in this file, so this exercises the Tier 1
-    // ("self-consistent") path, which itself proves the route also fetches
-    // the co-served manifest through the same mock upstream.
-    const route: RouteModule = require('@/app/api/cp/well-known/aitp-revocation-list/route');
+  it('GET /api/cp/revocations relays one issuer, iss forwarded, CP key injected', async () => {
+    const route: RouteModule = require('@/app/api/cp/revocations/route');
     const res = await route.GET!(
-      makeRequest('http://localhost:3001/api/cp/well-known/aitp-revocation-list'),
+      makeRequest('http://localhost:3001/api/cp/revocations?iss=aid%3Apubkey%3Aabc'),
     );
 
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body._verification).toEqual({ checked: true, ok: true, tier: 'self-consistent' });
+    await expect(res.json()).resolves.toEqual({
+      iss: 'aid:pubkey:abc',
+      entries: [{ jti: 'j1', revoked_at: 1700000000 }],
+    });
+    expect(lastRequest().url).toBe('/api/revocations?iss=aid%3Apubkey%3Aabc');
+    expect(lastRequest().headers.authorization).toBe('Bearer test-cp-key');
+  });
+
+  it('POST /api/cp/revocation/entries forwards iss with the entry', async () => {
+    const route: RouteModule = require('@/app/api/cp/revocation/entries/route');
+    const payload = { jti: 'j1', iss: 'aid:pubkey:abc', reason: 'key-compromise' };
+    const res = await route.POST!(
+      makeRequest('http://localhost:3001/api/cp/revocation/entries', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    expect(JSON.parse(lastRequest().body)).toEqual(payload);
+    // The CP route is POST-only; the console exposes no GET for it.
+    expect(route.GET).toBeUndefined();
+  });
+
+  it('no longer serves a CP-signed revocation list', () => {
+    expect(() => require('@/app/api/cp/well-known/aitp-revocation-list/route')).toThrow();
   });
 
   it('SSE route streams upstream frames with event-stream headers', async () => {

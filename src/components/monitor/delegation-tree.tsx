@@ -227,7 +227,7 @@ export function DelegationTree() {
               (confirming ? (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ fontSize: 11, color: C.red, marginBottom: 6 }}>
-                    Revoking this jti propagates to its descendants.
+                    Revoking this jti (issuer: the delegator) propagates to its descendants.
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button
@@ -248,7 +248,13 @@ export function DelegationTree() {
                     <button
                       onClick={() =>
                         revoke.mutate(
-                          { jti: selected.jti, reason: 'admin-revoke-from-console' },
+                          {
+                            jti: selected.jti,
+                            // The delegator signed this delegation, so it is the issuer
+                            // the CP relays the entry to.
+                            iss: selected.delegator,
+                            reason: 'admin-revoke-from-console',
+                          },
                           {
                             onSuccess: () => {
                               setConfirming(false);

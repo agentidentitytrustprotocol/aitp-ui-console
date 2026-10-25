@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Lock, Shield } from 'lucide-react';
+import { Shield } from 'lucide-react';
 import { Card } from '@/components/shared/card';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -9,8 +9,8 @@ import { useHydrated } from '@/hooks/use-hydrated';
 import { getJSON } from '@/lib/api/client';
 import { C } from '@/lib/colors';
 import { REFETCH } from '@/lib/query-options';
-import { manifestVerdictBadge, revocationVerdictBadge } from '@/lib/verification-display';
-import type { VerifiedManifestEnvelope, VerifiedRevocationList } from '@/lib/types/cp';
+import { manifestVerdictBadge } from '@/lib/verification-display';
+import type { VerifiedManifestEnvelope } from '@/lib/types/cp';
 
 function expiresIn(expiresAt: number | string | undefined): string {
   if (expiresAt === undefined) return '—';
@@ -24,7 +24,7 @@ function expiresIn(expiresAt: number | string | undefined): string {
 }
 
 export function CpIdentityCard() {
-  // Both queries below start fetching immediately and can resolve before
+  // The query below starts fetching immediately and can resolve before
   // hydration finishes, so the client's first render can already jump past
   // the loading branch straight to content/empty-state while the server
   // (which always captures the pre-fetch state) rendered the skeleton --
@@ -36,12 +36,6 @@ export function CpIdentityCard() {
   const manifest = useQuery({
     queryKey: ['cp-manifest'],
     queryFn: () => getJSON<VerifiedManifestEnvelope>('/api/cp/well-known/aitp-manifest'),
-    refetchInterval: REFETCH.veryslow,
-  });
-
-  const revocation = useQuery({
-    queryKey: ['cp-revocation'],
-    queryFn: () => getJSON<VerifiedRevocationList>('/api/cp/well-known/aitp-revocation-list'),
     refetchInterval: REFETCH.veryslow,
   });
 
@@ -101,51 +95,6 @@ export function CpIdentityCard() {
 
       <div
         style={{
-          fontSize: 12,
-          fontWeight: 500,
-          color: C.text,
-          marginBottom: 10,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-        }}
-      >
-        <Lock size={12} color={C.textDim} /> Revocation list
-      </div>
-      <div style={{ padding: 12, background: C.bg3, borderRadius: 6 }}>
-        {!hydrated || revocation.isLoading ? (
-          <div style={{ fontSize: 11, color: C.textMuted }}>Loading…</div>
-        ) : revocation.error || !revocation.data ? (
-          <div style={{ fontSize: 11, color: C.textMuted }}>Revocation list unavailable.</div>
-        ) : (
-          (() => {
-            const list = revocation.data.revocation_list;
-            const entries = list?.entries ?? [];
-            const badge = revocationVerdictBadge(revocation.data._verification);
-            return (
-          <>
-            <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>
-              <span
-                style={{ color: badge.entriesGreyed ? C.textMuted : entries.length === 0 ? C.green : C.amber }}
-              >
-                {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
-              </span>{' '}
-              · expires {expiresIn(list?.expires_at)}{' '}
-              <span style={{ color: badge.color }}>{badge.text}</span>
-            </div>
-            {!badge.entriesGreyed && (
-              <div className="mono" style={{ fontSize: 10, color: C.textMuted }}>
-                per RFC-AITP-0008 (Draft) · a signed empty list is a meaningful assertion
-              </div>
-            )}
-          </>
-            );
-          })()
-        )}
-      </div>
-
-      <div
-        style={{
           marginTop: 14,
           padding: 12,
           background: C.teal + '10',
@@ -155,8 +104,8 @@ export function CpIdentityCard() {
       >
         <div style={{ fontSize: 11, color: C.teal, fontWeight: 500, marginBottom: 4 }}>Note</div>
         <div style={{ fontSize: 11, color: C.textDim, lineHeight: 1.5 }}>
-          The CP issues no TCTs in v1. Its revocation list is always empty.
-          This becomes meaningful in v1.1 when the CP gains AITP auth capability.
+          The CP signs no revocation list. It records entries per issuer and each
+          issuer signs and serves its own list (RFC-AITP-0008 §1.5): see Trust → Revocation.
         </div>
       </div>
     </Card>

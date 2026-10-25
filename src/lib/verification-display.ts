@@ -1,5 +1,5 @@
 import { C } from './colors';
-import type { RevocationVerdict, Verdict } from './types/cp';
+import type { Verdict } from './types/cp';
 
 export interface VerdictBadge {
   text: string;
@@ -217,21 +217,15 @@ export function manifestVerdictBadge(verdict: Verdict): VerdictBadge {
   };
 }
 
-export interface RevocationBadge {
-  text: string;
-  color: string;
-  /** True whenever the entry count shouldn't be read as a trustworthy
-   *  fact on its own -- everything except a clean `ok: true`. */
-  entriesGreyed: boolean;
-}
-
 /** Revocation codes that occur strictly before `verify_revocation_list`
  *  reaches the signature check (the binding's wire parse — member set,
  *  duplicate keys, UUID-v4 `entries[].jti` — then `aitp-tct/src/revocation.rs`:
  *  version → expiry → issuer → key parse → signature) and that carry no actionable
  *  signal of their own beyond "we couldn't get far enough to check" --
  *  unlike `issuer_mismatch`, which is pre-signature too but *is*
- *  independently meaningful (see below). */
+ *  independently meaningful. The console verifies no revocation list itself
+ *  (the CP signs none since CP1.1); these codes reach it only in playground
+ *  run events, where an agent reports why it refused a list. */
 const REVOCATION_UNASSESSED_CODES = new Set([
   'version_unknown',
   'malformed',
@@ -239,10 +233,8 @@ const REVOCATION_UNASSESSED_CODES = new Set([
 ]);
 
 /** Whether a revocation code means "the signature was never assessed" —
- *  the revocation twin of `isUnassessedManifestCode`, exported for the same
- *  reason and with the same guarantees: the `Set` stays module-private, and
- *  `revocationVerdictBadge` routes through this function rather than the
- *  `Set`, so a caller and the badge can never disagree.
+ *  the revocation twin of `isUnassessedManifestCode`. The `Set` stays
+ *  module-private so every caller goes through this one predicate.
  *
  *  Note for reusers: this set covers the codes the *SDK* produces. Other
  *  producers have their own vocabularies — notably a cause that is
@@ -252,77 +244,4 @@ const REVOCATION_UNASSESSED_CODES = new Set([
  *  signature failure". */
 export function isUnassessedRevocationCode(code: string): boolean {
   return REVOCATION_UNASSESSED_CODES.has(code);
-}
-
-/**
- * Render a revocation-snapshot verification verdict. `verify_revocation_list`
- * checks version → expiry → issuer → signature, in that order (mirroring
- * `verify_manifest`'s ordering exactly), so three of its five codes never
- * reach the signature check: `version_unknown`, `expired`, `issuer_mismatch`.
- * Labeling any of them "SIGNATURE INVALID" is the same overclaim Phase 3
- * removed for the manifest -- flagged as `[O1]` and fixed here rather than
- * shipped. `issuer_mismatch` gets its own row rather than folding into the
- * generic "not assessed" bucket: unlike a parse failure or a stale
- * timestamp, a declared-issuer mismatch *is* independently actionable (a
- * misconfigured pin, a rotated key, or a forged issuer field) even though
- * it says nothing about the signature -- so it stays in the red,
- * attention-worthy class, just honestly worded.
- */
-export function revocationVerdictBadge(verdict: RevocationVerdict): RevocationBadge {
-  if (verdict.checked && verdict.ok) {
-    return verdict.tier === 'pinned'
-      ? { text: '· verified · signed by pinned CP identity', color: C.green, entriesGreyed: false }
-      : {
-          text: '· self-consistent with CP manifest · no CP_AID pinned',
-          color: C.textDim,
-          entriesGreyed: false,
-        };
-  }
-  if (verdict.checked && verdict.code === 'expired') {
-    return {
-      text: '· EXPIRED · signature not assessed (expired)',
-      color: C.amber,
-      entriesGreyed: true,
-    };
-  }
-  if (verdict.checked && isUnassessedRevocationCode(verdict.code)) {
-    return {
-      text: `· NOT VERIFIED · signature not assessed (${verdict.code})`,
-      color: C.amber,
-      entriesGreyed: true,
-    };
-  }
-  if (verdict.checked && verdict.code === 'issuer_mismatch') {
-    return { text: '· ISSUER MISMATCH (issuer_mismatch)', color: C.red, entriesGreyed: true };
-  }
-  if (verdict.checked) {
-    return {
-      text: `· SIGNATURE INVALID (${verdict.code})`,
-      color: C.red,
-      entriesGreyed: true,
-    };
-  }
-  // Tier 1 had no trusted issuer to check against, and the CP manifest's own
-  // failure code is why. Naming that code is the actually-observed fact and
-  // the most actionable thing in the string, so it stays.
-  //
-  // What used to follow it — a parenthetical naming the sibling control-plane
-  // repo as the culprit — does not, and must not come back. This console
-  // observed that the CP's manifest did not verify; it never observed *why*.
-  // An expired or unverifiable CP manifest is equally consistent with a
-  // misconfigured `CP_URL`, a stale proxy cache, clock skew on this side, or
-  // an upstream that genuinely is broken. Naming one cause picks a hypothesis
-  // and dresses it as a finding — the same class of overclaim the rest of this
-  // module exists to remove. The specific upstream bug that parenthetical once
-  // pointed at was in fact fixed by `aitp-control-plane` `4c62641` (PR #74,
-  // 2026-08-28) and `c74a190` (PR #77, 2026-08-29), so the attribution was not
-  // merely unobserved — it was also, by then, false.
-  if (verdict.reason === 'no_trusted_issuer' && verdict.manifestCode) {
-    const cause =
-      verdict.manifestCode === 'expired'
-        ? "the CP's manifest has expired, so no trusted issuer is available"
-        : `the CP's manifest failed verification (${verdict.manifestCode}), so no trusted issuer is available`;
-    return { text: `· signature not checked · ${cause}`, color: C.amber, entriesGreyed: true };
-  }
-  return { text: `· signature not checked (${verdict.reason})`, color: C.amber, entriesGreyed: true };
 }

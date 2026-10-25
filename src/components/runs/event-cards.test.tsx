@@ -591,8 +591,8 @@ describe('revocationVerifyFailedVerdict', () => {
       'the installed SDK cannot verify revocation lists — nothing was checked (sdk_cannot_verify)',
     ],
     ['malformed_body', C.red, 'signature verified · snapshot body is malformed (malformed_body)'],
-    // `expired` is pre-signature, same as the manifest side — amber, matching
-    // `revocationVerdictBadge`, never the generic red branch.
+    // `expired` is pre-signature, same as the manifest side — amber, never
+    // the generic red branch.
     ['expired', C.amber, 'signature not assessed (expired)'],
     // SDK codes, via Phase 2's predicate.
     ['malformed', C.amber, 'signature not assessed (malformed)'],

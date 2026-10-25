@@ -142,49 +142,19 @@ export type Verdict =
  *  as a sibling namespaced key that can never collide with a spec field. */
 export type VerifiedManifestEnvelope = ManifestEnvelope & { _verification: Verdict };
 
-/** The CP serves the revocation list as a signed envelope:
- *  `{ revocation_list: { ... entries }, signature }`. Unlike the manifest,
- *  `signature` really is a top-level sibling of the body on this wire
- *  shape (`aitp-tct/src/revocation.rs`'s doc comment calls this out
- *  explicitly), so no Finding-3-style split is needed here -- just no
- *  top-level index signature, for the same reason `ManifestEnvelope`
- *  dropped its: it must not license an invented top-level key. */
-export interface RevocationList {
-  revocation_list?: {
-    version?: string;
-    issuer?: string;
-    published_at?: number;
-    expires_at?: number;
-    entries?: Array<{
-      jti: string;
-      reason?: string;
-      revoked_at?: string | number;
-      revokedAt?: string | number;
-      [key: string]: unknown;
-    }>;
-  };
-  signature?: string;
+/** `GET /api/revocations?iss=<aid>` (CP1.1): every entry the CP has recorded
+ *  for TCTs that `iss` issued, unsigned. The CP is a registry and relay: the
+ *  issuer pulls this, signs it with its own key and serves the list itself
+ *  (RFC-AITP-0008 §1.5), so there is no CP-signed list to verify here. */
+export interface IssuerRevocations {
+  iss: string;
+  entries: Array<{
+    jti: string;
+    /** Epoch seconds. */
+    revoked_at: number;
+    reason?: string;
+  }>;
 }
-
-/** Which expected-issuer resolution path a revocation-snapshot verdict
- *  took. `pinned` needs `CP_AID` configured; `self-consistent` derives the
- *  expected issuer from the CP's own (Phase-3-verified) manifest, so it
- *  proves one key signed both artifacts served by the same origin -- not
- *  that the origin itself is authentic. Never render `self-consistent` as
- *  "verified". */
-export type RevocationTier = 'pinned' | 'self-consistent';
-
-/** Verdict for a revocation snapshot -- like `Verdict`, but carrying which
- *  tier resolved the expected issuer (once one was found), and letting the
- *  `checked: false` case carry the upstream manifest's own failure code
- *  when that's *why* no trusted issuer was available (Tier 1 only). An
- *  operator staring at a permanently-unchecked badge needs to see why. */
-export type RevocationVerdict =
-  | { checked: true; ok: true; tier: RevocationTier }
-  | { checked: true; ok: false; code: string; tier: RevocationTier }
-  | { checked: false; reason: string; manifestCode?: string };
-
-export type VerifiedRevocationList = RevocationList & { _verification: RevocationVerdict };
 
 /** `/api/readyz` returns just { ready } on success, or
  *  { ready: false, reason } / { ready: false, error } on failure. */
@@ -264,9 +234,6 @@ export interface PinnedKey {
   createdAt: string;
   updatedAt: string;
 }
-
-/** The CP `/api/revocation/entries` route is POST-only; the list is
- *  served by `/.well-known/aitp-revocation-list` via `RevocationList`. */
 
 /** A documentation-only catalogue of the event `type` strings the CP is
  *  known to emit -- nothing more. CP's `/api/events` ingestion does not

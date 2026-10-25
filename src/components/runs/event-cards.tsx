@@ -383,23 +383,17 @@ export function manifestVerifyFailedVerdict(cause?: string | null): TrustVerdict
  *   uses). `isUnassessedRevocationCode('expired')` is `false` — `expired` is
  *   independently meaningful, not folded into that Set — so leaving it to the
  *   predicate falls through to the generic red branch below and renders an
- *   expired-but-unassessed snapshot exactly like a genuine signature failure.
- *   `revocationVerdictBadge` gives `expired` its own amber branch
- *   (`verification-display.ts:265`) for this same reason; this card has to
- *   agree, or the identical SDK code reads as two different verdicts
- *   depending on which panel an operator happens to be looking at.
+ *   expired-but-unassessed snapshot exactly like a genuine signature failure,
+ *   so it gets its own amber branch.
  *
  * The one remaining pre-signature code, `issuer_mismatch`, deliberately gets
- * **no** bespoke branch here: `revocationVerdictBadge` colours it red anyway,
- * because a declared-issuer mismatch is independently actionable (a
+ * **no** bespoke branch here: it belongs in red, because a declared-issuer mismatch is independently actionable (a
  * misconfigured pin, a rotated key, a forged issuer field) even though
  * nothing about the signature was established — RFC-AITP-0008 §1.5 makes
  * discarding the snapshot a MUST regardless. `isUnassessedRevocationCode`
  * correctly returns `false` for it, so it reaches the same red verdict here
- * by falling through to the generic branch below, just with plainer wording
- * ("verification failed (issuer_mismatch)" vs. the badge's own "ISSUER
- * MISMATCH") — same colour, same claim, no branch needed to keep them
- * agreeing.
+ * by falling through to the generic branch below
+ * ("verification failed (issuer_mismatch)").
  *
  * Everything else at `:130` is an SDK `.code` (or the literal
  * `signature_invalid` fallback when the throw carried none) and routes

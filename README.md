@@ -105,7 +105,7 @@ Preview, or previews serve 503):
 | `CONSOLE_PASSWORD` | Operator password, 24+ random characters. |
 | `CONSOLE_SESSION_SECRET` | Session-cookie HMAC key, e.g. `openssl rand -hex 32`. Rotating it signs every operator out. |
 
-The upstream variables (`PLAYGROUND_URL`, `CP_URL`, `*_API_KEY`, `CP_AID`,
+The upstream variables (`PLAYGROUND_URL`, `CP_URL`, `*_API_KEY`,
 `TRUSTED_ORIGINS`) are in `.env.example` and
 [`internal_docs/DEPLOYMENT.md`](https://github.com/agentidentitytrustprotocol/aitp-ui-console/blob/main/internal_docs/DEPLOYMENT.md).
 

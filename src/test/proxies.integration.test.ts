@@ -145,12 +145,9 @@ describeIntegration('proxy contracts — cp', () => {
     expect(env.manifest!.aid).toMatch(/^aid:/);
   });
 
-  it('GET /api/cp/well-known/aitp-revocation-list returns the signed envelope', async () => {
-    const { status, body } = await jsonGET(
-      `${consoleUrl()}/api/cp/well-known/aitp-revocation-list`,
-    );
-    expect(status).toBe(200);
-    expect(body).toHaveProperty('revocation_list');
+  it('GET /api/cp/well-known/aitp-revocation-list is gone (the CP signs no list)', async () => {
+    const { status } = await jsonGET(`${consoleUrl()}/api/cp/well-known/aitp-revocation-list`);
+    expect(status).toBe(404);
   });
 
   it('GET /api/cp/events/history returns the event feed the Audit page renders', async () => {

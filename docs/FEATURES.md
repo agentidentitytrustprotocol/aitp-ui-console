@@ -216,18 +216,21 @@ posture. Each tab is a small CRUD surface.
   delete via row selection. Namespace is fixed after creation.
 - **Pinned keys** — static SPKI key pins per `(namespace, aid)` for
   environments that bypass discovery.
-- **Revocation** — add a JTI to the authoritative revocation list, with an
-  optional reason. The snapshot itself is verified server-side before
-  display (in every state including empty) — self-consistently against
-  the CP's own manifest by default, or against a pinned `CP_AID` if one is
-  configured; see the CP identity bullet under Config for what each tier
-  actually proves. A failed or unassessed check still shows the entries,
-  visibly marked untrusted, rather than hiding them.
+- **Revocation** — the CP's revocation entries grouped by issuer AID, with
+  each issuer's last pull from the CP relay ("no pull recorded" when that
+  issuer has not pulled since the CP started). The CP signs no list: each
+  issuer pulls its own entries, signs them and serves its list
+  ([RFC-AITP-0008](https://agentidentitytrustprotocol.io/spec/revocation)
+  §1.5), so an entry takes effect at that issuer's next pull. Issuers are
+  the TCT issuers the CP has recorded, plus any the operator revokes
+  against.
 
 ### Revocation confirm flow
 
-Revoking is a **two-step confirm**: enter a JTI (and optional reason),
-then explicitly confirm. It's gated this way because revocation is
+Revoking is a **two-step confirm**: enter a JTI, its issuer AID
+(prefilled from the TCT when the CP has recorded it) and an optional
+reason, then explicitly confirm. The CP refuses an issuer that contradicts
+the one it recorded for that JTI. It's gated this way because revocation is
 materially destructive — on the CP side its effects cascade well beyond
 the single JTI. The cascade rules are the control plane's; see
 [revocation](https://agentidentitytrustprotocol.io/spec/revocation) and the [CP data model](https://agentidentitytrustprotocol.io/control-plane/data-model).
@@ -306,10 +309,9 @@ Operational settings and health, split across two columns.
   credential boundary explicit: URLs come from `PLAYGROUND_URL` / `CP_URL`
   on the server, and API keys never reach the browser.
 - **CP identity** — the control plane's own AITP manifest: AID, display
-  name, handshake endpoint, capability set, expiry countdown, and
-  revocation-list pointer. The manifest and the revocation snapshot are
-  each verified server-side (in the BFF, via the `aitp` SDK, never in the
-  browser) before the AID or entry count is shown as trustworthy — the AID
+  name, handshake endpoint, capability set and expiry countdown. The
+  manifest is verified server-side (in the BFF, via the `aitp` SDK, never in
+  the browser) before the AID is shown as trustworthy — the AID
   is coloured as verified only when its manifest's signature actually
   checked out; an expired manifest renders as its own distinct state that
   claims nothing about authenticity either way, never as a softer
@@ -317,11 +319,7 @@ Operational settings and health, split across two columns.
   later proof-of-possession or identity-hint check is shown as rejected
   *and* as having had a valid signature — never as a signature failure,
   because it demonstrably wasn't one, and never as verified, because a
-  manifest that fails any step is still discarded. The revocation snapshot
-  verifies in one of two tiers: against
-  the CP's own manifest by default (proves one key signed both artifacts,
-  not that the origin is authentic — never rendered as "verified"), or
-  against a pinned `CP_AID` if configured (a real authentication claim).
+  manifest that fails any step is still discarded.
 - **SDK matrix** — SDK / capability support reported by the playground.
 - **Processes & metrics** — playground process list and the metrics
   panels for both services.

@@ -87,18 +87,34 @@ describe('CpIdentityCard manifest verdict', () => {
   });
 
   it('renders a post-signature rejection in red with the AID still muted, naming the signature as verified', async () => {
-    // `verify_manifest` reaches PoP only after the outer signature has already
-    // verified, so this badge must not read as a signature failure -- and the
-    // AID must stay muted anyway, because RFC-AITP-0003 §5 requires discarding
-    // a manifest that fails any step.
+    // `verify_manifest` reaches the identity-hint check only after the outer
+    // signature has already verified, so this badge must not read as a
+    // signature failure -- and the AID must stay muted anyway, because
+    // RFC-AITP-0003 §5 requires discarding a manifest that fails any step.
+    wireApi(manifest({ checked: true, ok: false, code: 'identity_hint_malformed' }));
+    renderWithClient(<CpIdentityCard />);
+
+    const aid = await screen.findByText('aid:pubkey:test');
+    expect(aid).toHaveStyle({ color: C.textMuted });
+    expect(
+      screen.getByText(
+        '· REJECTED · signature verified · identity hint is malformed (identity_hint_malformed)',
+      ),
+    ).toHaveStyle({ color: C.red });
+  });
+
+  it('renders pop_failed in red with the AID muted, without claiming the signature verified', async () => {
+    // Since aitp 0.24.0 PoP is checked before the outer signature, so a
+    // manifest failing both is `pop_failed` and its signature was never assessed.
     wireApi(manifest({ checked: true, ok: false, code: 'pop_failed' }));
     renderWithClient(<CpIdentityCard />);
 
     const aid = await screen.findByText('aid:pubkey:test');
     expect(aid).toHaveStyle({ color: C.textMuted });
     expect(
-      screen.getByText('· REJECTED · signature verified · proof-of-possession failed (pop_failed)'),
+      screen.getByText('· REJECTED · proof-of-possession failed · signature not assessed (pop_failed)'),
     ).toHaveStyle({ color: C.red });
+    expect(screen.queryByText(/signature verified/)).toBeNull();
   });
 
   it('does not overclaim for a pre-signature code: version_unknown, malformed and unknown_field render as not-verified, not a failure', async () => {
@@ -129,8 +145,8 @@ describe('CpIdentityCard manifest verdict', () => {
       { checked: true, ok: false, code: 'signature_invalid' },
       { checked: true, ok: false, code: 'version_unknown' },
       { checked: true, ok: false, code: 'malformed' },
-      // Post-signature codes: the outer signature verified, and that is still
-      // not a licence to colour the AID as a checked fact.
+      // Rejections after a valid check (PoP, or the identity hint after the
+      // signature verified) are still not a licence to colour the AID.
       { checked: true, ok: false, code: 'pop_failed' },
       { checked: true, ok: false, code: 'identity_hint_malformed' },
       { checked: false, reason: 'sdk_unavailable' },

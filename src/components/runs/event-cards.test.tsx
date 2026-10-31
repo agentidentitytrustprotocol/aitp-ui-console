@@ -545,11 +545,14 @@ describe('manifestVerifyFailedVerdict', () => {
     // Everything else: honest red that names the cause and claims no verdict.
     ['signature_invalid', C.red, 'verification failed (signature_invalid)'],
     ['a_future_sdk_code', C.red, 'verification failed (a_future_sdk_code)'],
-    // The two codes `verify_manifest` can only construct *after* the outer
+    // PoP is checked before the outer signature since aitp 0.24.0: a definite
+    // rejection that makes no claim about the signature, same wording as the
+    // CP badge via the exported `manifestPreSignatureRejectionDetail`.
+    ['pop_failed', C.red, 'proof-of-possession failed · signature not assessed (pop_failed)'],
+    // The one code `verify_manifest` can only construct *after* the outer
     // signature verified — same post-signature-aware wording as the CP badge
     // (`verification-display.ts`'s `MANIFEST_POST_SIGNATURE_DETAIL`), reused
     // via the exported `manifestPostSignatureDetail`, not a second copy.
-    ['pop_failed', C.red, 'signature verified · proof-of-possession failed (pop_failed)'],
     [
       'identity_hint_malformed',
       C.red,
@@ -574,7 +577,6 @@ describe('manifestVerifyFailedVerdict', () => {
       // pin below: a manifest whose outer signature verified must never be
       // told apart from a forged one by an operator skimming the card.
       const { text } = manifestVerifyFailedVerdict(cause);
-      expect(text).toMatch(/^signature verified/);
       expect(text).not.toMatch(/signature invalid/i);
       expect(text).not.toMatch(/forged/i);
     },
@@ -702,10 +704,19 @@ describe('manifest.verify_failed card', () => {
     expect(container).not.toHaveTextContent(/verification failed/i);
   });
 
-  it.each([
-    ['pop_failed', 'proof-of-possession failed'],
-    ['identity_hint_malformed', 'identity hint is malformed'],
-  ])(
+  it('pop_failed renders as a rejection that does not claim the signature verified — same wording as the CP badge', () => {
+    const { container } = render(
+      <EventCard evt={evt({ type: 'manifest.verify_failed', cause: 'pop_failed' })} />,
+    );
+    expect(screen.getByText('MANIFEST REJECTED')).toHaveStyle({ color: C.red });
+    expect(container).toHaveTextContent(
+      'proof-of-possession failed · signature not assessed (pop_failed)',
+    );
+    expect(container).not.toHaveTextContent(/signature verified/i);
+    expect(container).not.toHaveTextContent(/signature invalid/i);
+  });
+
+  it.each([['identity_hint_malformed', 'identity hint is malformed']])(
     '%s renders as post-signature, not as a signature failure — same wording as the CP badge',
     (cause, detail) => {
       const { container } = render(

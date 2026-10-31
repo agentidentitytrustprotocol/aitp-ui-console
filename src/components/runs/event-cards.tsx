@@ -22,6 +22,7 @@ import {
   isUnassessedManifestCode,
   isUnassessedRevocationCode,
   manifestPostSignatureDetail,
+  manifestPreSignatureRejectionDetail,
 } from '@/lib/verification-display';
 import type { RunEvent } from '@/lib/types/playground';
 
@@ -301,12 +302,13 @@ export interface TrustVerdict {
  *   run-timeline surface — the very overclaim the CP badge was fixed to remove,
  *   reintroduced here by trusting the predicate's name too literally.
  *
- * `pop_failed` / `identity_hint_malformed` — the two codes `verify_manifest`
- * can only construct *after* the outer signature has verified — get the same
- * post-signature-aware wording the CP badge already uses, via
- * `verification-display.ts`'s exported `manifestPostSignatureDetail`. That
- * keeps the two-entry map to exactly one copy rather than one per surface,
- * closing the gap this card used to leave to the generic red branch below.
+ * `identity_hint_malformed`, the one code `verify_manifest` can only construct
+ * *after* the outer signature has verified, gets the same post-signature
+ * wording the CP badge uses, via `verification-display.ts`'s exported
+ * `manifestPostSignatureDetail`. `pop_failed`, checked before the signature
+ * since aitp `0.24.0`, gets the CP badge's "signature not assessed" rejection
+ * wording via `manifestPreSignatureRejectionDetail`. Each map has exactly one
+ * copy, shared by both surfaces.
  */
 export function manifestVerifyFailedVerdict(cause?: string | null): TrustVerdict {
   if (cause === 'unknown') {
@@ -331,6 +333,14 @@ export function manifestVerifyFailedVerdict(cause?: string | null): TrustVerdict
     };
   }
   if (cause) {
+    const preSignatureDetail = manifestPreSignatureRejectionDetail(cause);
+    if (preSignatureDetail !== undefined) {
+      return {
+        color: C.red,
+        headline: 'MANIFEST REJECTED',
+        text: `${preSignatureDetail} · signature not assessed (${cause})`,
+      };
+    }
     const postSignatureDetail = manifestPostSignatureDetail(cause);
     if (postSignatureDetail !== undefined) {
       return {

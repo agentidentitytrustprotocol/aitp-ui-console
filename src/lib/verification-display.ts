@@ -22,29 +22,27 @@ export interface VerdictBadge {
  *
  *  ## The check order every branch below rests on
  *
- *  Read from `aitp-rs` at tag `aitp-v0.17.0` — the floor `package.json`'s
- *  `//aitp` key pins — in `crates/aitp-manifest/src/verifier.rs`
- *  (unchanged in order since `aitp-v0.12.0`; only line numbers moved):
+ *  Read from `aitp-rs` at tag `aitp-v0.24.0` — the version `package.json`'s
+ *  `//aitp` key pins — in `crates/aitp/src/manifest/verifier.rs`:
  *
- *      version `:53` → expiry `:58` → AID→key parse `:65`
- *        → OUTER SIGNATURE `:67` → PoP `:84` → identity-hint `:96`
+ *      version `:79` → expiry `:84` → AID→key parse `:92`
+ *        → PoP `:94` → OUTER SIGNATURE `:109` → identity-hint `:119`
  *
- *  with the errors constructed at `:79`/`:82` (`SignatureInvalid`),
- *  `:88`/`:91`/`:94` (`PopFailed`) and `:100`/`:105`/`:112`
- *  (`IdentityHintMalformed`). That is why `pop_failed` and
- *  `identity_hint_malformed` each *imply a verified outer signature*, and
- *  why they get their own row rather than sharing `signature_invalid`'s —
- *  see `MANIFEST_POST_SIGNATURE_DETAIL` below.
+ *  with the errors constructed at `:101`/`:104`/`:107` (`PopFailed`),
+ *  `:114`/`:117` (`SignatureInvalid`) and `:123`-`:148`
+ *  (`IdentityHintMalformed`). That is RFC-AITP-0003 §5's order, and the
+ *  rustdoc (`:54-70`) now agrees with the code.
  *
- *  ⚠ **`verify_manifest`'s own rustdoc (`verifier.rs:28-44`) contradicts
- *  the code, and it is the first thing the next auditor of this file will
- *  read.** That rustdoc lists PoP as step 3 and the outer signature as
- *  step 4 — RFC-AITP-0003 §5's *nominal* order, the reverse of what the
- *  implementation does. The numbered step comments and the
- *  error-construction sites above govern; `verifier.rs:67-75` carries the
- *  `mh-002` conformance rationale for the deliberate inversion. **The
- *  rustdoc is stale. Do not revert the post-signature row on the strength
- *  of it** — re-read `:67` and `:84` first.
+ *  `0.12.0`-`0.23.x` checked the outer signature *before* PoP, so on those
+ *  releases `pop_failed` implied a verified signature. From `0.24.0` it does
+ *  not: a Manifest failing both checks is `pop_failed`, and its signature
+ *  was never assessed. Only `identity_hint_malformed` still *implies a
+ *  verified outer signature*. So `pop_failed` gets a row of its own that
+ *  makes no claim about the signature (`MANIFEST_PRE_SIGNATURE_REJECTION_DETAIL`),
+ *  and `identity_hint_malformed` keeps the post-signature row
+ *  (`MANIFEST_POST_SIGNATURE_DETAIL`). For a producer still on an older SDK,
+ *  "signature not assessed" understates what was checked. That is the
+ *  safe direction for a verification badge.
  *
  *  ## Codes deliberately left to the generic red catch-all
  *
@@ -100,9 +98,9 @@ export function isUnassessedManifestCode(code: string): boolean {
 /** Manifest codes that can only be reached *after* the outer signature has
  *  already verified (see the check order above), mapped to the check that
  *  actually failed. A `Record` rather than a `Set` because each code must
- *  name its own failed check: a proof-of-possession failure and a malformed
- *  identity hint send an operator to different places, and one shared vague
- *  phrase would throw that away.
+ *  name its own failed check rather than share one vague phrase. Since
+ *  `0.24.0` the only such code is `identity_hint_malformed`; `pop_failed`
+ *  moved to `MANIFEST_PRE_SIGNATURE_REJECTION_DETAIL` below.
  *
  *  These stay `C.red` with a muted `aidColor`, exactly like a signature
  *  failure — deliberately, and load-bearing. RFC-AITP-0003 §5 requires
@@ -121,9 +119,30 @@ export function isUnassessedManifestCode(code: string): boolean {
  *  of falling through to the catch-all. `Object.hasOwn` rather than `in`:
  *  `in` walks the prototype chain, so `'toString'` would test true. */
 const MANIFEST_POST_SIGNATURE_DETAIL: Record<string, string> = {
-  pop_failed: 'proof-of-possession failed',
   identity_hint_malformed: 'identity hint is malformed',
 };
+
+/** Manifest codes that are a definite rejection reached *before* the outer
+ *  signature is checked (see the check order above), mapped to the check
+ *  that failed. Unlike the amber unassessed codes, the verifier did
+ *  establish something here: the proof of possession is invalid, so
+ *  RFC-AITP-0003 §5 requires discarding the manifest. It is red with a muted
+ *  AID, like the post-signature row, but the wording says the signature was
+ *  not assessed instead of claiming it verified. Same membership-test rule
+ *  as `MANIFEST_POST_SIGNATURE_DETAIL`. */
+const MANIFEST_PRE_SIGNATURE_REJECTION_DETAIL: Record<string, string> = {
+  pop_failed: 'proof-of-possession failed',
+};
+
+/** What check failed for a manifest code that rejects before the outer
+ *  signature is assessed, or `undefined` for any other code. Exported for
+ *  the same reason as `manifestPostSignatureDetail`: one copy of the map,
+ *  shared by the CP badge and the run-timeline card. */
+export function manifestPreSignatureRejectionDetail(code: string): string | undefined {
+  return Object.hasOwn(MANIFEST_PRE_SIGNATURE_REJECTION_DETAIL, code)
+    ? MANIFEST_PRE_SIGNATURE_REJECTION_DETAIL[code]
+    : undefined;
+}
 
 /** What check failed for a manifest code reachable only *after* the outer
  *  signature verified, or `undefined` for any other code — exported so other
@@ -152,14 +171,16 @@ export function manifestPostSignatureDetail(code: string): string | undefined {
  *   signature check either.
  * - `signature_invalid` gets its own row because it is the one code that
  *   really does mean the signature failed.
- * - `pop_failed` and `identity_hint_malformed` get a row saying what was
- *   established *and* what was rejected: both are constructed strictly
- *   after the outer signature verified, so bucketing them with
- *   `signature_invalid` told an operator the signature was bad when it was
- *   demonstrably good. Still red, still a muted AID — see
- *   `MANIFEST_POST_SIGNATURE_DETAIL`.
+ * - `pop_failed` gets a row naming the failed check and saying the
+ *   signature was not assessed: since `0.24.0` PoP is checked before the
+ *   signature. Red, muted AID — see `MANIFEST_PRE_SIGNATURE_REJECTION_DETAIL`.
+ * - `identity_hint_malformed` gets a row saying what was established *and*
+ *   what was rejected: it is constructed strictly after the outer signature
+ *   verified, so bucketing it with `signature_invalid` would tell an
+ *   operator the signature was bad when it was demonstrably good. Still
+ *   red, still a muted AID — see `MANIFEST_POST_SIGNATURE_DETAIL`.
  *
- * Branch order is load-bearing: the two red code branches must sit *after*
+ * Branch order is load-bearing: the red code branches must sit *after*
  * the `expired` and unassessed branches (or an amber state silently turns
  * red) and *before* the generic catch-all (or they never fire).
  *
@@ -191,6 +212,14 @@ export function manifestVerdictBadge(verdict: Verdict): VerdictBadge {
   if (verdict.checked && verdict.code === 'signature_invalid') {
     return {
       text: `· SIGNATURE INVALID (${verdict.code})`,
+      color: C.red,
+      aidColor: C.textMuted,
+    };
+  }
+  if (verdict.checked && Object.hasOwn(MANIFEST_PRE_SIGNATURE_REJECTION_DETAIL, verdict.code)) {
+    const detail = MANIFEST_PRE_SIGNATURE_REJECTION_DETAIL[verdict.code];
+    return {
+      text: `· REJECTED · ${detail} · signature not assessed (${verdict.code})`,
       color: C.red,
       aidColor: C.textMuted,
     };

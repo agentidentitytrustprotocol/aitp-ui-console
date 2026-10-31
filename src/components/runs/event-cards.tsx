@@ -384,7 +384,7 @@ export function manifestVerifyFailedVerdict(cause?: string | null): TrustVerdict
  * - **`malformed_body`** (`:151`) — the snapshot *verified*; it was signed by
  *   the pinned CP key, and its body then failed to parse. Red, because the
  *   snapshot was discarded, but worded as post-signature. This is the
- *   revocation-side twin of the manifest's `pop_failed`, and letting it fall
+ *   revocation-side twin of the manifest's `identity_hint_malformed`, and letting it fall
  *   to the predicate's `false` would render an authentically-signed snapshot
  *   as a signature failure — the exact conflation the CP badges were fixed to
  *   remove, reintroduced on the other artifact.

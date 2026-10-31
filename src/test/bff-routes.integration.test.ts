@@ -127,6 +127,9 @@ beforeAll(async () => {
         const iss = new URL(url, 'http://x').searchParams.get('iss');
         res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
         res.end(JSON.stringify({ iss, entries: [{ jti: 'j1', revoked_at: 1700000000 }] }));
+      } else if (url.startsWith('/api/revocation/issuers') && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ issuers: [{ iss: 'aid:pubkey:abc', entries: 2 }], limit: 1000, offset: 0 }));
       } else if (url === '/api/revocation/entries' && req.method === 'POST') {
         res.writeHead(201, { 'Content-Type': 'application/json' });
         res.end(body);
@@ -443,6 +446,22 @@ describe('BFF route handlers against a mock upstream', () => {
       entries: [{ jti: 'j1', revoked_at: 1700000000 }],
     });
     expect(lastRequest().url).toBe('/api/revocations?iss=aid%3Apubkey%3Aabc');
+    expect(lastRequest().headers.authorization).toBe('Bearer test-cp-key');
+  });
+
+  it('GET /api/cp/revocation/issuers relays the issuer listing with its paging', async () => {
+    const route: RouteModule = require('@/app/api/cp/revocation/issuers/route');
+    const res = await route.GET!(
+      makeRequest('http://localhost:3001/api/cp/revocation/issuers?limit=1000'),
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      issuers: [{ iss: 'aid:pubkey:abc', entries: 2 }],
+      limit: 1000,
+      offset: 0,
+    });
+    expect(lastRequest().url).toBe('/api/revocation/issuers?limit=1000');
     expect(lastRequest().headers.authorization).toBe('Bearer test-cp-key');
   });
 

@@ -221,9 +221,12 @@ posture. Each tab is a small CRUD surface.
   issuer has not pulled since the CP started). The CP signs no list: each
   issuer pulls its own entries, signs them and serves its list
   ([RFC-AITP-0008](https://agentidentitytrustprotocol.io/spec/revocation)
-  §1.5), so an entry takes effect at that issuer's next pull. Issuers are
-  the TCT issuers the CP has recorded, plus any the operator revokes
-  against.
+  §1.5), so an entry takes effect at that issuer's next pull. Only issuers
+  that have entries are listed, with their counts, from the CP's
+  `/api/revocation/issuers`. Each issuer's entries are a separate CP
+  request, so a group is fetched only when open: issuers that pull from the
+  relay, issuers revoked against this session and the issuer in the revoke
+  form open by default, and any other expands on click.
 
 ### Revocation confirm flow
 

@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { renderWithClient } from '@/test/test-utils';
 import type { IssuerRevocations, Tct } from '@/lib/types/cp';
 
@@ -32,9 +32,22 @@ function tct(jti: string, issuer: string): Tct {
 
 let metricsText = '';
 
-function wireApi(tcts: Tct[], byIssuer: Record<string, IssuerRevocations['entries']>) {
+type Entries = IssuerRevocations['entries'];
+
+/** `listed` is the CP's issuer listing; by default every issuer in
+ *  `byIssuer` that has entries, as the CP computes it. */
+function wireApi(
+  tcts: Tct[],
+  byIssuer: Record<string, Entries>,
+  listed: Array<{ iss: string; entries: number }> = Object.entries(byIssuer)
+    .filter(([, e]) => e.length > 0)
+    .map(([iss, e]) => ({ iss, entries: e.length })),
+) {
   getMock.mockImplementation(async (url: string) => {
     if (url.startsWith('/api/cp/tcts')) return { tcts };
+    if (url === '/api/cp/revocation/issuers?limit=1000') {
+      return { issuers: listed, limit: 1000, offset: 0 };
+    }
     const m = url.match(/^\/api\/cp\/revocations\?iss=(.+)$/);
     if (m) {
       const iss = decodeURIComponent(m[1]);
@@ -52,21 +65,54 @@ beforeEach(() => {
 });
 
 describe('RevocationView, per-issuer model', () => {
-  it('groups entries by issuer AID, one CP query per issuer', async () => {
+  it('lists only issuers that have entries, with counts, and fetches none until opened', async () => {
     wireApi([tct(JTI_A, ISS_A), tct(JTI_B, ISS_B)], {
-      [ISS_A]: [{ jti: JTI_A, revoked_at: NOW_S - 60, reason: 'key-compromise' }],
+      [ISS_A]: [{ jti: JTI_A, revoked_at: NOW_S - 60 }],
     });
     renderWithClient(<RevocationView />);
 
     const a = await screen.findByRole('region', { name: `Issuer ${ISS_A}` });
+    expect(within(a).getByText('1 entry')).toBeInTheDocument();
+    // ISS_B issued a TCT but has no entries: not shown.
+    expect(screen.queryByRole('region', { name: `Issuer ${ISS_B}` })).not.toBeInTheDocument();
+    expect(screen.getByText('1 issuer')).toBeInTheDocument();
+    expect(getMock).not.toHaveBeenCalledWith(expect.stringContaining('/api/cp/revocations'));
+  });
+
+  it('fetches an issuer\'s entries when its group is opened', async () => {
+    wireApi([], {
+      [ISS_A]: [{ jti: JTI_A, revoked_at: NOW_S - 60, reason: 'key-compromise' }],
+      [ISS_B]: [{ jti: JTI_B, revoked_at: NOW_S - 60 }],
+    });
+    renderWithClient(<RevocationView />);
+
+    fireEvent.click(await screen.findByRole('button', { name: `Show entries for ${ISS_A}` }));
+
+    const a = screen.getByRole('region', { name: `Issuer ${ISS_A}` });
     expect(await within(a).findByText(JTI_A)).toBeInTheDocument();
     expect(within(a).getByText('key-compromise')).toBeInTheDocument();
-    const b = screen.getByRole('region', { name: `Issuer ${ISS_B}` });
-    expect(await within(b).findByText('No revocations.')).toBeInTheDocument();
-
     expect(getMock).toHaveBeenCalledWith(`/api/cp/revocations?iss=${encodeURIComponent(ISS_A)}`);
-    expect(getMock).toHaveBeenCalledWith(`/api/cp/revocations?iss=${encodeURIComponent(ISS_B)}`);
+    expect(getMock).not.toHaveBeenCalledWith(`/api/cp/revocations?iss=${encodeURIComponent(ISS_B)}`);
     expect(getMock).not.toHaveBeenCalledWith(expect.stringContaining('well-known'));
+  });
+
+  it('shows "No revocations" when no issuer has entries', async () => {
+    wireApi([tct(JTI_A, ISS_A)], {});
+    renderWithClient(<RevocationView />);
+    expect(await screen.findByText('No revocations')).toBeInTheDocument();
+  });
+
+  it('opens issuers that pull from the relay by default', async () => {
+    metricsText = `aitp_control_plane_revocation_last_pull_timestamp_seconds{issuer="b",aid="${ISS_B}"} ${NOW_S}`;
+    wireApi([], {
+      [ISS_A]: [{ jti: JTI_A, revoked_at: NOW_S }],
+      [ISS_B]: [{ jti: JTI_B, revoked_at: NOW_S }],
+    });
+    renderWithClient(<RevocationView />);
+
+    const b = await screen.findByRole('region', { name: `Issuer ${ISS_B}` });
+    expect(await within(b).findByText(JTI_B)).toBeInTheDocument();
+    expect(getMock).not.toHaveBeenCalledWith(`/api/cp/revocations?iss=${encodeURIComponent(ISS_A)}`);
   });
 
   it('shows the last pull per issuer from the aid-labelled gauge, and "no pull recorded" otherwise', async () => {
@@ -74,7 +120,10 @@ describe('RevocationView, per-issuer model', () => {
       '# TYPE aitp_control_plane_revocation_last_pull_timestamp_seconds gauge',
       `aitp_control_plane_revocation_last_pull_timestamp_seconds{issuer="a",aid="${ISS_A}"} ${NOW_S - 120}`,
     ].join('\n');
-    wireApi([tct(JTI_A, ISS_A), tct(JTI_B, ISS_B)], {});
+    wireApi([], {
+      [ISS_A]: [{ jti: JTI_A, revoked_at: NOW_S }],
+      [ISS_B]: [{ jti: JTI_B, revoked_at: NOW_S }],
+    });
     renderWithClient(<RevocationView />);
 
     const a = await screen.findByRole('region', { name: `Issuer ${ISS_A}` });
@@ -86,8 +135,11 @@ describe('RevocationView, per-issuer model', () => {
   it('prefills the issuer from the TCT and sends iss with the revocation', async () => {
     wireApi([tct(JTI_A, ISS_A)], {});
     postMock.mockResolvedValue({ jti: JTI_A, revokedAt: '2026-10-25T00:00:00Z', reason: null });
-    renderWithClient(<RevocationView />);
-    await screen.findByRole('region', { name: `Issuer ${ISS_A}` });
+    const { container } = renderWithClient(<RevocationView />);
+    // The TCTs have loaded once the issuer suggestions are rendered.
+    await waitFor(() =>
+      expect(container.querySelector(`#revocation-issuers option[value="${ISS_A}"]`)).not.toBeNull(),
+    );
 
     fireEvent.change(screen.getByPlaceholderText('UUID of a TCT or delegation'), {
       target: { value: JTI_A },
@@ -108,7 +160,7 @@ describe('RevocationView, per-issuer model', () => {
   it('cannot revoke without an issuer', async () => {
     wireApi([], {});
     renderWithClient(<RevocationView />);
-    await screen.findByText('No issuers yet');
+    await screen.findByText('No revocations');
 
     fireEvent.change(screen.getByPlaceholderText('UUID of a TCT or delegation'), {
       target: { value: JTI_B },
@@ -117,10 +169,11 @@ describe('RevocationView, per-issuer model', () => {
   });
 
   it('lists an operator-named issuer after revoking against it', async () => {
-    wireApi([], { [ISS_B]: [{ jti: JTI_B, revoked_at: NOW_S }] });
+    // The listing has not caught up yet: the group shows anyway.
+    wireApi([], { [ISS_B]: [{ jti: JTI_B, revoked_at: NOW_S }] }, []);
     postMock.mockResolvedValue({ jti: JTI_B, revokedAt: '2026-10-25T00:00:00Z', reason: null });
     renderWithClient(<RevocationView />);
-    await screen.findByText('No issuers yet');
+    await screen.findByText('No revocations');
 
     fireEvent.change(screen.getByPlaceholderText('UUID of a TCT or delegation'), {
       target: { value: JTI_B },

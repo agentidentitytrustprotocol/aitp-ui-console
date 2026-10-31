@@ -146,6 +146,15 @@ export type VerifiedManifestEnvelope = ManifestEnvelope & { _verification: Verdi
  *  for TCTs that `iss` issued, unsigned. The CP is a registry and relay: the
  *  issuer pulls this, signs it with its own key and serves the list itself
  *  (RFC-AITP-0008 §1.5), so there is no CP-signed list to verify here. */
+/** `GET /api/revocation/issuers`: every issuer with at least one entry,
+ *  ordered by `iss`, paged without a total (a page shorter than `limit` is
+ *  the last). Entries with no `iss` are relayed to nobody and not counted. */
+export interface RevocationIssuers {
+  issuers: Array<{ iss: string; entries: number }>;
+  limit: number;
+  offset: number;
+}
+
 export interface IssuerRevocations {
   iss: string;
   entries: Array<{

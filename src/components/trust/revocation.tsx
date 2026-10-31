@@ -1,21 +1,27 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Ban } from 'lucide-react';
+import { Ban, ChevronDown, ChevronRight } from 'lucide-react';
 import { Card } from '@/components/shared/card';
 import { AidCell } from '@/components/shared/aid-cell';
 import { EmptyState } from '@/components/shared/empty-state';
 import { LoadingSkeleton, InlineSpinner } from '@/components/shared/loading-skeleton';
 import { TimeAgo } from '@/components/shared/time-ago';
-import { useCreateRevocation, useIssuerRevocations, useTcts } from '@/hooks/use-trust';
+import {
+  REVOCATION_ISSUERS_LIMIT,
+  useCreateRevocation,
+  useIssuerRevocations,
+  useRevocationIssuers,
+  useTcts,
+} from '@/hooks/use-trust';
 import { useCpMetrics } from '@/hooks/use-playground-meta';
 import { useToast } from '@/components/shared/toast';
 import { C } from '@/lib/colors';
 import { parseIssuerLastPulls } from '@/lib/revocation-relay';
 import type { IssuerRevocations } from '@/lib/types/cp';
 
-/** The CP's TCT projection is the only issuer index it has; the CP caps a
- *  page at 1000. */
+/** TCTs only prefill and suggest the issuer in the revoke form; the CP caps
+ *  a page at 1000. */
 const TCT_SCAN_LIMIT = 1000;
 
 /**
@@ -25,6 +31,7 @@ const TCT_SCAN_LIMIT = 1000;
  */
 export function RevocationView() {
   const toast = useToast();
+  const listing = useRevocationIssuers();
   const tcts = useTcts({ limit: TCT_SCAN_LIMIT });
   const metrics = useCpMetrics();
   const create = useCreateRevocation();
@@ -32,9 +39,11 @@ export function RevocationView() {
   const [iss, setIss] = useState('');
   const [reason, setReason] = useState('');
   const [confirmStep, setConfirmStep] = useState(false);
-  // Issuers the operator revoked against this session: shown even when the
-  // CP has no TCT from them in its projection.
+  // Issuers the operator revoked against this session: shown before the
+  // listing refetches.
   const [named, setNamed] = useState<string[]>([]);
+  // Issuers the operator expanded by hand.
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
 
   const tctIssuers = useMemo(() => {
     const byJti = new Map<string, string>();
@@ -42,15 +51,39 @@ export function RevocationView() {
     return byJti;
   }, [tcts.data]);
 
-  const issuers = useMemo(
-    () =>
-      [...new Set([...tctIssuers.values(), ...named])]
-        .filter((a) => a.startsWith('aid:'))
-        .sort(),
-    [tctIssuers, named],
-  );
-  const results = useIssuerRevocations(issuers);
   const lastPulls = useMemo(() => parseIssuerLastPulls(metrics.data ?? ''), [metrics.data]);
+  // Groups are the issuers that have entries (the CP's listing, with
+  // counts), so empty issuers are not shown. Each issuer's entries are a
+  // separate request, fetched only when its group is open. Open by
+  // default: issuers that pull from the relay, issuers revoked against in
+  // this session, and the issuer named in the form.
+  const counts = useMemo(
+    () => new Map((listing.data?.issuers ?? []).map((i) => [i.iss, i.entries])),
+    [listing.data],
+  );
+  const truncated = (listing.data?.issuers.length ?? 0) >= REVOCATION_ISSUERS_LIMIT;
+  const formIss = iss.trim();
+  const isOpen = (a: string) =>
+    opened.has(a) || lastPulls.has(a) || named.includes(a) || a === formIss;
+  const issuers = useMemo(() => {
+    const all = [...new Set([...counts.keys(), ...named])];
+    const auto = (a: string) => lastPulls.has(a) || named.includes(a);
+    return all.sort((a, b) => Number(auto(b)) - Number(auto(a)) || a.localeCompare(b));
+  }, [counts, named, lastPulls]);
+  const suggestions = useMemo(
+    () => [...new Set([...tctIssuers.values()])].filter((a) => a.startsWith('aid:')).sort(),
+    [tctIssuers],
+  );
+  const results = useIssuerRevocations(issuers, isOpen);
+
+  function toggle(a: string) {
+    setOpened((prev) => {
+      const next = new Set(prev);
+      if (next.has(a)) next.delete(a);
+      else next.add(a);
+      return next;
+    });
+  }
 
   function reset() {
     setJti('');
@@ -86,7 +119,6 @@ export function RevocationView() {
     );
   }
 
-  const total = results.reduce((n, r) => n + (r.data?.entries.length ?? 0), 0);
   const ready = !!jti.trim() && !!iss.trim();
 
   return (
@@ -105,7 +137,7 @@ export function RevocationView() {
       >
         <Ban size={14} color={C.red} /> Revocations by issuer
         <span className="mono" style={{ fontSize: 11, color: C.textMuted, marginLeft: 'auto' }}>
-          {total}
+          {issuers.length} {issuers.length === 1 ? 'issuer' : 'issuers'}
         </span>
       </div>
 
@@ -153,7 +185,7 @@ export function RevocationView() {
             style={{ ...inputStyle, fontFamily: 'JetBrains Mono' }}
           />
           <datalist id="revocation-issuers">
-            {issuers.map((a) => (
+            {suggestions.map((a) => (
               <option key={a} value={a} />
             ))}
           </datalist>
@@ -259,17 +291,22 @@ export function RevocationView() {
         </div>
       )}
 
-      {tcts.isLoading ? (
+      {truncated && (
+        <div style={{ padding: '8px 18px', fontSize: 10, color: C.amber }}>
+          Showing the first {REVOCATION_ISSUERS_LIMIT} issuers with entries.
+        </div>
+      )}
+      {listing.isLoading ? (
         <div style={{ padding: 20 }}>
           <LoadingSkeleton rows={3} />
         </div>
       ) : issuers.length === 0 ? (
         <EmptyState
-          title={tcts.error ? "Couldn't load issuers" : 'No issuers yet'}
+          title={listing.error ? "Couldn't load issuers" : 'No revocations'}
           description={
-            tcts.error
+            listing.error
               ? 'Check Control Plane connection.'
-              : 'Issuers appear once the CP has recorded a TCT, or after you revoke against one.'
+              : 'No issuer has a revocation entry yet.'
           }
         />
       ) : (
@@ -277,6 +314,9 @@ export function RevocationView() {
           <IssuerGroup
             key={aid}
             aid={aid}
+            open={isOpen(aid)}
+            onToggle={() => toggle(aid)}
+            count={counts.get(aid)}
             data={results[i]?.data}
             isLoading={!!results[i]?.isLoading}
             error={!!results[i]?.error}
@@ -290,18 +330,26 @@ export function RevocationView() {
 
 function IssuerGroup({
   aid,
+  open,
+  onToggle,
+  count,
   data,
   isLoading,
   error,
   lastPull,
 }: {
   aid: string;
+  open: boolean;
+  onToggle: () => void;
+  /** From the CP's issuer listing; shown before the entries load. */
+  count: number | undefined;
   data: IssuerRevocations | undefined;
   isLoading: boolean;
   error: boolean;
   lastPull: number | undefined;
 }) {
   const entries = data?.entries ?? [];
+  const n = data ? entries.length : count;
   return (
     <section aria-label={`Issuer ${aid}`} style={{ borderBottom: `1px solid ${C.border}` }}>
       <div
@@ -314,10 +362,28 @@ function IssuerGroup({
           fontSize: 11,
         }}
       >
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          aria-label={`${open ? 'Hide' : 'Show'} entries for ${aid}`}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            color: C.textDim,
+            cursor: 'pointer',
+            display: 'flex',
+          }}
+        >
+          {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+        </button>
         <AidCell aid={aid} headLen={12} tailLen={6} />
-        <span style={{ color: C.textMuted }}>
-          {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
-        </span>
+        {n !== undefined && (
+          <span style={{ color: C.textMuted }}>
+            {n} {n === 1 ? 'entry' : 'entries'}
+          </span>
+        )}
         <span style={{ marginLeft: 'auto', color: lastPull ? C.textDim : C.amber }}>
           {lastPull ? (
             <>
@@ -328,7 +394,7 @@ function IssuerGroup({
           )}
         </span>
       </div>
-      {isLoading ? (
+      {!open ? null : isLoading ? (
         <div style={{ padding: '8px 14px', fontSize: 11, color: C.textMuted }}>Loading…</div>
       ) : error ? (
         <div style={{ padding: '8px 14px', fontSize: 11, color: C.amber }}>

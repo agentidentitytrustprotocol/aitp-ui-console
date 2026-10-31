@@ -237,6 +237,35 @@ describe('aitp SDK floor — Tier 1: wire-parse and version codes render amber',
     expect(isUnassessedRevocationCode(revocationCode!)).toBe(true);
   });
 
+  it('PINNED: PoP is checked before the outer signature (0.12.0-0.23.x: the reverse), so a manifest failing both is `pop_failed` and the badge claims nothing about the signature', () => {
+    const { AitpAgent } = require('aitp');
+    const { verifyManifestEnvelope } = require('@/lib/api/verify-manifest');
+    const { manifestVerdictBadge } = require('@/lib/verification-display');
+    const { C } = require('@/lib/colors');
+    const agent = AitpAgent.generate();
+    const tamper = (sig: string) => `${sig.slice(0, -4)}AAAA`;
+
+    const both = JSON.parse(agent.buildManifest(MANIFEST_OPTS));
+    both.manifest.signature = tamper(both.manifest.signature);
+    both.manifest.proof_of_possession.signature = tamper(
+      both.manifest.proof_of_possession.signature,
+    );
+    const verdict = verifyManifestEnvelope(JSON.stringify(both));
+    expect(verdict).toEqual({ checked: true, ok: false, code: 'pop_failed' });
+    const badge = manifestVerdictBadge(verdict);
+    expect(badge.color).toBe(C.red);
+    expect(badge.text).not.toContain('signature verified');
+
+    // A signature-only tamper still reaches the signature check.
+    const sigOnly = JSON.parse(agent.buildManifest(MANIFEST_OPTS));
+    sigOnly.manifest.signature = tamper(sigOnly.manifest.signature);
+    expect(verifyManifestEnvelope(JSON.stringify(sigOnly))).toEqual({
+      checked: true,
+      ok: false,
+      code: 'signature_invalid',
+    });
+  });
+
   it('INVARIANT: the imported symbol is callable, so the native addon actually loaded', () => {
     // The napi-rs v3 loader regeneration that rides along with this bump
     // resolves the addon by try/catch rather than `existsSync`. A resolution

@@ -3,6 +3,7 @@ import {
   isUnassessedManifestCode,
   isUnassessedRevocationCode,
   manifestPostSignatureDetail,
+  manifestPreSignatureRejectionDetail,
   manifestVerdictBadge,
 } from './verification-display';
 import type { Verdict } from './types/cp';
@@ -55,22 +56,22 @@ describe('manifestVerdictBadge', () => {
     expect(badge.text).not.toContain('VERIFICATION FAILED');
   });
 
-  // `verify_manifest` checks the outer signature (`verifier.rs:68`) strictly
-  // before PoP (`:101`) and the identity-hint shape (`:113`), so each of
-  // these codes is only constructible once the signature has already
-  // verified. The badge must say so -- and must still be red with a muted
-  // AID, because RFC-AITP-0003 §5 requires discarding a manifest that fails
-  // any step.
-  describe('post-signature codes — rejected, but the signature verified', () => {
-    it("code:pop_failed → red, muted AID, names the signature as verified and proof-of-possession as the failure", () => {
+  // From aitp 0.24.0 `verify_manifest` checks PoP (`verifier.rs:94`) before
+  // the outer signature (`:109`), and the identity-hint shape (`:119`) after
+  // it. So `pop_failed` says nothing about the signature, while
+  // `identity_hint_malformed` is only constructible once the signature has
+  // verified. Both stay red with a muted AID, because RFC-AITP-0003 §5
+  // requires discarding a manifest that fails any step.
+  describe('rejection codes — PoP before the signature, identity hint after it', () => {
+    it("code:pop_failed → red, muted AID, names proof-of-possession as the failure and the signature as not assessed", () => {
       const verdict: Verdict = { checked: true, ok: false, code: 'pop_failed' };
       const badge = manifestVerdictBadge(verdict);
       expect(badge.color).toBe(C.red);
       expect(badge.aidColor).toBe(C.textMuted);
       expect(badge.text).toBe(
-        '· REJECTED · signature verified · proof-of-possession failed (pop_failed)',
+        '· REJECTED · proof-of-possession failed · signature not assessed (pop_failed)',
       );
-      expect(badge.text).toContain('signature verified');
+      expect(badge.text).not.toContain('signature verified');
       expect(badge.text).toContain('proof-of-possession');
       expect(badge.text).toContain('pop_failed');
       expect(badge.text).not.toContain('SIGNATURE INVALID');
@@ -298,17 +299,41 @@ describe('unassessed-code predicates', () => {
     );
   });
 
-  // `manifestPostSignatureDetail` is the export other surfaces (playground's
-  // `manifest.verify_failed` run-timeline card) reuse instead of a second copy
-  // of `MANIFEST_POST_SIGNATURE_DETAIL`'s two-entry map.
+  // `manifestPostSignatureDetail` and `manifestPreSignatureRejectionDetail`
+  // are the exports other surfaces (playground's `manifest.verify_failed`
+  // run-timeline card) reuse instead of a second copy of each map.
+  it.each([['identity_hint_malformed', 'identity hint is malformed']])(
+    'manifestPostSignatureDetail(%s) → %s',
+    (code, detail) => {
+      expect(manifestPostSignatureDetail(code)).toBe(detail);
+    },
+  );
+
+  it.each([['pop_failed', 'proof-of-possession failed']])(
+    'manifestPreSignatureRejectionDetail(%s) → %s',
+    (code, detail) => {
+      expect(manifestPreSignatureRejectionDetail(code)).toBe(detail);
+    },
+  );
+
   it.each([
-    ['pop_failed', 'proof-of-possession failed'],
-    ['identity_hint_malformed', 'identity hint is malformed'],
-  ])('manifestPostSignatureDetail(%s) → %s', (code, detail) => {
-    expect(manifestPostSignatureDetail(code)).toBe(detail);
+    'version_unknown',
+    'malformed',
+    'unknown_field',
+    'signature_invalid',
+    'identity_hint_malformed',
+    'expired',
+    'aid_mismatch',
+    'a_code_this_console_has_never_seen',
+    '',
+    'toString',
+    '__proto__',
+  ])('manifestPreSignatureRejectionDetail(%p) → undefined', (code) => {
+    expect(manifestPreSignatureRejectionDetail(code)).toBeUndefined();
   });
 
   it.each([
+    'pop_failed',
     'version_unknown',
     'malformed',
     'unknown_field',
@@ -333,7 +358,14 @@ describe('unassessed-code predicates', () => {
 
   // The card and the badge must never disagree about which codes are
   // post-signature: same export, same result.
-  it.each(['pop_failed', 'identity_hint_malformed'])(
+  it('manifestVerdictBadge and manifestPreSignatureRejectionDetail agree for pop_failed', () => {
+    const badge = manifestVerdictBadge({ checked: true, ok: false, code: 'pop_failed' });
+    const detail = manifestPreSignatureRejectionDetail('pop_failed');
+    expect(detail).toBeDefined();
+    expect(badge.text).toContain(`${detail} · signature not assessed (pop_failed)`);
+  });
+
+  it.each(['identity_hint_malformed'])(
     'manifestVerdictBadge and manifestPostSignatureDetail agree for %s',
     (code) => {
       const badge = manifestVerdictBadge({ checked: true, ok: false, code });

@@ -1,4 +1,5 @@
 import { verifyManifestJson } from 'aitp';
+import { insecureLocalhostDangerous } from '../config';
 import type { Verdict } from '../types/cp';
 
 /**
@@ -12,11 +13,13 @@ import type { Verdict } from '../types/cp';
  * `verifyManifestJson` throws synchronously on any failure (not a rejected
  * promise) and sets `.code` to the SDK's stable error code
  * (`signature_invalid`, `expired`, `malformed`, etc.) — branch on that,
- * never on `.message`.
+ * never on `.message`. A `handshake_endpoint` that is not `https://` is
+ * `malformed`, unless the local-only opt-in admits it
+ * (`insecureLocalhostDangerous`).
  */
 export function verifyManifestEnvelope(rawText: string): Verdict {
   try {
-    verifyManifestJson(rawText);
+    verifyManifestJson(rawText, undefined, insecureLocalhostDangerous());
     return { checked: true, ok: true };
   } catch (err) {
     const code = (err as { code?: unknown } | null)?.code;

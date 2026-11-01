@@ -19,6 +19,19 @@ export function consoleAuthConfig(): {
   return { password, sessionSecret };
 }
 
+/** Whether manifest verification admits an `http://localhost` or
+ *  `http://127.0.0.1` `handshake_endpoint`, for a console reading a local CP.
+ *  Off unless `AITP_INSECURE_LOCALHOST_DANGEROUS=1`, and never on in a
+ *  production build (Vercel Production and Preview are both production
+ *  builds), whatever the environment says. The SDK refuses any other
+ *  plain-HTTP host even with this on. */
+export function insecureLocalhostDangerous(): boolean {
+  return (
+    process.env.NODE_ENV !== 'production' &&
+    process.env.AITP_INSECURE_LOCALHOST_DANGEROUS === '1'
+  );
+}
+
 export const clientConfig = {
   appName: 'AITP Console',
   version: '0.1.0',

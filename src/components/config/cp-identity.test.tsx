@@ -87,10 +87,10 @@ describe('CpIdentityCard manifest verdict', () => {
   });
 
   it('renders a post-signature rejection in red with the AID still muted, naming the signature as verified', async () => {
-    // `verify_manifest` reaches the identity-hint check only after the outer
-    // signature has already verified, so this badge must not read as a
-    // signature failure -- and the AID must stay muted anyway, because
-    // RFC-AITP-0003 §5 requires discarding a manifest that fails any step.
+    // Since aitp 0.25.0 the identity hint is checked before the outer
+    // signature, so this badge must claim nothing about the signature -- and
+    // the AID stays muted, because RFC-AITP-0003 §5 requires discarding a
+    // manifest that fails any step.
     wireApi(manifest({ checked: true, ok: false, code: 'identity_hint_malformed' }));
     renderWithClient(<CpIdentityCard />);
 
@@ -98,9 +98,10 @@ describe('CpIdentityCard manifest verdict', () => {
     expect(aid).toHaveStyle({ color: C.textMuted });
     expect(
       screen.getByText(
-        '· REJECTED · signature verified · identity hint is malformed (identity_hint_malformed)',
+        '· REJECTED · identity hint is malformed · signature not assessed (identity_hint_malformed)',
       ),
     ).toHaveStyle({ color: C.red });
+    expect(screen.queryByText(/signature verified/)).toBeNull();
   });
 
   it('renders pop_failed in red with the AID muted, without claiming the signature verified', async () => {
@@ -145,8 +146,8 @@ describe('CpIdentityCard manifest verdict', () => {
       { checked: true, ok: false, code: 'signature_invalid' },
       { checked: true, ok: false, code: 'version_unknown' },
       { checked: true, ok: false, code: 'malformed' },
-      // Rejections after a valid check (PoP, or the identity hint after the
-      // signature verified) are still not a licence to colour the AID.
+      // Rejections before the signature (PoP, identity hint) are not a
+      // licence to colour the AID either.
       { checked: true, ok: false, code: 'pop_failed' },
       { checked: true, ok: false, code: 'identity_hint_malformed' },
       { checked: false, reason: 'sdk_unavailable' },

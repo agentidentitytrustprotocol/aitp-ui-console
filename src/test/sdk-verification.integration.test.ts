@@ -77,7 +77,8 @@ describe('aitp SDK floor — Tier 1: wire-parse and version codes render amber',
   // `unknown_field`, a duplicate key is `malformed`. On `0.10.0`–`0.14.x` the
   // stray-member case was `malformed` instead (serde `deny_unknown_fields`;
   // the parser that types `UnknownField` had no caller under `bindings/`).
-  // Both run before the version check, so both are pre-signature.
+  // Both are pre-signature. From `0.25.0` an unknown `version` is reported
+  // ahead of a stray `manifest` member.
   //
   // The INVARIANT tests assert only "a string, landing in the amber bucket",
   // the same forward-compat discipline
@@ -266,6 +267,41 @@ describe('aitp SDK floor — Tier 1: wire-parse and version codes render amber',
     });
   });
 
+  it('PINNED: an unknown version is reported ahead of a stray manifest member (0.25.0; `unknown_field` before)', () => {
+    const { AitpAgent } = require('aitp');
+    const { verifyManifestEnvelope } = require('@/lib/api/verify-manifest');
+    const envelope = JSON.parse(AitpAgent.generate().buildManifest(MANIFEST_OPTS));
+    envelope.manifest.version = 'aitp/0.2';
+    envelope.manifest.bogus = true;
+    expect(verifyManifestEnvelope(JSON.stringify(envelope))).toEqual({
+      checked: true,
+      ok: false,
+      code: 'version_unknown',
+    });
+  });
+
+  it('PINNED: the identity hint is checked before the outer signature (before 0.25.0: after it), so the badge claims nothing about the signature', () => {
+    const { AitpAgent } = require('aitp');
+    const { verifyManifestEnvelope } = require('@/lib/api/verify-manifest');
+    const { manifestVerdictBadge } = require('@/lib/verification-display');
+    const { C } = require('@/lib/colors');
+    const envelope = JSON.parse(AitpAgent.generate().buildManifest(MANIFEST_OPTS));
+    delete envelope.manifest.identity_hint.public_key;
+    // Editing the hint already broke the signature, so `identity_hint_malformed`
+    // here can only mean the hint was checked first.
+    const verdict = verifyManifestEnvelope(JSON.stringify(envelope));
+    expect(verdict).toEqual({
+      checked: true,
+      ok: false,
+      code: 'identity_hint_malformed',
+    });
+    const badge = manifestVerdictBadge(verdict);
+    expect(badge.color).toBe(C.red);
+    expect(badge.aidColor).toBe(C.textMuted);
+    expect(badge.text).toContain('signature not assessed');
+    expect(badge.text).not.toContain('signature verified');
+  });
+
   it('INVARIANT: the imported symbol is callable, so the native addon actually loaded', () => {
     // The napi-rs v3 loader regeneration that rides along with this bump
     // resolves the addon by try/catch rather than `existsSync`. A resolution
@@ -289,6 +325,70 @@ describe('aitp SDK floor — Tier 1: wire-parse and version codes render amber',
       }),
     );
     expect(verdict).toEqual({ checked: true, ok: true });
+  });
+});
+
+describe('aitp SDK floor — handshake_endpoint must be https:// (RFC-AITP-0003 §5 step 2, 0.25.0)', () => {
+  const LOOPBACK = ['http://localhost:4000/handshake', 'http://127.0.0.1:4000/handshake'];
+  const OTHER_HTTP = [
+    'http://cp.example/handshake',
+    'http://localhost.example/handshake',
+    'http://[::1]:4000/handshake',
+    'http://0.0.0.0:4000/handshake',
+  ];
+  const REFUSED = { checked: true, ok: false, code: 'malformed' };
+
+  function verdictFor(handshakeEndpoint: string) {
+    const { AitpAgent } = require('aitp');
+    const { verifyManifestEnvelope } = require('@/lib/api/verify-manifest');
+    return verifyManifestEnvelope(
+      AitpAgent.generate().buildManifest({ ...MANIFEST_OPTS, handshakeEndpoint }),
+    );
+  }
+
+  afterEach(() => {
+    delete process.env.AITP_INSECURE_LOCALHOST_DANGEROUS;
+  });
+
+  it.each([...LOOPBACK, ...OTHER_HTTP])(
+    'the default refuses %s, and the badge reads amber, not verified',
+    (endpoint) => {
+      const { manifestVerdictBadge } = require('@/lib/verification-display');
+      const { C } = require('@/lib/colors');
+      const verdict = verdictFor(endpoint);
+      expect(verdict).toEqual(REFUSED);
+      const badge = manifestVerdictBadge(verdict);
+      expect(badge.color).toBe(C.amber);
+      expect(badge.aidColor).toBe(C.textMuted);
+      expect(badge.text).toContain('signature not assessed (malformed)');
+    },
+  );
+
+  it.each(LOOPBACK)('the explicit opt-in admits %s', (endpoint) => {
+    process.env.AITP_INSECURE_LOCALHOST_DANGEROUS = '1';
+    expect(verdictFor(endpoint)).toEqual({ checked: true, ok: true });
+  });
+
+  it.each(OTHER_HTTP)('the explicit opt-in still refuses %s', (endpoint) => {
+    process.env.AITP_INSECURE_LOCALHOST_DANGEROUS = '1';
+    expect(verdictFor(endpoint)).toEqual(REFUSED);
+  });
+
+  it.each(['true', 'yes', '0', ''])('only the literal 1 turns the opt-in on, not %p', (value) => {
+    process.env.AITP_INSECURE_LOCALHOST_DANGEROUS = value;
+    expect(verdictFor(LOOPBACK[0])).toEqual(REFUSED);
+  });
+
+  it('a production build ignores the opt-in', () => {
+    const env = process.env as Record<string, string | undefined>;
+    const nodeEnv = env.NODE_ENV;
+    env.AITP_INSECURE_LOCALHOST_DANGEROUS = '1';
+    env.NODE_ENV = 'production';
+    try {
+      expect(verdictFor(LOOPBACK[0])).toEqual(REFUSED);
+    } finally {
+      env.NODE_ENV = nodeEnv;
+    }
   });
 });
 

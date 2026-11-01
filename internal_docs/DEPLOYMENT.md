@@ -53,6 +53,7 @@ layer or the SSE hook. See [`TESTING.md`](./TESTING.md).
    | `PLAYGROUND_URL` | yes | Public HTTPS URL of the playground (no trailing slash). |
    | `PLAYGROUND_API_KEY` | if upstream enforces | Bearer token forwarded to the playground. |
    | `CP_URL` | yes | Public HTTPS URL of the control plane. |
+   | `AITP_INSECURE_LOCALHOST_DANGEROUS` | no | Never set this on a deployed environment. It is for a local stack only, and a production build ignores it. |
    | `CP_API_KEY` | if upstream enforces | Bearer token forwarded to the CP. |
    | `TRUSTED_ORIGINS` | optional | Comma-separated extra `Origin`s the mutation Origin check should allow. Only needed if the console is reachable on multiple hostnames (e.g. behind a CDN with a custom domain that differs from the Vercel one). |
 

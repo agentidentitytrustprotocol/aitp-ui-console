@@ -45,6 +45,13 @@
  * `verify_manifest` self-check rejects `aitp/0.2`, so the snippet below
  * cannot silently re-mint the old shape.
  *
+ * Re-minted 2026-11-01 with `aitp-verifier-py` @ `69da9ee` against the spec
+ * repo @ `9dfd62c`: `ACCEPTED_SIGNATURE_ALGORITHMS` carried `EdDSA` and
+ * `ES256`, which were never in `aitp-manifest.schema.json`'s enum (`ed25519`,
+ * `p256`), and `aitp` `0.25.0` enforces that grammar. It now carries the
+ * schema's values, with a new outer signature. The snippet below reproduces
+ * the other two byte for byte.
+ *
  * EXACT GENERATING SNIPPET (run from `aitp-verifier-py/`, with the spec repo
  * as a sibling; `python3.13 -` and paste, or save as a file):
  *
@@ -85,7 +92,7 @@
  *     for name, extra in (
  *         ("control", {}),
  *         ("accepted_signature_algorithms",
- *          {"accepted_signature_algorithms": ["EdDSA", "ES256"]}),
+ *          {"accepted_signature_algorithms": ["ed25519", "p256"]}),
  *         ("extensions_empty", {"extensions": {}}),
  *     ):
  *         minted = mint_input(manifest_input(**extra), REFERENCE_CLOCK, keys)
@@ -109,13 +116,15 @@
  * MEASURED BEHAVIOUR (this is the whole point of the phase; see
  * `sdk-verification.integration.test.ts` for the executable form):
  *
- *   fixture                        aitp 0.10.0 *               aitp 0.12.0 *  aitp 0.17.0
- *   -----------------------------  --------------------------  -------------  -----------
- *   CONTROL                        ok                          ok             ok
- *   ACCEPTED_SIGNATURE_ALGORITHMS  throws code 'malformed'     ok             ok
- *   EXTENSIONS_PRESENT_BUT_EMPTY   throws 'signature_invalid'  ok             ok
+ *   fixture                        aitp 0.10.0 *               aitp 0.12.0 *  aitp 0.17.0 *  aitp 0.25.1
+ *   -----------------------------  --------------------------  -------------  -------------  -----------
+ *   CONTROL                        ok                          ok             ok             ok
+ *   ACCEPTED_SIGNATURE_ALGORITHMS  throws code 'malformed'     ok             ok             ok
+ *   EXTENSIONS_PRESENT_BUT_EMPTY   throws 'signature_invalid'  ok             ok             ok
  *
- *   * historical: measured on the `aitp/0.2` mint. The current `aitp/0.3`
+ *   * historical: measured with `EdDSA` / `ES256` in
+ *     `ACCEPTED_SIGNATURE_ALGORITHMS`, and on the `aitp/0.2` mint for 0.10.0
+ *     and 0.12.0. The current `aitp/0.3`
  *     objects throw `version_unknown` on every SDK before 0.17.0, since
  *     version is checked first.
  *
@@ -187,7 +196,7 @@ export const CONTROL = {
  */
 export const ACCEPTED_SIGNATURE_ALGORITHMS = {
   manifest: {
-    accepted_signature_algorithms: ['EdDSA', 'ES256'],
+    accepted_signature_algorithms: ['ed25519', 'p256'],
     accepted_trust_anchors: [],
     aid: FIXTURE_AID,
     expires_at: 1711986400,
@@ -206,7 +215,7 @@ export const ACCEPTED_SIGNATURE_ALGORITHMS = {
     published_at: 1711900000,
     required_peer_capabilities: [],
     signature:
-      'uk4xeqg_ix2Bf82tRdmJLTXzT4oCZWPnDzTW73FPfg12xIe2BTj7qAFdXsx47YkrMnJPXRbsVDUUzbfTh41zAA',
+      '1q02d-1IrUtUmBN5vrtJSAboXryelOJUGae1N2Jhy61jONsWRMRTjXn-0xRFAN0_Y7Mn-VimH2_0hfPa-GNdCA',
     version: 'aitp/0.3',
   },
 } as const;

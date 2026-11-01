@@ -21,7 +21,6 @@ import { formatOffset, runOffsetMs, shortId } from '@/lib/utils';
 import {
   isUnassessedManifestCode,
   isUnassessedRevocationCode,
-  manifestPostSignatureDetail,
   manifestPreSignatureRejectionDetail,
 } from '@/lib/verification-display';
 import type { RunEvent } from '@/lib/types/playground';
@@ -302,13 +301,11 @@ export interface TrustVerdict {
  *   run-timeline surface — the very overclaim the CP badge was fixed to remove,
  *   reintroduced here by trusting the predicate's name too literally.
  *
- * `identity_hint_malformed`, the one code `verify_manifest` can only construct
- * *after* the outer signature has verified, gets the same post-signature
- * wording the CP badge uses, via `verification-display.ts`'s exported
- * `manifestPostSignatureDetail`. `pop_failed`, checked before the signature
- * since aitp `0.24.0`, gets the CP badge's "signature not assessed" rejection
- * wording via `manifestPreSignatureRejectionDetail`. Each map has exactly one
- * copy, shared by both surfaces.
+ * `pop_failed` and `identity_hint_malformed`, both checked before the signature
+ * since aitp `0.25.0`, get the CP badge's "signature not assessed" rejection
+ * wording via `verification-display.ts`'s exported
+ * `manifestPreSignatureRejectionDetail`. The map has exactly one copy, shared by
+ * both surfaces.
  */
 export function manifestVerifyFailedVerdict(cause?: string | null): TrustVerdict {
   if (cause === 'unknown') {
@@ -339,14 +336,6 @@ export function manifestVerifyFailedVerdict(cause?: string | null): TrustVerdict
         color: C.red,
         headline: 'MANIFEST REJECTED',
         text: `${preSignatureDetail} · signature not assessed (${cause})`,
-      };
-    }
-    const postSignatureDetail = manifestPostSignatureDetail(cause);
-    if (postSignatureDetail !== undefined) {
-      return {
-        color: C.red,
-        headline: 'MANIFEST REJECTED',
-        text: `signature verified · ${postSignatureDetail} (${cause})`,
       };
     }
     return {

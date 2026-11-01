@@ -404,6 +404,26 @@ describe('handshake banner — scope', () => {
   });
 });
 
+describe('host form — refused by the deployment', () => {
+  it("shows the playground's reason for a 400 and keeps the page up", async () => {
+    getMock.mockResolvedValue({ hosted: [] });
+    postMock.mockRejectedValue(
+      new ApiError('POST', '/api/playground/hosted-agents', 400, {
+        text: '{"detail":"hosted agents are not available on Railway"}',
+        truncated: false,
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithClient(<FederationView />);
+    await user.type(screen.getByLabelText('ref *'), 'federated/org-a@1.0.0');
+    await user.click(screen.getByRole('button', { name: 'Host agent' }));
+
+    await screen.findByText(/hosted agents are not available on Railway/);
+    expect(screen.getByRole('button', { name: 'Host agent' })).toBeEnabled();
+    expect(screen.getByLabelText('ref *')).toHaveValue('federated/org-a@1.0.0');
+  });
+});
+
 /**
  * Finalization-pass addition: the plan's own Phase 5 Approach section calls
  * this the "real payoff of doing Phases 3 and 5 in the same plan" — a 502

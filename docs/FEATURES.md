@@ -257,6 +257,7 @@ and what it can honestly tell you about the result.
 - **Invoke** — call a capability on an already-resolved peer directly
   (`peer_port`, `capability`, an optional JSON `payload`).
 - **Stop** — deregister a hosted agent.
+- **Not on Railway** — the playground refuses hosting there with a 400, and the form shows that reason (`hosted agents are not available on Railway`).
 
 ### Fail-closed refusals are a feature, not a fault
 

@@ -245,4 +245,6 @@ Plan decisions D-A..D-H are recorded in full in `plans/console-lockdown-wave3.md
 - **D-F** Client IP: on Vercel, `x-real-ip`, then the first `x-vercel-forwarded-for`, then the rightmost XFF. Off Vercel, only `CONSOLE_CLIENT_IP_HEADER`. An unknown IP shares one bucket; login allows 50/min for it. IPv6 is bucketed by /64.
 - **D-G** Upstream headers are built from scratch: playground gets `x-api-key` + `X-AITP-Client-IP`; CP gets Bearer + IP. Client auth and IP headers are never forwarded.
 - **D-H** The console calls the CP directly. Wave 4 must keep the CP's public domain.
+- **As built (P3):** on public routes operators are charged the per-IP `read`/`launch` buckets; admin-class routes charge nothing, since only operators reach them. An anonymous CP read with no read key is refused (503) before any bucket is charged. The edge also limits wrong Basic credentials to 10/min per IP (50/min for an unknown IP). A stream slot expires 305 s after it opens; that assumes the platform ends streams at the 300 s `maxDuration`, as Vercel does.
+- **Preview** holds no playground key from the Wave 3 rollout on (removed in P6). A preview runs any branch's code, and the production key spends the playground's LLM budget.
 - **Status:** CONFIRMED (2026-11-07), Opus. Reversible.

@@ -160,7 +160,9 @@ takes one of 4 concurrent stream slots per IP); `admin` routes still need an
 operator session (anonymous → 403 `CONSOLE_OPERATOR_SESSION_REQUIRED`). See
 [ARCHITECTURE.md § Access model](https://agentidentitytrustprotocol.io/console/architecture#access-model).
 
-**Read-key fallback.** For an operator, a read route falls back to
+**Read-key fallback.** With public mode on, an operator's read routes use
+`CP_API_KEY` directly, so operators never share the read key's budget with
+visitors. With it off, for an operator, a read route falls back to
 `CP_API_KEY`, retrying once, when `CP_READ_API_KEY` is unset, when the CP
 answers 401, or when it answers 403 with `{"code":"READ_ONLY_KEY"}`. Each
 fallback reason logs one `console.warn` line at most every 10 minutes. Any

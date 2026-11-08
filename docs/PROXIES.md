@@ -137,9 +137,37 @@ component → page → tests) lives in the repo's contributor docs:
 
 ## Auth
 
-`PLAYGROUND_API_KEY` and `CP_API_KEY` are added as `Authorization:
-Bearer <key>` when set. The browser never sees the values — they live
-only in the route-handler process.
+The route handlers build every upstream request's headers from scratch;
+nothing the browser sends (`Authorization`, `x-api-key`, `Cookie`,
+`X-AITP-Client-IP`) is forwarded. The keys never reach the browser — they
+live only in the route-handler process.
+
+| Upstream | Credential | When |
+| --- | --- | --- |
+| Playground | `x-api-key: <PLAYGROUND_API_KEY>` | every call, when set |
+| Control plane, keyless routes (`/api/health`, `/api/readyz`, the manifest) | none | always |
+| Control plane, read routes (registry, sessions, events, trust, revocation issuers, …) | `Authorization: Bearer <CP_READ_API_KEY>` | when set; otherwise `CP_API_KEY` |
+| Control plane, admin routes (audit, webhooks, metrics, every write) | `Authorization: Bearer <CP_API_KEY>` | always |
+
+Which class a route is in comes from the allowlist in
+`src/lib/server/allowlist.ts`; a path not in it is treated as admin.
+
+**Read-key fallback.** For an operator, a read route falls back to
+`CP_API_KEY`, retrying once, when `CP_READ_API_KEY` is unset, when the CP
+answers 401, or when it answers 403 with `{"code":"READ_ONLY_KEY"}`. Each
+fallback reason logs one `console.warn` line at most every 10 minutes. Any
+other 403 is relayed unchanged. An anonymous caller (only possible with
+`AITP_CONSOLE_PUBLIC_MODE=on`) never gets the admin key: an unset or rejected
+read key answers 503 `cp_read_key_unavailable`.
+
+**Client IP.** Every upstream call carries `X-AITP-Client-IP` when the
+console knows the caller's IP (on Vercel, from `x-real-ip`; elsewhere, from
+the header named by `CONSOLE_CLIENT_IP_HEADER`). When it doesn't, the
+header is omitted rather than guessed.
+
+**Error metadata.** A non-2xx upstream response is relayed with its status,
+body, `Content-Type` and `Retry-After`, including on the SSE routes, so a
+playground 429 reaches the browser intact.
 
 Leave both blank for local development; both services accept
 unauthenticated requests when their own `API_KEYS` are unset.

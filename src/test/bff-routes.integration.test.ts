@@ -172,7 +172,7 @@ beforeEach(() => {
 });
 
 describe('BFF route handlers against a mock upstream', () => {
-  it('GET /api/cp/health maps to /api/health and injects the CP bearer key', async () => {
+  it('GET /api/cp/health maps to /api/health and sends no CP key (keyless route)', async () => {
     const route: RouteModule = require('@/app/api/cp/health/route');
     const res = await route.GET!(makeRequest('http://localhost:3001/api/cp/health'));
 
@@ -181,7 +181,7 @@ describe('BFF route handlers against a mock upstream', () => {
 
     const seen = lastRequest();
     expect(seen.url).toBe('/api/health');
-    expect(seen.headers.authorization).toBe('Bearer test-cp-key');
+    expect(seen.headers.authorization).toBeUndefined();
   });
 
   it('forwards the query string untouched', async () => {
@@ -506,8 +506,9 @@ describe('BFF route handlers against a mock upstream', () => {
     );
 
     expect(res.status).toBe(503);
-    // Headers are still rewritten — the proxy never forwards upstream headers.
-    expect(res.headers.get('Content-Type')).toBe('text/event-stream');
+    // A non-2xx is an error, not a stream: the upstream Content-Type is
+    // relayed so the browser can read the JSON body.
+    expect(res.headers.get('Content-Type')).toBe('application/json');
   });
 });
 

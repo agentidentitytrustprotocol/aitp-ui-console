@@ -1,5 +1,8 @@
 import { NextRequest } from 'next/server';
 import { serverConfig } from '../config';
+import { matchRoute, type AllowEntry, type Method } from '../server/allowlist';
+import { UNKNOWN_IP, clientIp } from '../server/client-ip';
+import { isPublicMode } from '../server/public-mode';
 import type { Verdict } from '../types/cp';
 
 export type Service = 'playground' | 'cp';
@@ -9,21 +12,234 @@ export type Service = 'playground' | 'cp';
  *  would hang on dead/slow services. */
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+/** Fallback-to-admin log lines are throttled per reason, so a missing or
+ *  rotated read key can't flood the logs at request rate. */
+const FALLBACK_LOG_INTERVAL_MS = 10 * 60_000;
+
 function serviceBase(service: Service): string {
-  return service === 'playground' ? serverConfig.playgroundUrl : serverConfig.cpUrl;
+  return service === 'playground'
+    ? serverConfig.playgroundUrl
+    : serverConfig.cpUrl;
 }
 
-function serviceHeaders(service: Service): Record<string, string> {
-  const key = service === 'playground' ? serverConfig.playgroundApiKey : serverConfig.cpApiKey;
+/** Whether the caller is a signed-in operator. With the public-mode flag
+ *  off every request that reaches a route handler has passed the session
+ *  gate in `src/proxy.ts`, so this is `true`; Phase 3 replaces it with the
+ *  handler's own session check (`authorizeUpstream`). */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- Phase 3 reads it
+function callerIsOperator(_req: NextRequest): boolean {
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Upstream credentials and headers
+// ---------------------------------------------------------------------------
+
+/** Which CP credential a call uses (D-B in the lockdown plan):
+ *  - `none`: a keyless CP route (health, readyz, the public manifest);
+ *  - `admin`: `CP_API_KEY`;
+ *  - `read`: `CP_READ_API_KEY`, with `fallback` saying whether a 401 or a
+ *    `403 READ_ONLY_KEY` may be retried once with the admin key;
+ *  - `unavailable`: an anonymous read with no usable read key (503);
+ *  - `forbidden`: an anonymous caller on an admin-class route. Phase 3
+ *    refuses these before any fetch; this is the backstop that keeps the
+ *    admin key from ever being sent on an anonymous request. */
+type CpKeyPlan =
+  | { kind: 'none' }
+  | { kind: 'admin' }
+  | { kind: 'read'; fallback: boolean }
+  | { kind: 'unavailable' }
+  | { kind: 'forbidden' };
+
+const lastFallbackLog = new Map<string, number>();
+
+function logFallback(reason: string, now = Date.now()): void {
+  const last = lastFallbackLog.get(reason);
+  if (last !== undefined && now - last < FALLBACK_LOG_INTERVAL_MS) return;
+  lastFallbackLog.set(reason, now);
+  // Names the reason only; never a key, a key length or a header value.
+  console.warn(`[proxy] CP read key fallback to admin: ${reason}`);
+}
+
+/** Test hook: forget the fallback-log throttle. */
+export function resetFallbackLogThrottle(): void {
+  lastFallbackLog.clear();
+}
+
+function planCpKey(entry: AllowEntry | null, operator: boolean): CpKeyPlan {
+  // Anything unmatched is admin-class.
+  const cls = entry?.cpKey ?? 'admin';
+  if (cls === 'none') return { kind: 'none' };
+  if (cls === 'admin')
+    return operator ? { kind: 'admin' } : { kind: 'forbidden' };
+  const hasReadKey = serverConfig.cpReadApiKey !== '';
+  if (!operator) {
+    return hasReadKey
+      ? { kind: 'read', fallback: false }
+      : { kind: 'unavailable' };
+  }
+  // Operators in public mode use admin so they never share the read-key
+  // bucket (and the CP's SSE sub-cap) with anonymous visitors.
+  if (isPublicMode()) return { kind: 'admin' };
+  if (!hasReadKey) {
+    logFallback('read_key_unset');
+    return { kind: 'admin' };
+  }
+  return { kind: 'read', fallback: true };
+}
+
+/** Headers for one upstream call, always built from scratch: nothing the
+ *  browser sent (`authorization`, `x-api-key`, `x-aitp-client-ip`, cookies)
+ *  is ever forwarded. The client IP comes from platform-set headers only
+ *  (`src/lib/server/client-ip.ts`) and is omitted when unknown. */
+function upstreamHeaders(
+  service: Service,
+  key: string,
+  req: NextRequest,
+  accept?: string,
+): Record<string, string> {
   const h: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (key) h['Authorization'] = `Bearer ${key}`;
+  if (accept) h['Accept'] = accept;
+  if (key) {
+    if (service === 'playground') h['x-api-key'] = key;
+    else h['Authorization'] = `Bearer ${key}`;
+  }
+  const ip = clientIp(req.headers);
+  if (ip !== UNKNOWN_IP) h['X-AITP-Client-IP'] = ip;
   return h;
 }
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+async function discardBody(res: Response): Promise<void> {
+  try {
+    await res.body?.cancel();
+  } catch {
+    // Already consumed or errored: nothing left to release.
+  }
+}
+
+function isReadOnlyKeyError(text: string): boolean {
+  try {
+    const body = JSON.parse(text) as unknown;
+    return (
+      typeof body === 'object' &&
+      body !== null &&
+      (body as { code?: unknown }).code === 'READ_ONLY_KEY'
+    );
+  } catch {
+    return false;
+  }
+}
+
+const READ_KEY_UNAVAILABLE = {
+  error: 'Control-plane read access is not configured',
+  code: 'cp_read_key_unavailable',
+};
+
+export interface UpstreamInit {
+  body?: string;
+  accept?: string;
+  signal: AbortSignal;
+  operator: boolean;
+}
+
+/**
+ * One upstream fetch with the right credentials, including the CP read-key
+ * fallback. Every helper goes through here.
+ *
+ * - Playground: `x-api-key: PLAYGROUND_API_KEY` (never Bearer).
+ * - CP: the key class comes from the allowlist entry for the method and
+ *   pathname actually being fetched. A read with the read key retries once
+ *   with admin on 401 or `403 READ_ONLY_KEY`, for operators only; the first
+ *   body is cancelled before the retry. An anonymous read never gets admin:
+ *   no read key, or a 401 to it, is 503 `cp_read_key_unavailable`, and a
+ *   403 is relayed as is.
+ *
+ * Redirects are never followed (`redirect: 'manual'`): fetch drops
+ * `Authorization` on a cross-origin redirect but not `x-api-key`, and a
+ * followed redirect would also carry a key chosen for the original path to
+ * another one. A 3xx is relayed like any other non-2xx, without `Location`.
+ *
+ * Module-private on purpose: it does no access check of its own, so only
+ * the helpers below (which authorize first) may call it. Tests reach it
+ * through `__testing`.
+ *
+ * Resolves to the upstream response (or a synthesized one); rejects only
+ * when fetch itself rejects, which callers map to 502/504.
+ */
+async function upstreamFetch(
+  service: Service,
+  method: Method,
+  target: string,
+  req: NextRequest,
+  init: UpstreamInit,
+): Promise<Response> {
+  const send = (key: string) => {
+    const ri: RequestInit = {
+      method,
+      headers: upstreamHeaders(service, key, req, init.accept),
+      signal: init.signal,
+      cache: 'no-store',
+      redirect: 'manual',
+    };
+    if (init.body !== undefined) ri.body = init.body;
+    return fetch(target, ri);
+  };
+
+  if (service === 'playground') return send(serverConfig.playgroundApiKey);
+
+  const entry = matchRoute('cp', method, new URL(target).pathname);
+  const plan = planCpKey(entry, init.operator);
+  switch (plan.kind) {
+    case 'none':
+      return send('');
+    case 'admin':
+      return send(serverConfig.cpApiKey);
+    case 'unavailable':
+      return jsonResponse(503, READ_KEY_UNAVAILABLE);
+    case 'forbidden':
+      return jsonResponse(403, {
+        error: 'Operator session required',
+        code: 'CONSOLE_OPERATOR_SESSION_REQUIRED',
+      });
+  }
+
+  const first = await send(serverConfig.cpReadApiKey);
+  if (first.status === 401) {
+    await discardBody(first);
+    if (!plan.fallback) return jsonResponse(503, READ_KEY_UNAVAILABLE);
+    logFallback('read_key_rejected_401');
+    return send(serverConfig.cpApiKey);
+  }
+  if (first.status === 403) {
+    const text = await first.text();
+    if (plan.fallback && isReadOnlyKeyError(text)) {
+      // The console's read table and the CP's allowlist have drifted.
+      logFallback('read_only_key_403');
+      return send(serverConfig.cpApiKey);
+    }
+    return new Response(text, { status: 403, headers: errorHeaders(first) });
+  }
+  return first;
+}
+
+// ---------------------------------------------------------------------------
+// Response shaping
+// ---------------------------------------------------------------------------
 
 /** Combine the request's abort signal with a timeout signal so an idle
  *  upstream can't pin a route handler forever. Returns the merged signal
  *  plus a cleanup that clears the timeout when the fetch settles. */
-function withTimeout(req: NextRequest, ms = DEFAULT_TIMEOUT_MS): {
+function withTimeout(
+  req: NextRequest,
+  ms = DEFAULT_TIMEOUT_MS,
+): {
   signal: AbortSignal;
   cancel: () => void;
   isTimeout: () => boolean;
@@ -35,11 +251,12 @@ function withTimeout(req: NextRequest, ms = DEFAULT_TIMEOUT_MS): {
     timeoutCtrl.abort();
   }, ms);
   const signal =
-    typeof (AbortSignal as unknown as { any?: (s: AbortSignal[]) => AbortSignal }).any === 'function'
-      ? (AbortSignal as unknown as { any: (s: AbortSignal[]) => AbortSignal }).any([
-          req.signal,
-          timeoutCtrl.signal,
-        ])
+    typeof (
+      AbortSignal as unknown as { any?: (s: AbortSignal[]) => AbortSignal }
+    ).any === 'function'
+      ? (
+          AbortSignal as unknown as { any: (s: AbortSignal[]) => AbortSignal }
+        ).any([req.signal, timeoutCtrl.signal])
       : timeoutCtrl.signal;
   return {
     signal,
@@ -52,6 +269,18 @@ function emptyBodyStatus(status: number): boolean {
   // Per the fetch spec, these statuses MUST have a null body — passing a
   // string (even '') to `new Response(...)` throws a TypeError.
   return status === 204 || status === 205 || status === 304;
+}
+
+/** Response headers for a non-2xx upstream: its own `Content-Type` (so a
+ *  JSON error stays JSON) and its `Retry-After` (so a 429 or 503 tells the
+ *  browser when to come back). Nothing else is relayed. */
+function errorHeaders(res: Response): Record<string, string> {
+  const h: Record<string, string> = {
+    'Content-Type': res.headers.get('Content-Type') ?? 'application/json',
+  };
+  const retryAfter = res.headers.get('Retry-After');
+  if (retryAfter) h['Retry-After'] = retryAfter;
+  return h;
 }
 
 function makeError(status: number, message: string, target: string): Response {
@@ -73,7 +302,7 @@ function logUpstreamError(method: string, target: string, err: unknown): void {
 }
 
 async function runProxy(
-  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  method: Method,
   target: string,
   service: Service,
   req: NextRequest,
@@ -81,23 +310,23 @@ async function runProxy(
 ): Promise<Response> {
   const t = withTimeout(req);
   try {
-    const init: RequestInit = {
-      method,
-      headers: serviceHeaders(service),
+    const res = await upstreamFetch(service, method, target, req, {
+      body,
       signal: t.signal,
-      cache: 'no-store',
-    };
-    if (body !== undefined) init.body = body;
-    const res = await fetch(target, init);
+      operator: callerIsOperator(req),
+    });
     const data = await res.text();
+    const headers = res.ok
+      ? {
+          'Content-Type':
+            method === 'GET'
+              ? (res.headers.get('Content-Type') ?? 'application/json')
+              : 'application/json',
+        }
+      : errorHeaders(res);
     return new Response(emptyBodyStatus(res.status) ? null : data, {
       status: res.status,
-      headers: {
-        'Content-Type':
-          method === 'GET'
-            ? res.headers.get('Content-Type') ?? 'application/json'
-            : 'application/json',
-      },
+      headers,
     });
   } catch (err) {
     if (t.isTimeout()) {
@@ -150,12 +379,11 @@ function spliceVerification(rawText: string, verdict: Verdict): string {
  * unreachable upstream is a connectivity problem, not a signature problem,
  * and is proxied through exactly like `proxyGet` would.
  *
- * `verify` may be async and may accept the merged abort/timeout signal —
- * some verifiers need a *second* upstream fetch to resolve what to check
- * against (e.g. Phase 4's Tier 1, which fetches the CP manifest to learn
- * the expected issuer before it can verify a revocation snapshot). That
- * second fetch must share this call's timeout budget, not open its own —
- * see `fetchUpstreamText`.
+ * `verify` may be async and receives the merged abort/timeout signal, so
+ * any work it awaits is cancelled with the request and can't run past this
+ * call's timeout budget. It gets no way to fetch upstream itself: every
+ * upstream call goes through a helper that picks its credentials (and, in
+ * public mode, authorizes it) from the route being fetched.
  */
 export async function proxyGetVerified(
   service: Service,
@@ -167,17 +395,15 @@ export async function proxyGetVerified(
   const target = `${serviceBase(service)}${path}${url.search}`;
   const t = withTimeout(req);
   try {
-    const res = await fetch(target, {
-      method: 'GET',
-      headers: serviceHeaders(service),
+    const res = await upstreamFetch(service, 'GET', target, req, {
       signal: t.signal,
-      cache: 'no-store',
+      operator: callerIsOperator(req),
     });
     const text = await res.text();
     if (!res.ok) {
       return new Response(emptyBodyStatus(res.status) ? null : text, {
         status: res.status,
-        headers: { 'Content-Type': res.headers.get('Content-Type') ?? 'application/json' },
+        headers: errorHeaders(res),
       });
     }
     const verdict = await verify(text, t.signal);
@@ -195,27 +421,6 @@ export async function proxyGetVerified(
   } finally {
     t.cancel();
   }
-}
-
-/**
- * A raw upstream GET, sharing an already-merged abort/timeout signal
- * rather than opening a new timeout budget. For a `proxyGetVerified`
- * verify function that needs a *second* upstream resource to do its job —
- * that fetch must not extend the route past the caller's own timeout.
- */
-export async function fetchUpstreamText(
-  service: Service,
-  path: string,
-  signal: AbortSignal,
-): Promise<{ status: number; text: string }> {
-  const target = `${serviceBase(service)}${path}`;
-  const res = await fetch(target, {
-    method: 'GET',
-    headers: serviceHeaders(service),
-    signal,
-    cache: 'no-store',
-  });
-  return { status: res.status, text: await res.text() };
 }
 
 export async function proxyPost(
@@ -257,7 +462,11 @@ export async function proxyDelete(
   return runProxy('DELETE', target, service, req);
 }
 
-/** SSE proxy — streams the upstream SSE response body to the browser. */
+/** SSE proxy — streams the upstream SSE response body to the browser.
+ *  The read-key fallback runs before streaming starts (the status is known
+ *  before the body is read). A non-2xx upstream is relayed as an ordinary
+ *  response with its own Content-Type and Retry-After, not as an event
+ *  stream, so the browser's probe can read the error and back off. */
 export async function proxySse(
   service: Service,
   path: string,
@@ -266,11 +475,18 @@ export async function proxySse(
   const url = new URL(req.url);
   const target = `${serviceBase(service)}${path}${url.search}`;
   try {
-    const upstream = await fetch(target, {
-      headers: { ...serviceHeaders(service), Accept: 'text/event-stream' },
+    const upstream = await upstreamFetch(service, 'GET', target, req, {
+      accept: 'text/event-stream',
       signal: req.signal,
-      cache: 'no-store',
+      operator: callerIsOperator(req),
     });
+    if (!upstream.ok) {
+      const text = await upstream.text();
+      return new Response(emptyBodyStatus(upstream.status) ? null : text, {
+        status: upstream.status,
+        headers: errorHeaders(upstream),
+      });
+    }
     return new Response(upstream.body, {
       status: upstream.status,
       headers: {
@@ -285,3 +501,7 @@ export async function proxySse(
     return makeError(502, 'Upstream unreachable', target);
   }
 }
+
+/** Test-only access to module internals. Not for application code: a
+ *  route calling these would bypass the access check. */
+export const __testing = { upstreamFetch };

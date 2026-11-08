@@ -32,3 +32,9 @@ Risk tiers: P1, P2 and P3 complex (foundation, upstream boundary, trust boundary
 - 2026-11-07 P1 server primitives: PASS after 2 rounds (Opus; complex, a foundation that P2 and P3 build on).
   - Round 1 found GAPS: G1, an unflagged repo-wide prettier reformat, reverted; G2, the login limiter did not bucket IPv6 by /64, fixed with `rateLimitKey`; G3, the coverage test could not see route-path drift, fixed by deriving each path from the route source and requiring it to match the same entry. Nits fixed: limiter dedupes repeated checks; eviction comment; the login test restores `VERCEL`.
   - Files: `src/lib/server/{public-mode,client-ip,limits,allowlist}.ts` + tests, `src/lib/auth/rate-limit.ts` (+test), `src/app/login/route.ts` (+test). Next: P2.
+- 2026-11-07 P2 backend credentials + client IP: PASS after 2 rounds (Opus; complex, the upstream boundary and key custody).
+  - Round 1 found GAPS: G1, fetch followed redirects, so `x-api-key` could reach another host; fixed with `redirect: 'manual'`. G2, no tests for the 401 body cancel or the log-throttle re-arm; added. G3, no test for the scenario-ref encoding; added a route test. G4, `upstreamFetch` was exported and the 403 relay copied every upstream header; it is now module-private (`__testing`), and the relay uses `errorHeaders`.
+  - Formatting: three touched files (`bff-routes.integration.test.ts`, `docs/PROXIES.md`, `internal_docs/DEPLOYMENT.md`) were already not prettier-clean at HEAD and stay in their existing style. Rule: format files that are new or were clean at HEAD.
+  - Files: `src/lib/api/proxy.ts` (+test), `src/lib/config.ts`, `src/app/api/playground/scenario-templates/route.ts` (+new test), `src/test/bff-routes.integration.test.ts`, `docs/PROXIES.md`, `internal_docs/DEPLOYMENT.md`.
+  - Carry into P3: the no-direct-fetch test must also forbid importing `__testing` (or anything other than the `proxy*` helpers) from `@/lib/api/proxy` outside tests. Next: P3.
+

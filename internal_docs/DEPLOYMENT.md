@@ -81,10 +81,11 @@ layer or the SSE hook. See [`TESTING.md`](./TESTING.md).
    | `CONSOLE_PASSWORD` | yes | Operator password (24+ random chars). Unset → 503 on every route. |
    | `CONSOLE_SESSION_SECRET` | yes | HMAC key for the session cookie (`openssl rand -hex 32`). Unset → 503 on every route. Rotating it signs everyone out. |
    | `PLAYGROUND_URL` | yes | Public HTTPS URL of the playground (no trailing slash). |
-   | `PLAYGROUND_API_KEY` | if upstream enforces | Bearer token forwarded to the playground. |
+   | `PLAYGROUND_API_KEY` | if upstream enforces | Sent to the playground as `x-api-key` on every call. |
    | `CP_URL` | yes | Public HTTPS URL of the control plane. |
    | `AITP_INSECURE_LOCALHOST_DANGEROUS` | no | Never set this on a deployed environment. It is for a local stack only, and a production build ignores it. |
-   | `CP_API_KEY` | if upstream enforces | Bearer token forwarded to the CP. |
+   | `CP_API_KEY` | if upstream enforces | The CP admin-equivalent key, sent as `Authorization: Bearer` on admin routes (audit, webhooks, metrics, writes) and as the read-route fallback. |
+   | `CP_READ_API_KEY` | recommended | The CP read-only key (`aitp-control-plane/prd CP_API_KEY_CONSOLE_RO`), used on read routes. Unset → read routes fall back to `CP_API_KEY`. |
    | `TRUSTED_ORIGINS` | optional | Comma-separated extra `Origin`s the mutation Origin check should allow. Only needed if the console is reachable on multiple hostnames (e.g. behind a CDN with a custom domain that differs from the Vercel one). |
 
    None of these are referenced at build time. Without the two

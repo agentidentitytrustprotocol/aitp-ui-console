@@ -184,7 +184,7 @@ Nothing secret is printed. Evidence goes to
 | --- | --- | --- |
 | vercel | production deployment == latest `main` commit's Vercel deployment | `scripts/live/check-vercel-main.sh` |
 | security | anonymous session is `publicMode`; every admin route (24) answers 403 `CONSOLE_OPERATOR_SESSION_REQUIRED` signed out; an operator reaches them; no needle on the wire (URL, headers, bodies) or in any `/_next/static` chunk | `e2e/live/security.live.spec.ts` |
-| read | a read flood gets a console 429 `CONSOLE_RATE_LIMITED` + `Retry-After` near request 300 | `e2e/live/read-limit.live.spec.ts` |
+| read | a read flood (4 concurrent) gets a console 429 `CONSOLE_RATE_LIMITED` + `Retry-After`; the bucket is per Vercel instance, so it can take more than 300 reads (seen: 716) | `e2e/live/read-limit.live.spec.ts` |
 | raise | playground per-IP LLM quota → 400/1000 so the matrix runs on the real LLM | `scripts/live/quota-window.sh raise` |
 | matrix | every scenario from `GET /api/playground/scenarios`, launched through the UI, signed out and signed in; terminal status, LLM checks and a complete event replay | `e2e/live/matrix.live.spec.ts` |
 | low / quota | quota → 1/1000; an LLM run falls back to mock and the run page shows the quota badge | `quota-window.sh low`, `e2e/live/quota.live.spec.ts` |

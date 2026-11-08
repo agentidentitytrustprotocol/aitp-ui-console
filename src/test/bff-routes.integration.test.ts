@@ -541,8 +541,9 @@ describe('BFF error mapping when the upstream is unreachable', () => {
     const body = await res.json();
     expect(body).toEqual({
       error: 'Upstream unreachable',
-      target: `${dead}/runs`,
+      target: '/runs',
       upstream_status: 502,
     });
+    expect(JSON.stringify(body)).not.toContain(dead);
   });
 });

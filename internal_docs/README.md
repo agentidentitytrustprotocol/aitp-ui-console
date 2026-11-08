@@ -11,6 +11,9 @@ here stays in the repository for people working *on* the console.
   their env gates, what each covers, and how CI runs them.
 - [`DEPLOYMENT.md`](./DEPLOYMENT.md) — deploying the console to Vercel
   (env vars, SSE plan sizing, runtime/routing notes) and the CI pipeline.
+- [`RAILWAY-DOMAINS.md`](./RAILWAY-DOMAINS.md) — what breaks if the
+  upstreams' public Railway domains are removed, with the recorded domain
+  config and the re-add recipe (read-only analysis; nothing changed).
 
 User-facing docs that **do** publish (to
 <https://agentidentitytrustprotocol.io/console>) live in

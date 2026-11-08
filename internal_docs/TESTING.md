@@ -158,6 +158,68 @@ does the same for `RUN_LLM_INTEGRATION`. This means you can wire the
 suite into CI unconditionally — without the gate vars, every test
 skips and exits 0.
 
+## Live public-console suite (`npm run test:live`)
+
+A Playwright suite that drives the **production** console (public mode) end
+to end: real Railway backends, real LLM, real money. It is local-only.
+`playwright.live.config.ts` throws unless `AITP_LIVE=1`, and both it and
+`scripts/live/*.sh` refuse when `CI` is set. CI never collects or runs it
+(jest only matches `src/**` and `e2e/**/*.test.ts`, the pure helpers).
+
+```bash
+npm run test:live                              # full run (order below)
+scripts/live/run-live.sh --steps security,read # a subset
+scripts/live/run-live.sh --quota-after 00:05   # lower the quota only after 00:05 UTC
+```
+
+`run-live.sh` re-execs under `doppler run --project aitp-ui-console --config prd`.
+It turns the backend URLs and keys into *leak needles*: the test process
+gets them as one env var, and they are unset from everything else. The
+operator password stays in the environment for the signed-in projects.
+Nothing secret is printed. Evidence goes to
+`e2e/live/.evidence/<stamp>/` (gitignored, redacted to labels):
+`summary.tsv`, `evidence.jsonl`, `report.json`, `quota-badge.png`.
+
+| Step | What it proves | Spec / script |
+| --- | --- | --- |
+| vercel | production deployment == latest `main` commit's Vercel deployment | `scripts/live/check-vercel-main.sh` |
+| security | anonymous session is `publicMode`; every admin route (24) answers 403 `CONSOLE_OPERATOR_SESSION_REQUIRED` signed out; an operator reaches them; no needle on the wire (URL, headers, bodies) or in any `/_next/static` chunk | `e2e/live/security.live.spec.ts` |
+| read | a read flood (4 concurrent) gets a console 429 `CONSOLE_RATE_LIMITED` + `Retry-After`; the bucket is per Vercel instance, so it can take more than 300 reads (seen: 716) | `e2e/live/read-limit.live.spec.ts` |
+| raise | playground per-IP LLM quota → 400/1000 so the matrix runs on the real LLM | `scripts/live/quota-window.sh raise` |
+| matrix | every scenario from `GET /api/playground/scenarios`, launched through the UI, signed out and signed in; terminal status, LLM checks and a complete event replay | `e2e/live/matrix.live.spec.ts` |
+| low / quota | quota → 1/1000; an LLM run falls back to mock and the run page shows the quota badge | `quota-window.sh low`, `e2e/live/quota.live.spec.ts` |
+| restore | quota → 30/300; the managed hash must equal the start hash (an `EXIT` trap restores on any exit) | `quota-window.sh restore` |
+| launch | back-to-back launches get a console 429 + `Retry-After` within the 5/10 min budget | `e2e/live/launch-limit.live.spec.ts` |
+
+**Cost guard.** Every paid launch goes through `launchGuard` (`e2e/live/support/budget.ts`):
+it paces launches `AITP_LIVE_PACE_SECONDS` apart (default 180) and stops at
+`AITP_LIVE_MAX_LAUNCHES` (default 80) per run. The state is persisted so the
+cap holds across projects. Use `AITP_LIVE_REFS=a@1,b@1` to limit the matrix.
+
+**Classification.** A 429 from the playground (`run_rate_limited`,
+`max_concurrent_runs`) or from the shared egress IP is *environmental*. It
+gets one retry after `Retry-After`. A failure on retry is *flaky* if the
+first attempt passed elsewhere, otherwise *real*.
+
+**Quota window.** Only this repo may change the playground quota. The source
+of truth is Doppler `aitp-playground/prd`. The playground's own
+`deploy/doppler-sync.sh` (run from a throwaway `git archive` of its
+`origin/main`) pushes it to Railway and redeploys. `preflight` refuses unless
+Railway == Doppler == the baseline hash. The quota is lowered after the UTC
+daily reset (`--quota-after`), so restoring it does not leave the shared IP
+over its daily count.
+
+**By-design exposure (exempt, nothing else is).** `byDesign()` in
+`e2e/live/support/leaks.ts` exempts exactly two things:
+
+- the Google Fonts hosts that `globals.css` imports;
+- the CP's public `handshake_endpoint` inside a *signed* AITP manifest body
+  (`/api/cp/well-known/aitp-manifest`, `/api/cp/registry/agents/*/manifest`).
+  The console relays it unchanged because rewriting it would break the
+  signature (see RAILWAY-DOMAINS.md).
+
+A key needle is never exempt.
+
 ## CI
 
 What `.github/workflows/ci.yml` actually runs today (see

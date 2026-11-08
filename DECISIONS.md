@@ -248,3 +248,11 @@ Plan decisions D-A..D-H are recorded in full in `plans/console-lockdown-wave3.md
 - **As built (P3):** on public routes operators are charged the per-IP `read`/`launch` buckets; admin-class routes charge nothing, since only operators reach them. An anonymous CP read with no read key is refused (503) before any bucket is charged. The edge also limits wrong Basic credentials to 10/min per IP (50/min for an unknown IP). A stream slot expires 305 s after it opens; that assumes the platform ends streams at the 300 s `maxDuration`, as Vercel does.
 - **Preview** holds no playground key from the Wave 3 rollout on (removed in P6). A preview runs any branch's code, and the production key spends the playground's LLM budget.
 - **Status:** CONFIRMED (2026-11-07), Opus. Reversible.
+
+## console-final-check-wave7 (aitp-hardening wave 7), 2026-11-08
+
+- **Live suite is Playwright, local-only.** It runs only through `scripts/live/run-live.sh` (Doppler-loaded, `AITP_LIVE=1`), and both the config and the scripts refuse under `CI`. Pure helpers are jest-tested in CI; the browser specs never run there.
+- **Quota raise for the matrix.** The playground's per-IP LLM quota (30/day) can't cover ~44 real-LLM runs from one IP, so the run raises it to 400/1000 for the matrix. The same mechanism then lowers it to 1/1000 for the badge test, and an `EXIT` trap restores 30/300, confirmed by managed hash `2bee7fda6781ed36`. The raise also gives the four other units sharing the IP headroom while the run is on.
+- **Lower after the UTC reset.** `--quota-after 00:05` lowers and restores the quota just after the daily counter resets. That keeps the shared IP from sitting over 30/day for hours after the restore.
+- **By-design exposure.** The Google Fonts hosts and the CP `handshake_endpoint` inside signed manifests are exempt from the leak check (`byDesign` in `e2e/live/support/leaks.ts`); keys are never exempt.
+- **Status:** CONFIRMED (2026-11-08), Opus. Reversible (test tooling plus a temporary prod config change that is restored).

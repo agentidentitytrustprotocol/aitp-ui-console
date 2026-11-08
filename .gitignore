@@ -17,3 +17,8 @@ plans/
 temp/
 CLAUDE.md
 .vercel
+
+# Live public-console suite (scripts/live/run-live.sh): evidence and Playwright output, never committed
+/e2e/live/.evidence/
+/test-results/
+/playwright-report/

@@ -34,7 +34,7 @@ const ADMIN_MUTATIONS: [method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: strin
   ['PATCH', '/api/cp/trust-anchors/t-live-check'],
   ['DELETE', '/api/cp/trust-anchors/t-live-check'],
   ['POST', '/api/cp/webhooks'],
-  ['PUT', '/api/cp/webhooks/w-live-check'], // route exports PUT; unmatched in the allowlist => admin (fails closed)
+  ['PUT', '/api/cp/webhooks/w-live-check'], // route exports PUT and forwards PATCH upstream; matched by the admin `cp PATCH /api/webhooks/:id` entry
   ['DELETE', '/api/cp/webhooks/w-live-check'],
   ['POST', '/api/cp/webhooks/w-live-check/circuit-breaker'],
   ['POST', '/api/cp/webhooks/w-live-check/circuit-breaker/reset'],

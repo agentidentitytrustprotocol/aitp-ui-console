@@ -115,6 +115,21 @@ describe('route coverage', () => {
     }
   });
 
+  it('every allowlist entry is reached by an exported route handler (no dead entries)', () => {
+    // Reverse of the per-handler check above: a handler's (service, helper
+    // method, sample path) must land on each entry, so an entry naming a
+    // method or path no handler sends fails CI instead of lingering.
+    const reached = new Set(
+      all
+        .map((h) => matchRoute(h.service, h.method, SAMPLE_PATH[h.route]))
+        .filter((e) => e !== null),
+    );
+    const dead = ALLOWLIST.filter((e) => !reached.has(e)).map(
+      (e) => `${e.service} ${e.method} ${e.template}`,
+    );
+    expect(dead).toEqual([]);
+  });
+
   it('keys on the helper method, not the export name (webhooks/[id] PUT sends PATCH)', () => {
     const h = all.find(
       (x) => x.route === 'cp/webhooks/[id]' && x.exportName === 'PUT',

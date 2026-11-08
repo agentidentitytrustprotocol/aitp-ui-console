@@ -256,3 +256,10 @@ Plan decisions D-A..D-H are recorded in full in `plans/console-lockdown-wave3.md
 - **Lower after the UTC reset.** `--quota-after 00:05` lowers and restores the quota just after the daily counter resets. That keeps the shared IP from sitting over 30/day for hours after the restore.
 - **By-design exposure.** The Google Fonts hosts and the CP `handshake_endpoint` inside signed manifests are exempt from the leak check (`byDesign` in `e2e/live/support/leaks.ts`); keys are never exempt.
 - **Status:** CONFIRMED (2026-11-08), Opus. Reversible (test tooling plus a temporary prod config change that is restored).
+
+## allowlist-reverse-coverage (aitp-hardening wave 9), 2026-11-08
+
+- **The `cp PATCH /api/webhooks/:id` entry is live; it stays.** Wave 7 deferred it as dead because the route exports PUT. But the allowlist keys on the method the proxy helper sends upstream (D-C), and the PUT handler forwards via `proxyPatch`, which is what the CP serves (`aitp-control-plane/docs/api.md` § webhooks). An anonymous PUT is refused by this matched admin entry, not by falling through. Renaming it to PUT would leave the real upstream call unmatched (5 existing tests fail). Added a comment at the entry; corrected the matching comment in `e2e/live/security.live.spec.ts`.
+- **New CI check: every allowlist entry must be reached by some exported handler** (`allowlist.test.ts`, "no dead entries"), the reverse of the existing handler→entry check. Mutation-checked: an extra `cp PUT /api/webhooks/:id` entry fails it.
+- **Not done:** renaming the console export from PUT to PATCH so the browser method matches the upstream one. No UI calls it, but it would change the BFF contract; it can be done separately if wanted.
+- **Status:** CONFIRMED (2026-11-08), Opus. Reversible.

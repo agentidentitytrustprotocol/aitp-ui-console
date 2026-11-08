@@ -1,0 +1,30 @@
+# Keys deploy/doppler-sync.sh pushes from Doppler (aitp-ui-console/prd) into
+# the Vercel project zer07labs/aitp-ui-console, Production environment.
+# Doppler owns exactly these; the script never touches any other Vercel
+# variable, never removes one, and leaves Preview and Development alone.
+#
+# One key per line. "KEY sensitive" creates the key as a Vercel sensitive
+# (write-only) variable when it is new. Most keys that existed before the
+# Doppler migration are sensitive Production-only entries (Preview has its
+# own, smaller set: internal_docs/DEPLOYMENT.md), so the sync reports them as
+# sensitive-unverifiable and leaves them alone unless named with --push.
+# Doppler holds the same values, checked by behaviour against production at
+# migration time (2026-11-07).
+#
+# Left out on purpose: TRUSTED_ORIGINS (unset in production; the console's
+# own origin is always allowed) and AITP_INSECURE_LOCALHOST_DANGEROUS (local
+# stacks only; a production build ignores it).
+
+# config (read at request time, not build time)
+CP_URL sensitive
+PLAYGROUND_URL sensitive
+
+# secret
+CONSOLE_PASSWORD sensitive
+CONSOLE_SESSION_SECRET sensitive
+# The control plane's console-labelled API_KEYS entry (piped from
+# aitp-control-plane/prd CP_API_KEY_CONSOLE). An admin-equivalent key: never on Preview.
+CP_API_KEY sensitive
+# The playground's shared key (equal to aitp-playground/prd PLAYGROUND_API_KEY).
+# Stored as a readable (encrypted) entry, so the sync compares it.
+PLAYGROUND_API_KEY

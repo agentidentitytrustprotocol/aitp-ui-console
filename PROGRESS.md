@@ -734,3 +734,12 @@ re-resolved with the `//aitp` recipe: all four platform packages are at `0.19.0`
   runs on the `aitp-released` dispatch (aitp-rs#288), on a weekly schedule, or by hand. CI now
   runs `scripts/check-aitp-lock.mjs`. Dependabot ignores the SDK and `@types/node` majors (#64
   closed; the runtime is Node 22).
+
+## 2026-11-07 — aitp-hardening wave 0: Doppler for Vercel (branch `chore/doppler-vercel`)
+
+- [x] Doppler `aitp-ui-console` finished (prd 6 keys, stg 2, dev 2) and hash-checked against Vercel and Railway.
+- [x] Production verified by behaviour (sign-in, cookie HMAC, health parity, CP key 200/401).
+- [x] Vercel Preview split: URLs Preview-only, password, session secret and CP key removed from Preview.
+- [x] `deploy/doppler-sync.sh` + `deploy/doppler-keys.txt`; docs, DECISIONS.
+- [x] One-time CI-cost pass: measured, record-only (DECISIONS, internal_docs/DEPLOYMENT.md § CI cost).
+- [ ] PR, CI, merge; post-merge prod deploy re-verified by behaviour.

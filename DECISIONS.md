@@ -223,7 +223,11 @@ edit from a sibling reconcile task) without acting on either, correctly respecti
   `PLAYGROUND_API_KEY`, which is not an admin key. This matches acdp-ui-console #201
   and its Preview follow-up.
 - **`deploy/doppler-sync.sh`** is a port of acdp-ui-console's script (#201, as it stands on that
-  repo's main), with only the project ids changed.
+  repo's main). Besides the project ids, one thing changed: writes go through the Vercel
+  REST API instead of `vercel env add/update`. CLI 50.37 resends the key on update, and
+  the API refuses that for a sensitive variable, so the original `--push` path could
+  never succeed. The value still travels on stdin (jq to curl). A plain update keeps the
+  entry's type; only `--push` sends `type: sensitive`.
 - **CI-cost pass (one time):** recorded in `internal_docs/DEPLOYMENT.md` § CI cost.
   Nothing was changed: the repo is public (net $0), it has no merge queue, the job is
   already on the smallest runner with PR cancel-in-progress, and a docs path filter

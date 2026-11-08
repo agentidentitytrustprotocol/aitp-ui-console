@@ -46,7 +46,7 @@ while [ $# -gt 0 ]; do
     --push)
       [ $# -ge 2 ] || { echo "--push needs a key name" >&2; exit 2; }
       push="$push$2 "; shift ;;
-    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
   shift
@@ -177,11 +177,11 @@ while read -r k state; do
   class="$(awk -v k="$k" '$1 == k {print $2}' <<<"$entries")"
   type=encrypted
   { [ "$class" = sensitive ] || [ "$state" = push-sensitive ]; } && type=sensitive
-  doppler_vars | jq -e --arg k "$k" '(.[$k] // "") != ""' >/dev/null || die "Doppler value for $k is empty; nothing written"
+  doppler_vars </dev/null | jq -e --arg k "$k" '(.[$k] // "") != ""' >/dev/null || die "Doppler value for $k is empty; nothing written"
   case "$state" in
     new)
       say "setting $k (add, $type)"
-      doppler_vars | jq -c --arg k "$k" --arg t "$type" '{key: $k, value: .[$k], type: $t, target: ["production"]}' |
+      doppler_vars </dev/null | jq -c --arg k "$k" --arg t "$type" '{key: $k, value: .[$k], type: $t, target: ["production"]}' |
         vercel_write POST "/v10/projects/$VERCEL_PROJECT_ID/env?teamId=$VERCEL_TEAM_ID" || die "adding $k failed"
       ;;
     *)
@@ -189,7 +189,9 @@ while read -r k state; do
       id="$(production_entries | jq -r --arg k "$k" '[.[] | select(.key == $k and (.shared | not))] | if length == 1 then .[0].id else empty end')"
       [ -n "$id" ] || die "$k: expected exactly one production-only entry; nothing written"
       say "setting $k (update, $type)"
-      doppler_vars | jq -c --arg k "$k" --arg t "$type" '{value: .[$k], type: $t}' |
+      # A plain update keeps the entry's type; only --push sends type sensitive.
+      doppler_vars </dev/null | jq -c --arg k "$k" --arg t "$type" --arg s "$state" \
+        '{value: .[$k]} + (if $s == "push-sensitive" then {type: $t} else {} end)' |
         vercel_write PATCH "/v9/projects/$VERCEL_PROJECT_ID/env/$id?teamId=$VERCEL_TEAM_ID" || die "updating $k failed"
       ;;
   esac

@@ -4,7 +4,7 @@
 # variable, never removes one, and leaves Preview and Development alone.
 #
 # One key per line. "KEY sensitive" creates the key as a Vercel sensitive
-# (write-only) variable when it is new. Most keys that existed before the
+# (write-only) variable when it is new; an update keeps the entry's type. Most keys that existed before the
 # Doppler migration are sensitive Production-only entries (Preview has its
 # own, smaller set: internal_docs/DEPLOYMENT.md), so the sync reports them as
 # sensitive-unverifiable and leaves them alone unless named with --push.

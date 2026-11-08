@@ -161,6 +161,9 @@ export const ALLOWLIST: readonly AllowEntry[] = [
   adm('cp', 'DELETE', '/api/trust-anchors/:id'),
   adm('cp', 'GET', '/api/webhooks'),
   adm('cp', 'POST', '/api/webhooks'),
+  // The console handler exports PUT (`src/app/api/cp/webhooks/[id]/route.ts`)
+  // but forwards PATCH via proxyPatch, which is what the CP serves; this entry
+  // keys on that upstream PATCH and is live, not dead.
   adm('cp', 'PATCH', '/api/webhooks/:id'),
   adm('cp', 'DELETE', '/api/webhooks/:id'),
   adm('cp', 'GET', '/api/webhooks/:id/circuit-breaker'),

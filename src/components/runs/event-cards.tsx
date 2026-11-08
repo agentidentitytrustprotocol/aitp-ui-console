@@ -17,6 +17,7 @@ import { Card } from '@/components/shared/card';
 import { AidCell } from '@/components/shared/aid-cell';
 import { CapabilityBadge, Tag } from '@/components/shared/capability-badge';
 import { C } from '@/lib/colors';
+import { formatResetsAt, quotaBadgeText, runLlmQuota } from '@/lib/llm-quota';
 import { formatOffset, runOffsetMs, shortId } from '@/lib/utils';
 import {
   isUnassessedManifestCode,
@@ -152,6 +153,9 @@ export function EventCard({ evt, baseTs }: { evt: RunEvent; baseTs?: number }) {
         </Line>
       );
     }
+
+    case 'llm.quota_exceeded':
+      return <LlmQuotaCard evt={evt} offset={offset} />;
 
     case 'step.complete':
       return (
@@ -981,6 +985,38 @@ export function StepOutputCard({ evt }: { evt: RunEvent }) {
           ))}
         </div>
       )}
+    </Card>
+  );
+}
+
+/** `llm.quota_exceeded`: a warning card naming the quota that refused, its
+ *  limit and reset, and what fell back to the mock. */
+function LlmQuotaCard({ evt, offset }: { evt: RunEvent; offset?: string }) {
+  const q = runLlmQuota(null, [evt])!;
+  const resets = q.resetsAt ? formatResetsAt(q.resetsAt) : null;
+  return (
+    <Card
+      style={{ padding: '10px 14px', borderLeft: `3px solid ${C.amber}`, marginBottom: 8 }}
+      className="anim-in"
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <AlertTriangle size={14} color={C.amber} />
+        <span style={{ fontSize: 12, color: C.amber, fontWeight: 500 }}>
+          {quotaBadgeText(q)}
+        </span>
+        {offset && (
+          <span className="mono" style={{ fontSize: 10, color: C.textMuted, marginLeft: 'auto' }}>
+            {offset}
+          </span>
+        )}
+      </div>
+      <div style={{ fontSize: 11, color: C.textDim, marginTop: 6 }}>
+        Quota <span style={{ color: C.text }}>{q.quota}</span>
+        {q.limit !== null && <> (limit {q.limit})</>}
+        {resets && <> · resets {resets}</>}
+        {evt.capability && <> · {evt.capability}</>}
+        {(evt.agent_id ?? evt.agent) && <> on {evt.agent_id ?? evt.agent}</>}
+      </div>
     </Card>
   );
 }

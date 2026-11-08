@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { delJSON, getJSON, patchJSON, postJSON } from '@/lib/api/client';
 import { REFETCH } from '@/lib/query-options';
 import type {
@@ -11,6 +11,7 @@ import type {
   Tct,
   TrustAnchor,
 } from '@/lib/types/cp';
+import { useAdminMutation, useOperatorAccess } from '@/hooks/use-console-session';
 
 interface TctsResponse {
   tcts: Tct[];
@@ -68,7 +69,7 @@ export function useTrustAnchors() {
 
 export function useCreateTrustAnchor() {
   const qc = useQueryClient();
-  return useMutation({
+  return useAdminMutation({
     mutationFn: (input: { namespace?: string; issuerUrl: string; jwksUrl?: string; label?: string }) =>
       postJSON<TrustAnchor>('/api/cp/trust-anchors', input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cp-trust-anchors'] }),
@@ -77,7 +78,7 @@ export function useCreateTrustAnchor() {
 
 export function useUpdateTrustAnchor() {
   const qc = useQueryClient();
-  return useMutation({
+  return useAdminMutation({
     mutationFn: (input: {
       id: string;
       issuerUrl?: string;
@@ -93,7 +94,7 @@ export function useUpdateTrustAnchor() {
 
 export function useDeleteTrustAnchor() {
   const qc = useQueryClient();
-  return useMutation({
+  return useAdminMutation({
     mutationFn: (id: string) => delJSON(`/api/cp/trust-anchors/${encodeURIComponent(id)}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cp-trust-anchors'] }),
   });
@@ -108,7 +109,7 @@ export function usePinnedKeys() {
 
 export function useCreatePinnedKey() {
   const qc = useQueryClient();
-  return useMutation({
+  return useAdminMutation({
     mutationFn: (input: {
       namespace?: string;
       aid: string;
@@ -122,7 +123,7 @@ export function useCreatePinnedKey() {
 
 export function useDeletePinnedKey() {
   const qc = useQueryClient();
-  return useMutation({
+  return useAdminMutation({
     mutationFn: ({ namespace, aid }: { namespace: string; aid: string }) => {
       const qs = `?namespace=${encodeURIComponent(namespace)}&aid=${encodeURIComponent(aid)}`;
       return delJSON(`/api/cp/pinned-keys${qs}`);
@@ -150,12 +151,15 @@ export function useRevocationIssuers() {
 /** One query per issuer AID. Only issuers for which `isOpen` is true are
  *  fetched: each is a separate proxied request. */
 export function useIssuerRevocations(issuers: string[], isOpen: (iss: string) => boolean = () => true) {
+  // `GET /api/revocations` is admin-class: nothing is fetched without an
+  // operator session.
+  const { canAdmin } = useOperatorAccess();
   return useQueries({
     queries: issuers.map((iss) => ({
       queryKey: ['cp-revocations', iss],
       queryFn: () =>
         getJSON<IssuerRevocations>(`/api/cp/revocations?iss=${encodeURIComponent(iss)}`),
-      enabled: isOpen(iss),
+      enabled: canAdmin && isOpen(iss),
       refetchInterval: REFETCH.slow,
     })),
   });
@@ -163,7 +167,7 @@ export function useIssuerRevocations(issuers: string[], isOpen: (iss: string) =>
 
 export function useCreateRevocation() {
   const qc = useQueryClient();
-  return useMutation({
+  return useAdminMutation({
     mutationFn: (input: { jti: string; iss: string; reason?: string }) =>
       postJSON<{ jti: string; revokedAt: string; reason: string | null }>(
         '/api/cp/revocation/entries',

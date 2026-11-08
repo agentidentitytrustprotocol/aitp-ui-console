@@ -112,7 +112,29 @@ export interface RunCreated {
   run_label?: string | null;
 }
 
-export interface RunSummary {
+/** The quota that first refused a real LLM call in a run (playground
+ *  `api/runs.py:61-67`, `LlmQuota`). */
+export interface LlmQuota {
+  /** `quota_exceeded` | `quota_store_unavailable` | `quota_check_failed`. */
+  reason?: string | null;
+  /** The counter that refused, e.g. `per_ip_daily`, `global_monthly`. */
+  quota?: string | null;
+  limit?: number | null;
+  /** RFC 3339 UTC; null when the quota store was unavailable. */
+  resets_at?: string | null;
+}
+
+/** Set once any capability in the run fell back to the mock LLM because of
+ *  the quota (playground `api/runs.py:70-76`, on `RunSummary`, `RunStatus`
+ *  and `RunResponse`). Optional here: an older playground omits them. */
+export interface LlmQuotaFields {
+  llm_quota_exceeded?: boolean;
+  llm_quota?: LlmQuota | null;
+  /** Refused call units that ran on the mock instead. */
+  llm_calls_on_mock?: number | null;
+}
+
+export interface RunSummary extends LlmQuotaFields {
   run_id: string;
   status: string | null;
   scenario_ref: string | null;
@@ -221,9 +243,27 @@ export interface RunEvent {
   /** `delegation.issued` (`agent_admin.py:580`) — the delegated capability
    *  list, named `scope` there rather than `grants`. */
   scope?: string[] | null;
+
+  // --- llm.quota_exceeded -----------------------------------------------
+  // Emitted once per run, on its first fallback to the mock LLM
+  // (`api/quota.py:99-102`; fields declared at `runner/context.py:43-49`).
+  // `capability` and `agent_id` above name what fell back.
+
+  /** `llm.quota_exceeded` — the reason: `quota_exceeded` |
+   *  `quota_store_unavailable` | `quota_check_failed`. */
+  code?: string | null;
+  /** `llm.quota_exceeded` — the counter that refused (e.g. `per_ip_daily`). */
+  quota?: string | null;
+  /** `llm.quota_exceeded` — that counter's limit. */
+  limit?: number | null;
+  /** `llm.quota_exceeded` — when the counter resets, RFC 3339 UTC; null when
+   *  the store was unavailable. */
+  resets_at?: string | null;
+  /** `llm.quota_exceeded` — call units refused by this first denial. */
+  calls?: number | null;
 }
 
-export interface RunResponse {
+export interface RunResponse extends LlmQuotaFields {
   run_id: string;
   status: string;
   scenario_ref: string;
@@ -234,7 +274,7 @@ export interface RunResponse {
   created_at: number | null;
 }
 
-export interface RunStatus {
+export interface RunStatus extends LlmQuotaFields {
   run_id: string;
   status: string;
 }

@@ -14,6 +14,7 @@ import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { ManifestViewer } from './manifest-viewer';
 import { useAgent, useAgentManifest } from '@/hooks/use-registry';
 import { useDeregisterAgent } from '@/hooks/use-enrollment';
+import { useOperatorAccess } from '@/hooks/use-console-session';
 import { useSessions } from '@/hooks/use-sessions';
 import { useToast } from '@/components/shared/toast';
 import { C } from '@/lib/colors';
@@ -27,6 +28,7 @@ export function AgentDetail({ aid }: { aid: string }) {
   const manifest = useAgentManifest(agent?.aid ?? aid);
   const sessions = useSessions({ aid, limit: 10 });
   const deregister = useDeregisterAgent();
+  const access = useOperatorAccess();
   const aidBadge = manifest.isLoading
     ? { text: '· checking manifest…', color: C.textMuted, aidColor: C.textMuted }
     : manifest.error || !manifest.data
@@ -70,7 +72,7 @@ export function AgentDetail({ aid }: { aid: string }) {
         >
           <ArrowLeft size={14} /> Registry
         </Link>
-        {agent && agent.status !== 'deregistered' && (
+        {access.canAdmin && agent && agent.status !== 'deregistered' && (
           <button
             onClick={handleDeregister}
             disabled={deregister.isPending}

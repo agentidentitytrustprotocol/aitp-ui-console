@@ -83,16 +83,22 @@ export function rateLimited(
  *  credentials. False when the console has no auth configured. An
  *  expired, tampered or garbled credential is simply "not an operator". */
 export async function isOperator(req: NextRequest): Promise<boolean> {
+  return operatorFromCredentials(
+    req.cookies.get(SESSION_COOKIE)?.value,
+    req.headers.get('authorization'),
+  );
+}
+
+/** `isOperator` on the raw credentials, for callers without a
+ *  `NextRequest` (the root layout reads them through `next/headers`). */
+export async function operatorFromCredentials(
+  sessionCookie: string | undefined,
+  authorization: string | null,
+): Promise<boolean> {
   const auth = consoleAuthConfig();
   if (!auth) return false;
-  if (
-    await verifySession(
-      req.cookies.get(SESSION_COOKIE)?.value,
-      auth.sessionSecret,
-    )
-  )
-    return true;
-  return basicAuthMatches(req.headers.get('authorization'), auth.password);
+  if (await verifySession(sessionCookie, auth.sessionSecret)) return true;
+  return basicAuthMatches(authorization, auth.password);
 }
 
 interface Deps {

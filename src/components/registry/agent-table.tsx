@@ -13,6 +13,7 @@ import { TimeAgo } from '@/components/shared/time-ago';
 import { EmptyState } from '@/components/shared/empty-state';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { useRegistry } from '@/hooks/use-registry';
+import { useOperatorAccess } from '@/hooks/use-console-session';
 import { useUrlEnum, useUrlState } from '@/hooks/use-url-state';
 import { C } from '@/lib/colors';
 import type { Agent } from '@/lib/types/cp';
@@ -26,6 +27,7 @@ interface AgentRow extends Agent {
 
 export function AgentTable() {
   const { data, isLoading, error } = useRegistry();
+  const access = useOperatorAccess();
   const [search, setSearch] = useUrlState('q');
   const [status, setStatus] = useUrlEnum<StatusFilter>('status', STATUS_FILTERS, 'all');
   const [showEnroll, setShowEnroll] = useState(false);
@@ -56,25 +58,27 @@ export function AgentTable() {
         sub={`${activeCount} active agent${activeCount === 1 ? '' : 's'}`}
         right={
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <button
-              onClick={() => setShowEnroll(true)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '6px 12px',
-                borderRadius: 6,
-                background: C.teal,
-                border: 'none',
-                color: '#fff',
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              <KeyRound size={13} />
-              New enrollment
-            </button>
+            {access.canAdmin && (
+              <button
+                onClick={() => setShowEnroll(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 12px',
+                  borderRadius: 6,
+                  background: C.teal,
+                  border: 'none',
+                  color: '#fff',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                <KeyRound size={13} />
+                New enrollment
+              </button>
+            )}
             <div
               style={{
                 display: 'flex',

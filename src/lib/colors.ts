@@ -34,6 +34,7 @@ export function eventColor(type: string): string {
   if (type.startsWith('capability') || type.startsWith('step')) return C.amber;
   if (type.startsWith('tct') || type.startsWith('revoc')) return C.red;
   if (type.startsWith('run')) return C.purple;
+  if (type === 'llm.quota_exceeded') return C.amber;
   if (type.startsWith('llm')) return C.green;
   return C.textDim;
 }

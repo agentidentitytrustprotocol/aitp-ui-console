@@ -80,6 +80,12 @@ trigger form.
 A run started with non-empty fault injection is tagged with a
 `fault-injected` chip on its detail header for visual triage.
 
+If the launch is refused with 429 (the playground's per-key launch limit, or
+the console's own per-IP limit in public mode), the form says **"Too many runs
+— try again in N s"**. N comes from the `Retry-After` header, else the
+console's `retryAfterSeconds`, else the playground's `retry_after`; with none of
+those it says "try again shortly".
+
 ## Runs
 
 Watch scenario executions, live and historical.
@@ -96,7 +102,16 @@ everything is terminal.
   handshake / LLM-call / event counts, established grants), and an error
   card when the run failed.
 - **Cancel** — for an active run, a confirm-guarded cancel button in the
-  header; the outcome is surfaced as a toast.
+  header; the outcome is surfaced as a toast. Operators only.
+- **LLM quota badge** — when the playground's LLM quota ran out during the
+  run, the summary shows a status chip: *LLM quota reached: mock responses
+  (resets <local time>)*, plus *· N calls on mock*. Without a reset time it
+  says why (*quota store unavailable*, *quota check failed*, or *reset time
+  not reported*). The run fields (`llm_quota_exceeded`, `llm_quota`,
+  `llm_calls_on_mock`) are read first, so the badge survives an SSE buffer
+  that dropped the event; the `llm.quota_exceeded` event is the fallback and
+  also renders as an amber timeline card. The run list shows a compact chip
+  on such rows. An older playground without these fields shows nothing.
 
 The main area has five tabs:
 
@@ -337,6 +352,24 @@ Operational settings and health, split across two columns.
 
 ## Cross-cutting behaviour
 
+### Public mode
+
+With `AITP_CONSOLE_PUBLIC_MODE` off (the default) every page needs the
+operator and nothing below applies. With it on, anonymous visitors can browse
+the read views and launch runs, and the server tells the UI who is looking
+when it renders the page (the same answer `/api/auth/session` gives), so the
+right controls show from the first paint:
+
+- Admin sections (Metrics, Webhooks, Revocation, the circuit breaker) show
+  **"Operator only — sign in"** and send no request.
+- Write actions (enroll, pin, trust-anchor edits, revoke, cancel, hosted-agent
+  changes) are hidden, and the shared mutation hook refuses them before
+  sending anything.
+- The topbar shows a **Sign in** link back to the current page.
+- If the session check fails, the UI treats the visitor as anonymous; the
+  server enforces the same rules regardless
+  ([Access model](https://agentidentitytrustprotocol.io/console/architecture#access-model)).
+
 ### Live updates (SSE)
 
 Two streams drive the live views: the per-run timeline
@@ -347,7 +380,8 @@ Two streams drive the live views: the per-run timeline
 - **Page-visibility pausing** — the stream closes when the tab is hidden
   and reopens on focus, so a backgrounded tab costs nothing.
 - **Capacity awareness** — the CP caps concurrent listeners and returns a
-  503 at the limit. `useSse` probes for this and surfaces a distinct
+  503 at the limit (the console's own stream limit in public mode returns
+  429 with `Retry-After`, handled the same way). `useSse` probes for this and surfaces a distinct
   **"at capacity"** state (with a longer backoff) instead of a generic
   "reconnecting" spinner. See [PROXIES.md](https://agentidentitytrustprotocol.io/console/proxies#cp-sse-capacity-handling).
 

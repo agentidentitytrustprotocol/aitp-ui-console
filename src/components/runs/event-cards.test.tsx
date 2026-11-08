@@ -480,7 +480,8 @@ const RUN_EVENT_KEYS: Record<keyof RunEvent, true> = {
   scenario_ref: true, notes: true, payload: true, cause: true,
   source_url: true, detail: true, reason: true, serves: true, fail_mode: true,
   delegatee_aid: true, role: true, peer_aid: true, peer_port: true, tct: true,
-  scope: true,
+  scope: true, code: true, quota: true, limit: true, resets_at: true,
+  calls: true,
 };
 
 describe('trust cards and run.failed carry the run offset (#56)', () => {
@@ -1144,3 +1145,47 @@ describe('unmodelled trust event types', () => {
     expect(row).toHaveClass('mono');
   });
 });
+
+describe('llm.quota_exceeded card', () => {
+  const RESETS = '2026-11-08T00:00:00Z';
+
+  it('is a warning card naming the quota, limit, reset and what fell back', () => {
+    render(
+      <EventCard
+        evt={evt({
+          type: 'llm.quota_exceeded',
+          code: 'quota_exceeded',
+          quota: 'per_ip_daily',
+          limit: 20,
+          resets_at: RESETS,
+          calls: 2,
+          capability: 'research.summarize',
+          agent_id: 'researcher',
+        })}
+        baseTs={BASE_TS}
+      />,
+    );
+    const local = new Date(RESETS).toLocaleString();
+    const headline = screen.getByText(
+      `LLM quota reached: mock responses (resets ${local}) · 2 calls on mock`,
+    );
+    expect(headline).toHaveStyle({ color: C.amber });
+    const detail = screen.getByText(/^Quota/);
+    expect(detail).toHaveTextContent(
+      `Quota per_ip_daily (limit 20) · resets ${local} · research.summarize on researcher`,
+    );
+  });
+
+  it('names the reason when the store gave no reset time', () => {
+    render(
+      <EventCard
+        evt={evt({ type: 'llm.quota_exceeded', code: 'quota_check_failed', resets_at: null })}
+      />,
+    );
+    expect(
+      screen.getByText('LLM quota reached: mock responses (quota check failed)'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/^Quota/)).toHaveTextContent('Quota unknown');
+  });
+});
+

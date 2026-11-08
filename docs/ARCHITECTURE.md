@@ -163,7 +163,11 @@ read key configured answers 503 `cp_read_key_unavailable`.
 
 **What the UI sees.** `GET /api/auth/session` answers
 `{publicMode, signedIn}` (never cached), so the UI can hide operator-only
-controls from anonymous visitors. Hiding is cosmetic; the helpers enforce.
+controls from anonymous visitors. The root layout computes the same answer
+while it renders (`src/lib/server/initial-session.ts`, made per-request by
+`connection()`) and seeds the client with it: with the flag off the UI is the
+operator outright and never asks; with it on, the server's answer stands
+from the first paint. Hiding is cosmetic; the helpers enforce.
 
 ## Layering
 

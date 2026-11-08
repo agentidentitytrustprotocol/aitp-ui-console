@@ -1,11 +1,12 @@
 'use client';
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { delJSON, postJSON } from '@/lib/api/client';
 import type { EnrollmentToken, ManifestEnvelope } from '@/lib/types/cp';
+import { useAdminMutation } from '@/hooks/use-console-session';
 
 export function useCreateEnrollmentToken() {
-  return useMutation({
+  return useAdminMutation({
     mutationFn: (input: ManifestEnvelope) =>
       postJSON<EnrollmentToken>('/api/cp/registry/enroll', input),
   });
@@ -13,7 +14,7 @@ export function useCreateEnrollmentToken() {
 
 export function useDeregisterAgent() {
   const qc = useQueryClient();
-  return useMutation({
+  return useAdminMutation({
     mutationFn: (aid: string) => delJSON(`/api/cp/registry/agents/${encodeURIComponent(aid)}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['registry-agents'] });

@@ -11,6 +11,7 @@ import {
   MAX_ERROR_BODY_CHARS,
   delJSON,
   getJSON,
+  parseRetryAfter,
   patchJSON,
   postJSON,
   putJSON,
@@ -254,5 +255,89 @@ describe('delJSON', () => {
     await expect(delJSON('/api/cp/thing/1')).rejects.toThrow(
       'DELETE /api/cp/thing/1 failed: 409 — gone',
     );
+  });
+});
+
+describe('ApiError.retryAfter', () => {
+  async function launch429(res: Response): Promise<ApiError> {
+    mockFetch(async () => res);
+    try {
+      await postJSON('/api/playground/runs', { scenario_ref: 'x' });
+    } catch (err) {
+      return err as ApiError;
+    }
+    throw new Error('expected a rejection');
+  }
+
+  it('prefers the Retry-After header over both body fields', async () => {
+    const err = await launch429(
+      new Response('{"retryAfterSeconds":9,"retry_after":7}', {
+        status: 429,
+        headers: { 'Retry-After': '42' },
+      }),
+    );
+    expect(err.retryAfter).toBe(42);
+    expect(err.message).toBe(
+      'POST /api/playground/runs failed: 429 — {"retryAfterSeconds":9,"retry_after":7}',
+    );
+  });
+
+  it("falls back to the console's retryAfterSeconds, then the playground's retry_after", async () => {
+    expect(
+      (
+        await launch429(
+          new Response('{"code":"CONSOLE_RATE_LIMITED","retryAfterSeconds":9,"retry_after":7}', {
+            status: 429,
+          }),
+        )
+      ).retryAfter,
+    ).toBe(9);
+    expect(
+      (
+        await launch429(
+          new Response('{"code":"rate_limited","limit":5,"retry_after":7,"detail":"slow down"}', {
+            status: 429,
+          }),
+        )
+      ).retryAfter,
+    ).toBe(7);
+  });
+
+  it('is undefined when nothing says, or the hints are malformed', async () => {
+    expect((await launch429(new Response('', { status: 429 }))).retryAfter).toBeUndefined();
+    expect(
+      (await launch429(new Response('not json', { status: 429 }))).retryAfter,
+    ).toBeUndefined();
+    expect(
+      (
+        await launch429(
+          new Response('{"retry_after":-3,"retryAfterSeconds":"soon"}', {
+            status: 429,
+            headers: { 'Retry-After': 'garbage' },
+          }),
+        )
+      ).retryAfter,
+    ).toBeUndefined();
+  });
+
+  it('reads the hint from a body longer than the kept slice', async () => {
+    const body = JSON.stringify({ pad: 'x'.repeat(MAX_ERROR_BODY_CHARS), retry_after: 11 });
+    const err = await launch429(new Response(body, { status: 429 }));
+    expect(err.bodyTruncated).toBe(true);
+    expect(err.retryAfter).toBe(11);
+  });
+});
+
+describe('parseRetryAfter', () => {
+  it('reads delta-seconds and HTTP-dates; rejects junk', () => {
+    const now = Date.parse('2026-11-07T12:00:00Z');
+    expect(parseRetryAfter('30', now)).toBe(30);
+    expect(parseRetryAfter(' 2.5 ', now)).toBe(2.5);
+    expect(parseRetryAfter('Sat, 07 Nov 2026 12:00:20 GMT', now)).toBe(20);
+    expect(parseRetryAfter('Sat, 07 Nov 2026 11:00:00 GMT', now)).toBe(0);
+    expect(parseRetryAfter('-5', now)).toBeUndefined();
+    expect(parseRetryAfter('', now)).toBeUndefined();
+    expect(parseRetryAfter(null, now)).toBeUndefined();
+    expect(parseRetryAfter('later', now)).toBeUndefined();
   });
 });

@@ -8,6 +8,7 @@ import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { AidCell } from '@/components/shared/aid-cell';
 import { CapabilityBadge } from '@/components/shared/capability-badge';
 import { useCreateRevocation, useDelegations } from '@/hooks/use-trust';
+import { useOperatorAccess } from '@/hooks/use-console-session';
 import { C } from '@/lib/colors';
 import { shortId } from '@/lib/utils';
 import type { Delegation, DelegationNode } from '@/lib/types/cp';
@@ -84,6 +85,7 @@ export function DelegationTree() {
   const { data, isLoading, error } = useDelegations();
   const [selected, setSelected] = useState<DelegationNode | null>(null);
   const revoke = useCreateRevocation();
+  const access = useOperatorAccess();
   const [confirming, setConfirming] = useState(false);
 
   const { roots, orphans } = useMemo(
@@ -224,6 +226,7 @@ export function DelegationTree() {
               </span>
             </Detail>
             {!selected.revoked &&
+              access.canAdmin &&
               (confirming ? (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ fontSize: 11, color: C.red, marginBottom: 6 }}>

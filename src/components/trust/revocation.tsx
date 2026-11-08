@@ -15,6 +15,8 @@ import {
   useTcts,
 } from '@/hooks/use-trust';
 import { useCpMetrics } from '@/hooks/use-playground-meta';
+import { useOperatorAccess } from '@/hooks/use-console-session';
+import { OperatorOnly } from '@/components/shared/operator-only';
 import { useToast } from '@/components/shared/toast';
 import { C } from '@/lib/colors';
 import { parseIssuerLastPulls } from '@/lib/revocation-relay';
@@ -31,6 +33,7 @@ const TCT_SCAN_LIMIT = 1000;
  */
 export function RevocationView() {
   const toast = useToast();
+  const access = useOperatorAccess();
   const listing = useRevocationIssuers();
   const tcts = useTcts({ limit: TCT_SCAN_LIMIT });
   const metrics = useCpMetrics();
@@ -154,6 +157,11 @@ export function RevocationView() {
         list (RFC-AITP-0008 §1.5). An entry takes effect at the issuer&apos;s next pull.
       </div>
 
+      {access.status === 'anonymous' ? (
+        <div style={{ padding: 14, borderBottom: `1px solid ${C.border}` }}>
+          <OperatorOnly what="Recording a revocation" />
+        </div>
+      ) : (
       <form
         onSubmit={startConfirm}
         style={{
@@ -218,6 +226,7 @@ export function RevocationView() {
           <Ban size={12} /> Revoke
         </button>
       </form>
+      )}
 
       {confirmStep && (
         <div
@@ -321,6 +330,7 @@ export function RevocationView() {
             isLoading={!!results[i]?.isLoading}
             error={!!results[i]?.error}
             lastPull={lastPulls.get(aid)}
+            anonymous={access.status === 'anonymous'}
           />
         ))
       )}
@@ -337,6 +347,7 @@ function IssuerGroup({
   isLoading,
   error,
   lastPull,
+  anonymous = false,
 }: {
   aid: string;
   open: boolean;
@@ -347,6 +358,8 @@ function IssuerGroup({
   isLoading: boolean;
   error: boolean;
   lastPull: number | undefined;
+  /** No operator session: entries are admin-class and never fetched. */
+  anonymous?: boolean;
 }) {
   const entries = data?.entries ?? [];
   const n = data ? entries.length : count;
@@ -394,7 +407,11 @@ function IssuerGroup({
           )}
         </span>
       </div>
-      {!open ? null : isLoading ? (
+      {!open ? null : anonymous ? (
+        <div style={{ padding: '8px 14px' }}>
+          <OperatorOnly what="Entries" />
+        </div>
+      ) : isLoading ? (
         <div style={{ padding: '8px 14px', fontSize: 11, color: C.textMuted }}>Loading…</div>
       ) : error ? (
         <div style={{ padding: '8px 14px', fontSize: 11, color: C.amber }}>

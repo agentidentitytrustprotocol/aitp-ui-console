@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { delJSON, getJSON, postJSON } from '@/lib/api/client';
 import { REFETCH } from '@/lib/query-options';
 import type {
@@ -12,6 +12,7 @@ import type {
   HostInvokeResult,
   HostRequest,
 } from '@/lib/types/playground';
+import { useAdminMutation } from '@/hooks/use-console-session';
 
 const KEY = ['hosted-agents'];
 
@@ -27,7 +28,7 @@ export function useHostedAgents() {
 
 export function useHostAgent() {
   const qc = useQueryClient();
-  return useMutation({
+  return useAdminMutation({
     mutationFn: (body: HostRequest) =>
       postJSON<HostedAgent>('/api/playground/hosted-agents', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
@@ -36,7 +37,7 @@ export function useHostAgent() {
 
 export function useStopHostedAgent() {
   const qc = useQueryClient();
-  return useMutation({
+  return useAdminMutation({
     mutationFn: (id: string) =>
       delJSON(`/api/playground/hosted-agents/${encodeURIComponent(id)}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
@@ -44,7 +45,7 @@ export function useStopHostedAgent() {
 }
 
 export function useResolveAndHandshake() {
-  return useMutation({
+  return useAdminMutation({
     mutationFn: ({ id, body }: { id: string; body: HostHandshakeRequest }) =>
       postJSON<HostHandshakeResult>(
         `/api/playground/hosted-agents/${encodeURIComponent(id)}/resolve-and-handshake`,
@@ -54,7 +55,7 @@ export function useResolveAndHandshake() {
 }
 
 export function useInvokeHosted() {
-  return useMutation({
+  return useAdminMutation({
     mutationFn: ({ id, body }: { id: string; body: HostInvokeRequest }) =>
       postJSON<HostInvokeResult>(
         `/api/playground/hosted-agents/${encodeURIComponent(id)}/invoke`,

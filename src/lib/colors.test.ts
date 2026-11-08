@@ -11,6 +11,7 @@ describe('eventColor', () => {
     ['revocation.published', C.red],
     ['run.started', C.purple],
     ['llm.complete', C.green],
+    ['llm.quota_exceeded', C.amber],
     ['unknown.foo', C.textDim],
   ])('%s → %s', (type, expected) => {
     expect(eventColor(type)).toBe(expected);

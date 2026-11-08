@@ -11,6 +11,8 @@ import { useDeleteWebhook, useUpdateWebhook, useWebhooks } from '@/hooks/use-web
 import { useSelection } from '@/hooks/use-selection';
 import { useResetCircuitBreaker } from '@/hooks/use-circuit-breaker';
 import { useHydrated } from '@/hooks/use-hydrated';
+import { useOperatorAccess } from '@/hooks/use-console-session';
+import { OperatorOnly } from '@/components/shared/operator-only';
 import { getJSON } from '@/lib/api/client';
 import { useToast } from '@/components/shared/toast';
 import { C } from '@/lib/colors';
@@ -114,6 +116,7 @@ export function WebhookList() {
   // an element-tree mismatch, same as CpIdentityCard. See use-hydrated.ts.
   const hydrated = useHydrated();
   const toast = useToast();
+  const access = useOperatorAccess();
   const { data, isLoading, error } = useWebhooks();
   const update = useUpdateWebhook();
   const remove = useDeleteWebhook();
@@ -172,6 +175,7 @@ export function WebhookList() {
         ),
       refetchInterval: REFETCH.slow,
       staleTime: 30_000,
+      enabled: access.canAdmin,
     })),
   });
   const trippedCount = useMemo(
@@ -182,6 +186,16 @@ export function WebhookList() {
       ),
     [breakerQueries],
   );
+
+  if (access.status === 'anonymous')
+    return (
+      <Card style={{ padding: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 12 }}>
+          Webhooks
+        </div>
+        <OperatorOnly what="Webhooks" />
+      </Card>
+    );
 
   return (
     <Card style={{ padding: 20 }}>
@@ -288,7 +302,7 @@ export function WebhookList() {
         </div>
       )}
 
-      {!hydrated || isLoading ? (
+      {!hydrated || isLoading || access.status === 'loading' ? (
         <LoadingSkeleton rows={2} />
       ) : error ? (
         <EmptyState title="Couldn't load webhooks" description="Check the Control Plane connection." />

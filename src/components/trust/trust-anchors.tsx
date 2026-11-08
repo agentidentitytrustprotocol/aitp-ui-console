@@ -13,6 +13,7 @@ import {
   useUpdateTrustAnchor,
 } from '@/hooks/use-trust';
 import { useSelection } from '@/hooks/use-selection';
+import { useOperatorAccess } from '@/hooks/use-console-session';
 import { useToast } from '@/components/shared/toast';
 import { C } from '@/lib/colors';
 import type { TrustAnchor } from '@/lib/types/cp';
@@ -29,6 +30,7 @@ export function TrustAnchorsView() {
   const create = useCreateTrustAnchor();
   const update = useUpdateTrustAnchor();
   const remove = useDeleteTrustAnchor();
+  const access = useOperatorAccess();
   const selection = useSelection<string>();
   const [mode, setMode] = useState<Mode>({ kind: 'closed' });
   const [form, setForm] = useState(blank);
@@ -137,7 +139,7 @@ export function TrustAnchorsView() {
           </span>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          {selection.size > 0 && (
+          {selection.size > 0 && access.canAdmin && (
             <>
               <span style={{ fontSize: 11, color: C.textDim }}>
                 {selection.size} selected
@@ -176,27 +178,29 @@ export function TrustAnchorsView() {
               </button>
             </>
           )}
-          <button
-            onClick={() => (formOpen ? close() : startCreate())}
-            style={{
-              background: C.teal,
-              border: 'none',
-              color: '#fff',
-              fontSize: 11,
-              padding: '5px 10px',
-              borderRadius: 5,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-            }}
-          >
-            <Plus size={12} /> {formOpen ? 'Cancel' : 'Add anchor'}
-          </button>
+          {access.canAdmin && (
+            <button
+              onClick={() => (formOpen ? close() : startCreate())}
+              style={{
+                background: C.teal,
+                border: 'none',
+                color: '#fff',
+                fontSize: 11,
+                padding: '5px 10px',
+                borderRadius: 5,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <Plus size={12} /> {formOpen ? 'Cancel' : 'Add anchor'}
+            </button>
+          )}
         </div>
       </div>
 
-      {formOpen && (
+      {formOpen && access.canAdmin && (
         <form
           onSubmit={submit}
           style={{
@@ -356,7 +360,7 @@ export function TrustAnchorsView() {
                   <TimeAgo ts={a.createdAt} />
                 </td>
                 <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  {confirmingDelete === a.id ? (
+                  {!access.canAdmin ? null : confirmingDelete === a.id ? (
                     <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
                       <span style={{ fontSize: 11, color: C.red }}>Delete?</span>
                       <button

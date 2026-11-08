@@ -1,3 +1,5 @@
+import { UNKNOWN_IP, rateLimitKey } from '../server/client-ip';
+
 /** Sliding-window rate limiter keyed by client IP.
  *
  *  In-memory and per instance: on Vercel each function instance keeps its
@@ -50,15 +52,32 @@ export function createRateLimiter(
   };
 }
 
-/** The client IP as Vercel reports it. Vercel sets `x-real-ip` and
- *  overwrites `x-forwarded-for`; elsewhere the reverse proxy must do the
- *  same, or the limit is per spoofed header value. */
-export function clientIp(headers: Headers): string {
-  const real = headers.get('x-real-ip')?.trim();
-  if (real) return real;
-  const fwd = headers.get('x-forwarded-for')?.split(',')[0]?.trim();
-  return fwd || 'unknown';
-}
+/** The client IP from a platform-set header; see `src/lib/server/client-ip.ts`
+ *  for the trust rules (rightmost `x-forwarded-for` on Vercel, `unknown`
+ *  off Vercel unless `CONSOLE_CLIENT_IP_HEADER` names a trusted header). */
+export { clientIp } from '../server/client-ip';
 
 /** `POST /login`: 10 attempts per IP per minute; the 11th gets 429. */
 export const loginLimiter = createRateLimiter(10, 60_000);
+
+/** Callers whose IP is `unknown` (off Vercel without a trusted header)
+ *  share one bucket with a higher cap: brute force stays bounded without
+ *  locking out an operator behind one misconfigured proxy. */
+export const UNKNOWN_IP_LOGIN_LIMIT = 50;
+export const unknownIpLoginLimiter = createRateLimiter(
+  UNKNOWN_IP_LOGIN_LIMIT,
+  60_000,
+);
+
+/** Charge one login attempt for `ip` against the right limiter. IPv6
+ *  callers are bucketed by /64 (`rateLimitKey`), so rotating addresses
+ *  inside one allocation doesn't buy fresh attempts. */
+export function hitLogin(
+  ip: string,
+  now?: number,
+): { allowed: boolean; retryAfterSeconds: number } {
+  const key = rateLimitKey(ip);
+  return key === UNKNOWN_IP
+    ? unknownIpLoginLimiter.hit(key, now)
+    : loginLimiter.hit(key, now);
+}

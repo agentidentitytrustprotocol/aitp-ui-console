@@ -5,6 +5,9 @@ module.exports = {
   testMatch: [
     '<rootDir>/src/**/*.test.ts',
     '<rootDir>/src/**/*.test.tsx',
+    // Pure helpers of the live suite (no network): they run in CI; the live
+    // specs themselves (*.live.spec.ts) are Playwright-only and never do.
+    '<rootDir>/e2e/**/*.test.ts',
   ],
   testPathIgnorePatterns: [
     '/node_modules/',

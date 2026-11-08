@@ -19,6 +19,7 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { NextRequest } from 'next/server';
+import { OPERATOR_BASIC, setConsoleAuthEnv } from './operator';
 
 interface RecordedRequest {
   method: string;
@@ -60,7 +61,10 @@ function lastRequest(): RecordedRequest {
 function makeRequest(url: string, init?: RequestInit): NextRequest {
   // Required lazily so env set in beforeAll wins.
   const { NextRequest } = require('next/server');
-  return new NextRequest(url, init);
+  // Route helpers authorize every call; run as the operator.
+  const headers = new Headers(init?.headers);
+  if (!headers.has('authorization')) headers.set('authorization', OPERATOR_BASIC);
+  return new NextRequest(url, { ...init, headers });
 }
 
 function params<T>(value: T): { params: Promise<T> } {
@@ -68,6 +72,7 @@ function params<T>(value: T): { params: Promise<T> } {
 }
 
 beforeAll(async () => {
+  setConsoleAuthEnv();
   server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (chunk) => (body += chunk));

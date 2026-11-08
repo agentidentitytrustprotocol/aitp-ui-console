@@ -15,8 +15,18 @@ import {
   proxySse,
 } from './proxy';
 import type { Verdict } from '../types/cp';
+import {
+  OPERATOR_BASIC,
+  clearConsoleAuthEnv,
+  setConsoleAuthEnv,
+} from '../../test/operator';
 
 const ORIGINAL_FETCH = global.fetch;
+
+// Every helper authorizes its caller; these tests run as the operator
+// unless they say otherwise.
+beforeAll(setConsoleAuthEnv);
+afterAll(clearConsoleAuthEnv);
 
 function asNextReq(
   url: string,
@@ -24,7 +34,10 @@ function asNextReq(
 ): NextRequest {
   const req = new Request(url, {
     ...init,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      authorization: OPERATOR_BASIC,
+    },
   });
   return new NextRequest(req);
 }
@@ -190,14 +203,27 @@ describe('timeout handling', () => {
     );
   }
 
+  /** The access check (Web Crypto, settled through the event loop) runs
+   *  before the timeout is armed, so advancing fake time first would fire
+   *  nothing. Yield real event-loop turns until the fetch has started. */
+  async function untilFetchStarts(fetchMock: jest.Mock): Promise<void> {
+    for (let i = 0; i < 200 && fetchMock.mock.calls.length === 0; i++)
+      await new Promise<void>((r) => setImmediate(r));
+    expect(fetchMock).toHaveBeenCalled();
+  }
+
   it('GET returns a 504 envelope when the upstream hangs past the default timeout', async () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     // Keep real microtasks so NextRequest body/stream plumbing still works.
-    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
-    global.fetch = hangingFetch() as unknown as typeof fetch;
+    jest.useFakeTimers({
+      doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'],
+    });
+    const fetchMock = hangingFetch();
+    global.fetch = fetchMock as unknown as typeof fetch;
 
     const req = asNextReq('http://localhost:3001/api/cp/health');
     const pending = proxyGet('cp', '/api/health', req);
+    await untilFetchStarts(fetchMock);
     await jest.advanceTimersByTimeAsync(30_000);
     const res = await pending;
 
@@ -213,14 +239,18 @@ describe('timeout handling', () => {
 
   it('POST returns a 504 envelope when the upstream hangs past the default timeout', async () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
-    global.fetch = hangingFetch() as unknown as typeof fetch;
+    jest.useFakeTimers({
+      doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'],
+    });
+    const fetchMock = hangingFetch();
+    global.fetch = fetchMock as unknown as typeof fetch;
 
     const req = asNextReq('http://localhost:3001/api/playground/runs', {
       method: 'POST',
       body: JSON.stringify({ scenario_ref: 'x' }),
     });
     const pending = proxyPost('playground', '/runs', req);
+    await untilFetchStarts(fetchMock);
     await jest.advanceTimersByTimeAsync(30_000);
     const res = await pending;
 
@@ -234,7 +264,9 @@ describe('timeout handling', () => {
   });
 
   it('does not time out a fetch that settles inside the window', async () => {
-    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+    jest.useFakeTimers({
+      doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'],
+    });
     global.fetch = (async () =>
       new Response('{"ok":true}', { status: 200 })) as unknown as typeof fetch;
 
@@ -711,7 +743,8 @@ function browserReq(
       headers: {
         'content-type': 'application/json',
         'x-real-ip': '203.0.113.7',
-        authorization: 'Bearer browser-supplied',
+        // The operator's own credentials: valid here, never forwarded.
+        authorization: OPERATOR_BASIC,
         'x-api-key': 'browser-supplied',
         'x-aitp-client-ip': '6.6.6.6',
         cookie: 'aitp_console_session=abc',
@@ -1209,5 +1242,342 @@ describe('upstream fetch hygiene', () => {
     expect(res.headers.get('Set-Cookie')).toBeNull();
     expect(res.headers.get('X-Upstream-Secret')).toBeNull();
     expect(res.headers.get('Content-Type')).toBe('application/json');
+  });
+});
+
+describe('public mode: the helpers enforce access before any upstream call', () => {
+  type Limits = typeof import('../server/limits');
+  let warn: jest.SpyInstance;
+  beforeEach(() => {
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    warn.mockRestore();
+    global.fetch = ORIGINAL_FETCH;
+    for (const n of ENV_NAMES) delete process.env[n];
+  });
+
+  /** Fresh proxy + limits modules (one registry), so buckets start empty. */
+  function load(env: Partial<Record<(typeof ENV_NAMES)[number], string>>) {
+    const p = loadProxy({ VERCEL: '1', ...env });
+    const limits = require('../server/limits') as Limits;
+    return { p, limits };
+  }
+  const ON = { ...KEYS, AITP_CONSOLE_PUBLIC_MODE: 'on' };
+
+  function anonReq(
+    url: string,
+    method = 'GET',
+    init: { signal?: AbortSignal; ip?: string } = {},
+  ): NextRequest {
+    return new NextRequest(
+      new Request(url, {
+        method,
+        headers: {
+          'content-type': 'application/json',
+          'x-real-ip': init.ip ?? '203.0.113.7',
+        },
+        body: method === 'GET' ? undefined : '{"scenario_ref":"x"}',
+        signal: init.signal,
+      }),
+    );
+  }
+
+  it('anonymous admin route → 403 CONSOLE_OPERATOR_SESSION_REQUIRED, nothing fetched', async () => {
+    const { p } = load(ON);
+    const seen = mockFetch(ok);
+    const res = await p.proxyGet(
+      'cp',
+      '/api/audit',
+      anonReq('http://localhost:3001/api/cp/audit'),
+    );
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({
+      code: 'CONSOLE_OPERATOR_SESSION_REQUIRED',
+    });
+    expect(seen).toHaveLength(0);
+  });
+
+  it('anonymous admin mutation is refused before its body is read', async () => {
+    const { p } = load(ON);
+    const seen = mockFetch(ok);
+    const r = anonReq('http://localhost:3001/api/cp/webhooks', 'POST');
+    const res = await p.proxyPost('cp', '/api/webhooks', r);
+    expect(res.status).toBe(403);
+    expect(r.bodyUsed).toBe(false);
+    expect(seen).toHaveLength(0);
+  });
+
+  it('the operator reaches an admin route with the admin key', async () => {
+    const { p } = load(ON);
+    const seen = mockFetch(ok);
+    const res = await p.proxyGet(
+      'cp',
+      '/api/audit',
+      browserReq('http://localhost:3001/api/cp/audit'),
+    );
+    expect(res.status).toBe(200);
+    expect(lower(seen[0].headers).authorization).toBe('Bearer cp-admin');
+  });
+
+  it('anonymous public playground read passes with the backend key and client IP', async () => {
+    const { p } = load(ON);
+    const seen = mockFetch(ok);
+    const res = await p.proxyGet(
+      'playground',
+      '/agents',
+      anonReq('http://localhost:3001/api/playground/agents'),
+    );
+    expect(res.status).toBe(200);
+    expect(lower(seen[0].headers)).toMatchObject({
+      'x-api-key': 'pg-key',
+      'x-aitp-client-ip': '203.0.113.7',
+    });
+  });
+
+  it('anonymous CP read uses the read key, never the admin key', async () => {
+    const { p } = load(ON);
+    const seen = mockFetch(ok);
+    await p.proxyGet(
+      'cp',
+      '/api/registry/agents',
+      anonReq('http://localhost:3001/api/cp/registry/agents'),
+    );
+    expect(lower(seen[0].headers).authorization).toBe('Bearer cp-read');
+  });
+
+  it('anonymous CP read with CP_READ_API_KEY unset → 503 cp_read_key_unavailable; the admin key is never sent', async () => {
+    const { p } = load({
+      PLAYGROUND_API_KEY: 'pg-key',
+      CP_API_KEY: 'cp-admin',
+      AITP_CONSOLE_PUBLIC_MODE: 'on',
+    });
+    const seen = mockFetch(ok);
+    const res = await p.proxyGet(
+      'cp',
+      '/api/registry/agents',
+      anonReq('http://localhost:3001/api/cp/registry/agents'),
+    );
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ code: 'cp_read_key_unavailable' });
+    expect(seen).toHaveLength(0);
+  });
+
+  it('the 6th anonymous launch → 429 with Retry-After, unfetched and with its body unread', async () => {
+    const { p } = load(ON);
+    const seen = mockFetch(ok);
+    for (let i = 0; i < 5; i++) {
+      const res = await p.proxyPost(
+        'playground',
+        '/runs',
+        anonReq('http://localhost:3001/api/playground/runs', 'POST'),
+      );
+      expect(res.status).toBe(200);
+    }
+    const r = anonReq('http://localhost:3001/api/playground/runs', 'POST');
+    const res = await p.proxyPost('playground', '/runs', r);
+    expect(res.status).toBe(429);
+    expect(Number(res.headers.get('Retry-After'))).toBeGreaterThan(0);
+    expect(await res.json()).toMatchObject({
+      code: 'CONSOLE_RATE_LIMITED',
+      limit: 5,
+    });
+    expect(r.bodyUsed).toBe(false);
+    expect(seen).toHaveLength(5);
+  });
+
+  it('the 301st read in a minute → 429', async () => {
+    const { p } = load(ON);
+    mockFetch(ok);
+    const get = () =>
+      p.proxyGet(
+        'playground',
+        '/agents',
+        anonReq('http://localhost:3001/api/playground/agents'),
+      );
+    for (let i = 0; i < 300; i++) expect((await get()).status).toBe(200);
+    expect((await get()).status).toBe(429);
+  });
+
+  describe('stream slots', () => {
+    const open = (p: ProxyModule, init?: { signal?: AbortSignal }) =>
+      p.proxySse(
+        'playground',
+        '/runs/r1/events',
+        anonReq(
+          'http://localhost:3001/api/playground/runs/r1/events',
+          'GET',
+          init,
+        ),
+      );
+
+    /** An upstream event stream that stays open until cancelled. */
+    const endless = () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new TextEncoder().encode('data: {}\n\n'));
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+      );
+
+    it('the 5th concurrent stream per IP → 429 without a fetch; closing one frees its slot', async () => {
+      const { p, limits } = load(ON);
+      const seen = mockFetch(endless);
+      const streams: Response[] = [];
+      for (let i = 0; i < 4; i++) streams.push(await open(p));
+      expect(streams.map((s) => s.status)).toEqual([200, 200, 200, 200]);
+      expect(limits.streamGate.open('203.0.113.7')).toBe(4);
+
+      const fifth = await open(p);
+      expect(fifth.status).toBe(429);
+      expect(await fifth.json()).toMatchObject({ limit: 4 });
+      expect(seen).toHaveLength(4);
+
+      await streams[0].body!.cancel();
+      expect(limits.streamGate.open('203.0.113.7')).toBe(3);
+      expect((await open(p)).status).toBe(200);
+    });
+
+    it('a stream that ends releases its slot', async () => {
+      const { p, limits } = load(ON);
+      mockFetch(sse);
+      const res = await open(p);
+      expect(limits.streamGate.open()).toBe(1);
+      await res.text();
+      expect(limits.streamGate.open()).toBe(0);
+    });
+
+    it('a request abort releases its slot', async () => {
+      const { p, limits } = load(ON);
+      mockFetch(endless);
+      const ac = new AbortController();
+      await open(p, { signal: ac.signal });
+      expect(limits.streamGate.open()).toBe(1);
+      ac.abort();
+      expect(limits.streamGate.open()).toBe(0);
+    });
+
+    it('a non-2xx upstream (e.g. the capacity probe at cap) releases its slot', async () => {
+      const { p, limits } = load(ON);
+      mockFetch(status(503));
+      const res = await open(p);
+      expect(res.status).toBe(503);
+      expect(limits.streamGate.open()).toBe(0);
+    });
+
+    it('a fetch error releases its slot', async () => {
+      const { p, limits } = load(ON);
+      const err = jest.spyOn(console, 'error').mockImplementation(() => {});
+      global.fetch = (async () => {
+        throw new Error('econnrefused');
+      }) as unknown as typeof fetch;
+      expect((await open(p)).status).toBe(502);
+      expect(limits.streamGate.open()).toBe(0);
+      err.mockRestore();
+    });
+
+    it('an upstream error partway through the stream releases its slot', async () => {
+      const { p, limits } = load(ON);
+      let sent = false;
+      mockFetch(
+        () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              pull(c) {
+                if (!sent) {
+                  sent = true;
+                  c.enqueue(new TextEncoder().encode('data: {}\n\n'));
+                } else c.error(new Error('upstream reset'));
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+          ),
+      );
+      const res = await open(p);
+      expect(limits.streamGate.open()).toBe(1);
+      await expect(res.text()).rejects.toThrow();
+      expect(limits.streamGate.open()).toBe(0);
+    });
+
+    it('a refused CP stream (no read key) takes no slot', async () => {
+      const { p, limits } = load({
+        PLAYGROUND_API_KEY: 'pg-key',
+        CP_API_KEY: 'cp-admin',
+        AITP_CONSOLE_PUBLIC_MODE: 'on',
+      });
+      const seen = mockFetch(sse);
+      const res = await p.proxySse(
+        'cp',
+        '/api/events/stream',
+        anonReq('http://localhost:3001/api/cp/events/stream'),
+      );
+      expect(res.status).toBe(503);
+      expect(seen).toHaveLength(0);
+      expect(limits.streamGate.open()).toBe(0);
+    });
+  });
+
+  it('proxyGetVerified refuses an anonymous admin-class GET before fetching or verifying', async () => {
+    const { p } = load(ON);
+    const seen = mockFetch(ok);
+    const verify = jest.fn();
+    const res = await p.proxyGetVerified(
+      'cp',
+      '/api/audit',
+      anonReq('http://localhost:3001/api/cp/audit'),
+      verify,
+    );
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({
+      code: 'CONSOLE_OPERATOR_SESSION_REQUIRED',
+    });
+    expect(seen).toHaveLength(0);
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['proxyPut', 'PUT', '/api/webhooks/w1'],
+    ['proxyPatch', 'PATCH', '/api/webhooks/w1'],
+    ['proxyDelete', 'DELETE', '/api/webhooks/w1'],
+  ] as const)(
+    '%s: an anonymous admin call → 403 with nothing fetched',
+    async (helper, method, path) => {
+      const { p } = load(ON);
+      const seen = mockFetch(ok);
+      const r = anonReq(`http://localhost:3001/api/cp${path}`, method);
+      const res = await p[helper]('cp', path, r);
+      expect(res.status).toBe(403);
+      expect(seen).toHaveLength(0);
+      expect(r.bodyUsed).toBe(false);
+    },
+  );
+
+  it('flag off: the public limiter and stream gate are never touched', async () => {
+    const { p, limits } = load(KEYS);
+    const consume = jest.spyOn(limits.publicLimiter, 'consume');
+    const acquire = jest.spyOn(limits.streamGate, 'acquire');
+    mockFetch(sse);
+    const op = (u: string, m = 'GET') =>
+      browserReq(`http://localhost:3001${u}`, m);
+    await p.proxyGet('playground', '/agents', op('/api/playground/agents'));
+    await p.proxyPost(
+      'playground',
+      '/runs',
+      op('/api/playground/runs', 'POST'),
+    );
+    await (await p.proxySse('playground', '/runs/r1/events', op('/x'))).text();
+    expect(consume).not.toHaveBeenCalled();
+    expect(acquire).not.toHaveBeenCalled();
+    // And anonymous is a 401 there, unfetched.
+    const seen = mockFetch(ok);
+    const res = await p.proxyGet(
+      'playground',
+      '/agents',
+      anonReq('http://localhost:3001/api/playground/agents'),
+    );
+    expect(res.status).toBe(401);
+    expect(seen).toHaveLength(0);
   });
 });

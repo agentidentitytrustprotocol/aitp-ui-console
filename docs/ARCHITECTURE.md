@@ -112,6 +112,59 @@ route except build assets, and applies three checks in order:
 Passing requests continue untouched (`NextResponse.next()`), so SSE
 streams aren't buffered.
 
+## Access model
+
+Two layers decide who may reach an upstream, and the second never trusts
+the first:
+
+1. **The edge gate** (`src/proxy.ts`) decides only whether a route needs a
+   session. With `AITP_CONSOLE_PUBLIC_MODE` off (the default, and how
+   production ships), that is every route except `/login`, as described
+   above. With it on, pages (except `/login` and `/logout`),
+   `/api/cp/*`, `/api/playground/*` and `/api/auth/session` pass without
+   one. Wrong Basic credentials on an open route are counted per IP (10 a
+   minute, 50 shared by callers whose IP is unknown) and answer 429 past
+   that; a garbled `Authorization` header is treated as anonymous.
+2. **The route helpers** (`src/lib/api/proxy.ts`) call `authorizeUpstream`
+   (`src/lib/server/access.ts`) before reading the request body or making
+   any fetch. It re-derives the flag, the session and the route class from
+   the allowlist (`src/lib/server/allowlist.ts`), matched on the upstream
+   path after dot-segment resolution. A test (`src/lib/api/upstream-boundary.test.ts`)
+   keeps every route handler on those helpers.
+
+| | Flag off | Flag on |
+| --- | --- | --- |
+| Operator (cookie or Basic) | every route | every route; public routes still count against the per-IP limits |
+| Anonymous, public route | 401 | allowed, rate-limited |
+| Anonymous, admin or unlisted route | 401 | 403 `CONSOLE_OPERATOR_SESSION_REQUIRED` |
+| Console password unset | 503 everywhere | public routes work; everything else 503 `console_not_configured` |
+
+**Limits** apply only with the flag on, in memory per instance
+(`src/lib/server/limits.ts`): 300 requests a minute per IP on every public
+route; 5 run launches per 10 minutes per IP (on top of the read charge);
+for anonymous control-plane reads, 60 a minute per IP and 300 a minute per
+instance, so visitors cannot starve the CP's read-key bucket; and 4
+concurrent streams per IP, 200 per instance. A slot is freed when the
+stream ends, errors, is cancelled or the request aborts, and after 305
+seconds at most. The 305-second expiry assumes the platform ends a stream at
+the route's 300-second `maxDuration`, as Vercel does; a self-hosted server
+that lets a stream run longer frees its slot while it is still open. On
+public routes operators are charged the per-IP `read` (and `launch`)
+buckets like anyone else; admin-class routes charge nothing, since only
+operators reach them. A request refused by any limit spends nothing from the
+others. A refusal is 429 `{error, code: "CONSOLE_RATE_LIMITED",
+retryAfterSeconds, limit}` with `Retry-After`; the SSE hook backs off on it
+the same way it does on a CP at capacity. IPv6 callers are limited per /64.
+
+**Credentials** are chosen per route class, never per caller-supplied
+header (see [PROXIES.md § Auth](https://agentidentitytrustprotocol.io/console/proxies#auth)).
+An anonymous caller never gets the CP admin key: a CP read route with no
+read key configured answers 503 `cp_read_key_unavailable`.
+
+**What the UI sees.** `GET /api/auth/session` answers
+`{publicMode, signedIn}` (never cached), so the UI can hide operator-only
+controls from anonymous visitors. Hiding is cosmetic; the helpers enforce.
+
 ## Layering
 
 ```

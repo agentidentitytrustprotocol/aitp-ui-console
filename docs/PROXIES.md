@@ -33,30 +33,30 @@ server-side, never sent to the browser.
 
 ## Playground (`PLAYGROUND_URL`, default `http://localhost:8000`)
 
-| Method | Console route | Upstream |
-| --- | --- | --- |
-| GET | `/api/playground/health` | `/healthz` |
-| GET | `/api/playground/capabilities` | `/capabilities` |
-| GET | `/api/playground/agents` | `/agents` |
-| GET | `/api/playground/metrics` | `/metrics` |
-| GET | `/api/playground/packs` | `/packs` |
-| GET | `/api/playground/scenarios` | `/scenarios` |
-| GET | `/api/playground/scenarios/[...ref]` | `/scenarios/<pack>/<scenario>@<version>` |
-| GET | `/api/playground/scenario-templates?ref=…` | `/scenarios/<pack>/<scenario>@<version>/templates` |
-| GET | `/api/playground/runs` | `/runs` |
-| POST | `/api/playground/runs` | `/runs` (accepts `template`, `variant`, `fault_injection`) |
-| GET | `/api/playground/runs/[id]` | `/runs/:id` |
-| GET | `/api/playground/runs/[id]/status` | `/runs/:id/status` |
-| POST | `/api/playground/runs/[id]/cancel` | `/runs/:id/cancel` |
-| GET | `/api/playground/runs/[id]/narrate` | `/runs/:id/narrate` |
-| GET | `/api/playground/runs/[id]/cp-audit` | `/runs/:id/cp-audit` |
-| GET | `/api/playground/runs/[id]/cp-sessions` | `/runs/:id/cp-sessions` |
-| GET | `/api/playground/runs/[id]/deliveries` | `/runs/:id/cp-deliveries` |
-| **SSE** | `/api/playground/runs/[id]/events` | `/runs/:id/events` |
-| GET, POST | `/api/playground/hosted-agents` | `/hosted-agents` |
-| GET, DELETE | `/api/playground/hosted-agents/[id]` | `/hosted-agents/:id` |
-| POST | `/api/playground/hosted-agents/[id]/invoke` | `/hosted-agents/:id/invoke` |
-| POST | `/api/playground/hosted-agents/[id]/resolve-and-handshake` | `/hosted-agents/:id/resolve-and-handshake` |
+| Method | Console route | Upstream | Access |
+| --- | --- | --- | --- |
+| GET | `/api/playground/health` | `/healthz` | public |
+| GET | `/api/playground/capabilities` | `/capabilities` | public |
+| GET | `/api/playground/agents` | `/agents` | public |
+| GET | `/api/playground/metrics` | `/metrics` | admin |
+| GET | `/api/playground/packs` | `/packs` | public |
+| GET | `/api/playground/scenarios` | `/scenarios` | public |
+| GET | `/api/playground/scenarios/[...ref]` | `/scenarios/<pack>/<scenario>@<version>` | public |
+| GET | `/api/playground/scenario-templates?ref=…` | `/scenarios/<pack>/<scenario>@<version>/templates` | public |
+| GET | `/api/playground/runs` | `/runs` | public |
+| POST | `/api/playground/runs` | `/runs` (accepts `template`, `variant`, `fault_injection`) | public (launch) |
+| GET | `/api/playground/runs/[id]` | `/runs/:id` | public |
+| GET | `/api/playground/runs/[id]/status` | `/runs/:id/status` | public |
+| POST | `/api/playground/runs/[id]/cancel` | `/runs/:id/cancel` | admin |
+| GET | `/api/playground/runs/[id]/narrate` | `/runs/:id/narrate` | public |
+| GET | `/api/playground/runs/[id]/cp-audit` | `/runs/:id/cp-audit` | public |
+| GET | `/api/playground/runs/[id]/cp-sessions` | `/runs/:id/cp-sessions` | public |
+| GET | `/api/playground/runs/[id]/deliveries` | `/runs/:id/cp-deliveries` | public |
+| **SSE** | `/api/playground/runs/[id]/events` | `/runs/:id/events` | public (stream) |
+| GET, POST | `/api/playground/hosted-agents` | `/hosted-agents` | GET public · POST admin |
+| GET, DELETE | `/api/playground/hosted-agents/[id]` | `/hosted-agents/:id` | GET public · DELETE admin |
+| POST | `/api/playground/hosted-agents/[id]/invoke` | `/hosted-agents/:id/invoke` | admin |
+| POST | `/api/playground/hosted-agents/[id]/resolve-and-handshake` | `/hosted-agents/:id/resolve-and-handshake` | admin |
 
 > **Why `scenario-templates` is a query-param route, not a child of
 > `/scenarios/[...ref]`:** Next.js does not allow child segments under a
@@ -66,38 +66,38 @@ server-side, never sent to the browser.
 
 ## Control Plane (`CP_URL`, default `http://localhost:4000`)
 
-| Method | Console route | Upstream |
-| --- | --- | --- |
-| GET | `/api/cp/health` | `/api/health` |
-| GET | `/api/cp/readyz` | `/api/readyz` |
-| GET | `/api/cp/dashboard` | `/api/dashboard/overview` |
-| GET | `/api/cp/dashboard/agents` | `/api/dashboard/agents` |
-| GET | `/api/cp/registry/agents` | `/api/registry/agents` |
-| POST | `/api/cp/registry/enroll` | `/api/registry/enroll` |
-| GET | `/api/cp/registry/agents/[aid]` | `/api/registry/agents/:aid` |
-| DELETE | `/api/cp/registry/agents/[aid]` | `/api/registry/agents/:aid` |
-| GET | `/api/cp/registry/agents/[aid]/manifest` | `/api/registry/agents/:aid/manifest` (verifying — see note above) |
-| **SSE** | `/api/cp/events/stream` | `/api/events/stream` (cap-aware) |
-| GET | `/api/cp/events/history` | `/api/events/history` |
-| GET | `/api/cp/sessions` | `/api/sessions` |
-| GET | `/api/cp/sessions/[sessionId]` | `/api/sessions/:sessionId` |
-| GET | `/api/cp/sessions/[sessionId]/replay` | `/api/sessions/:sessionId/replay` |
-| GET | `/api/cp/sessions/[sessionId]/export` | `/api/sessions/:sessionId/export` |
-| GET | `/api/cp/audit` | `/api/audit` (admin-action log; the Audit *screen* uses `events/history` above) |
-| GET | `/api/cp/metrics` | `/api/metrics` |
-| GET | `/api/cp/tcts` | `/api/tcts` |
-| GET | `/api/cp/delegations` | `/api/delegations` |
-| POST | `/api/cp/revocation/entries` | `/api/revocation/entries` (POST-only; the body carries `iss`) |
-| GET | `/api/cp/revocation/issuers` | `/api/revocation/issuers` (issuers that have entries, with counts; admin key) |
-| GET | `/api/cp/revocations` | `/api/revocations?iss=<aid>` (one issuer's entries, unsigned) |
-| GET, POST | `/api/cp/trust-anchors` | `/api/trust-anchors` |
-| GET, PATCH, DELETE | `/api/cp/trust-anchors/[id]` | `/api/trust-anchors/:id` |
-| GET, POST, DELETE | `/api/cp/pinned-keys` | `/api/pinned-keys` (DELETE takes `?namespace=&aid=`) |
-| GET, POST | `/api/cp/webhooks` | `/api/webhooks` |
-| PUT, DELETE | `/api/cp/webhooks/[id]` | `/api/webhooks/:id` |
-| GET, POST | `/api/cp/webhooks/[id]/circuit-breaker` | `/api/webhooks/:id/circuit-breaker` |
-| POST | `/api/cp/webhooks/[id]/circuit-breaker/reset` | `/api/webhooks/:id/circuit-breaker/reset` |
-| GET | `/api/cp/well-known/aitp-manifest` | `/.well-known/aitp-manifest` (verifying — see note above) |
+| Method | Console route | Upstream | Access |
+| --- | --- | --- | --- |
+| GET | `/api/cp/health` | `/api/health` | public |
+| GET | `/api/cp/readyz` | `/api/readyz` | public |
+| GET | `/api/cp/dashboard` | `/api/dashboard/overview` | public |
+| GET | `/api/cp/dashboard/agents` | `/api/dashboard/agents` | public |
+| GET | `/api/cp/registry/agents` | `/api/registry/agents` | public |
+| POST | `/api/cp/registry/enroll` | `/api/registry/enroll` | admin |
+| GET | `/api/cp/registry/agents/[aid]` | `/api/registry/agents/:aid` | public |
+| DELETE | `/api/cp/registry/agents/[aid]` | `/api/registry/agents/:aid` | admin |
+| GET | `/api/cp/registry/agents/[aid]/manifest` | `/api/registry/agents/:aid/manifest` (verifying — see note above) | public |
+| **SSE** | `/api/cp/events/stream` | `/api/events/stream` (cap-aware) | public (stream) |
+| GET | `/api/cp/events/history` | `/api/events/history` | public |
+| GET | `/api/cp/sessions` | `/api/sessions` | public |
+| GET | `/api/cp/sessions/[sessionId]` | `/api/sessions/:sessionId` | public |
+| GET | `/api/cp/sessions/[sessionId]/replay` | `/api/sessions/:sessionId/replay` | public |
+| GET | `/api/cp/sessions/[sessionId]/export` | `/api/sessions/:sessionId/export` | public |
+| GET | `/api/cp/audit` | `/api/audit` (admin-action log; the Audit *screen* uses `events/history` above) | admin |
+| GET | `/api/cp/metrics` | `/api/metrics` | admin |
+| GET | `/api/cp/tcts` | `/api/tcts` | public |
+| GET | `/api/cp/delegations` | `/api/delegations` | public |
+| POST | `/api/cp/revocation/entries` | `/api/revocation/entries` (POST-only; the body carries `iss`) | admin |
+| GET | `/api/cp/revocation/issuers` | `/api/revocation/issuers` (issuers that have entries, with counts) | public |
+| GET | `/api/cp/revocations` | `/api/revocations?iss=<aid>` (one issuer's entries, unsigned) | admin |
+| GET, POST | `/api/cp/trust-anchors` | `/api/trust-anchors` | GET public · POST admin |
+| GET, PATCH, DELETE | `/api/cp/trust-anchors/[id]` | `/api/trust-anchors/:id` | GET public · PATCH, DELETE admin |
+| GET, POST, DELETE | `/api/cp/pinned-keys` | `/api/pinned-keys` (DELETE takes `?namespace=&aid=`) | GET public · POST, DELETE admin |
+| GET, POST | `/api/cp/webhooks` | `/api/webhooks` | admin |
+| PUT, DELETE | `/api/cp/webhooks/[id]` | `/api/webhooks/:id` | admin |
+| GET, POST | `/api/cp/webhooks/[id]/circuit-breaker` | `/api/webhooks/:id/circuit-breaker` | admin |
+| POST | `/api/cp/webhooks/[id]/circuit-breaker/reset` | `/api/webhooks/:id/circuit-breaker/reset` | admin |
+| GET | `/api/cp/well-known/aitp-manifest` | `/.well-known/aitp-manifest` (verifying — see note above) | public |
 
 ## Adding a new proxy
 
@@ -151,6 +151,14 @@ live only in the route-handler process.
 
 Which class a route is in comes from the allowlist in
 `src/lib/server/allowlist.ts`; a path not in it is treated as admin.
+
+**Access column.** With `AITP_CONSOLE_PUBLIC_MODE` off (the default), every
+route needs an operator session, whatever the column says. With it on,
+`public` routes also serve anonymous visitors, charged against the per-IP
+limits (`read`; `launch` adds the 5-per-10-minutes run budget; `stream`
+takes one of 4 concurrent stream slots per IP); `admin` routes still need an
+operator session (anonymous → 403 `CONSOLE_OPERATOR_SESSION_REQUIRED`). See
+[ARCHITECTURE.md § Access model](https://agentidentitytrustprotocol.io/console/architecture#access-model).
 
 **Read-key fallback.** For an operator, a read route falls back to
 `CP_API_KEY`, retrying once, when `CP_READ_API_KEY` is unset, when the CP

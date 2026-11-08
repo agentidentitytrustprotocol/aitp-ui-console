@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { serverConfig } from '../config';
 import { matchRoute, type AllowEntry, type Method } from '../server/allowlist';
 import { UNKNOWN_IP, clientIp } from '../server/client-ip';
+import { authorizeUpstream } from '../server/access';
 import { isPublicMode } from '../server/public-mode';
 import type { Verdict } from '../types/cp';
 
@@ -22,15 +23,6 @@ function serviceBase(service: Service): string {
     : serverConfig.cpUrl;
 }
 
-/** Whether the caller is a signed-in operator. With the public-mode flag
- *  off every request that reaches a route handler has passed the session
- *  gate in `src/proxy.ts`, so this is `true`; Phase 3 replaces it with the
- *  handler's own session check (`authorizeUpstream`). */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- Phase 3 reads it
-function callerIsOperator(_req: NextRequest): boolean {
-  return true;
-}
-
 // ---------------------------------------------------------------------------
 // Upstream credentials and headers
 // ---------------------------------------------------------------------------
@@ -41,9 +33,10 @@ function callerIsOperator(_req: NextRequest): boolean {
  *  - `read`: `CP_READ_API_KEY`, with `fallback` saying whether a 401 or a
  *    `403 READ_ONLY_KEY` may be retried once with the admin key;
  *  - `unavailable`: an anonymous read with no usable read key (503);
- *  - `forbidden`: an anonymous caller on an admin-class route. Phase 3
- *    refuses these before any fetch; this is the backstop that keeps the
- *    admin key from ever being sent on an anonymous request. */
+ *  - `forbidden`: an anonymous caller on an admin-class route.
+ *    `authorizeUpstream` refuses these before any fetch; this is the
+ *    backstop that keeps the admin key from ever being sent on an
+ *    anonymous request. */
 type CpKeyPlan =
   | { kind: 'none' }
   | { kind: 'admin' }
@@ -301,19 +294,25 @@ function logUpstreamError(method: string, target: string, err: unknown): void {
   console.error(`[proxy] ${method} ${target} failed:`, err);
 }
 
+/** Authorize, then (only if allowed) read the request body and fetch.
+ *  The body is read after the access check so a refused request never
+ *  has its body consumed. */
 async function runProxy(
   method: Method,
   target: string,
   service: Service,
   req: NextRequest,
-  body?: string,
+  withBody = false,
 ): Promise<Response> {
+  const access = await authorizeUpstream(service, method, target, req);
+  if (!access.ok) return access.response;
+  const body = withBody ? await req.text() : undefined;
   const t = withTimeout(req);
   try {
     const res = await upstreamFetch(service, method, target, req, {
       body,
       signal: t.signal,
-      operator: callerIsOperator(req),
+      operator: access.operator,
     });
     const data = await res.text();
     const headers = res.ok
@@ -337,6 +336,7 @@ async function runProxy(
     return makeError(502, 'Upstream unreachable', target);
   } finally {
     t.cancel();
+    access.release();
   }
 }
 
@@ -393,11 +393,13 @@ export async function proxyGetVerified(
 ): Promise<Response> {
   const url = new URL(req.url);
   const target = `${serviceBase(service)}${path}${url.search}`;
+  const access = await authorizeUpstream(service, 'GET', target, req);
+  if (!access.ok) return access.response;
   const t = withTimeout(req);
   try {
     const res = await upstreamFetch(service, 'GET', target, req, {
       signal: t.signal,
-      operator: callerIsOperator(req),
+      operator: access.operator,
     });
     const text = await res.text();
     if (!res.ok) {
@@ -420,6 +422,7 @@ export async function proxyGetVerified(
     return makeError(502, 'Upstream unreachable', target);
   } finally {
     t.cancel();
+    access.release();
   }
 }
 
@@ -428,9 +431,8 @@ export async function proxyPost(
   path: string,
   req: NextRequest,
 ): Promise<Response> {
-  const body = await req.text();
   const target = `${serviceBase(service)}${path}`;
-  return runProxy('POST', target, service, req, body);
+  return runProxy('POST', target, service, req, true);
 }
 
 export async function proxyPut(
@@ -438,9 +440,8 @@ export async function proxyPut(
   path: string,
   req: NextRequest,
 ): Promise<Response> {
-  const body = await req.text();
   const target = `${serviceBase(service)}${path}`;
-  return runProxy('PUT', target, service, req, body);
+  return runProxy('PUT', target, service, req, true);
 }
 
 export async function proxyPatch(
@@ -448,9 +449,8 @@ export async function proxyPatch(
   path: string,
   req: NextRequest,
 ): Promise<Response> {
-  const body = await req.text();
   const target = `${serviceBase(service)}${path}`;
-  return runProxy('PATCH', target, service, req, body);
+  return runProxy('PATCH', target, service, req, true);
 }
 
 export async function proxyDelete(
@@ -474,32 +474,83 @@ export async function proxySse(
 ): Promise<Response> {
   const url = new URL(req.url);
   const target = `${serviceBase(service)}${path}${url.search}`;
+  const access = await authorizeUpstream(service, 'GET', target, req);
+  if (!access.ok) return access.response;
+  // From here on the stream slot (public mode) must be released exactly
+  // once: on a non-2xx, on a fetch error, or when the stream ends, is
+  // cancelled by the browser, errors, or the request aborts.
   try {
     const upstream = await upstreamFetch(service, 'GET', target, req, {
       accept: 'text/event-stream',
       signal: req.signal,
-      operator: callerIsOperator(req),
+      operator: access.operator,
     });
-    if (!upstream.ok) {
+    if (!upstream.ok || !upstream.body) {
+      access.release();
       const text = await upstream.text();
       return new Response(emptyBodyStatus(upstream.status) ? null : text, {
         status: upstream.status,
         headers: errorHeaders(upstream),
       });
     }
-    return new Response(upstream.body, {
-      status: upstream.status,
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache, no-transform',
-        Connection: 'keep-alive',
-        'X-Accel-Buffering': 'no',
+    return new Response(
+      releasingStream(upstream.body, access.release, req.signal),
+      {
+        status: upstream.status,
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+          'X-Accel-Buffering': 'no',
+        },
       },
-    });
+    );
   } catch (err) {
+    access.release();
     logUpstreamError('SSE', target, err);
     return makeError(502, 'Upstream unreachable', target);
   }
+}
+
+/** Pass `body` through, calling `release` once when it ends, errors, is
+ *  cancelled by the consumer, or `signal` aborts. */
+function releasingStream(
+  body: ReadableStream<Uint8Array>,
+  release: () => void,
+  signal: AbortSignal,
+): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  let released = false;
+  const done = () => {
+    if (released) return;
+    released = true;
+    signal.removeEventListener('abort', onAbort);
+    release();
+  };
+  const onAbort = () => {
+    done();
+    reader.cancel().catch(() => {});
+  };
+  if (signal.aborted) onAbort();
+  else signal.addEventListener('abort', onAbort, { once: true });
+  return new ReadableStream<Uint8Array>({
+    async pull(ctrl) {
+      try {
+        const r = await reader.read();
+        if (r.done) {
+          done();
+          ctrl.close();
+        } else ctrl.enqueue(r.value);
+      } catch (err) {
+        done();
+        ctrl.error(err);
+      }
+    },
+    async cancel(reason) {
+      done();
+      await reader.cancel(reason).catch(() => {});
+    },
+  });
 }
 
 /** Test-only access to module internals. Not for application code: a

@@ -14,6 +14,7 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { NextRequest } from 'next/server';
+import { OPERATOR_BASIC, setConsoleAuthEnv } from '@/test/operator';
 
 let server: http.Server;
 let base: string;
@@ -21,7 +22,9 @@ let upstreamText = '';
 
 function makeRequest(): NextRequest {
   const { NextRequest } = require('next/server');
-  return new NextRequest('http://localhost:3001/api/cp/registry/agents/aid%3Apubkey%3Atest/manifest');
+  return new NextRequest('http://localhost:3001/api/cp/registry/agents/aid%3Apubkey%3Atest/manifest', {
+    headers: { authorization: OPERATOR_BASIC },
+  });
 }
 
 function params(): { params: Promise<{ aid: string }> } {
@@ -29,6 +32,7 @@ function params(): { params: Promise<{ aid: string }> } {
 }
 
 beforeAll(async () => {
+  setConsoleAuthEnv();
   server = http.createServer((_req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(upstreamText);

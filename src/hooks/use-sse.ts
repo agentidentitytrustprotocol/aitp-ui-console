@@ -133,15 +133,22 @@ export function useSse<T>({
           await res.body?.cancel();
         } catch {}
         if (!active || suspended) return;
-        if (res.status === 503) {
+        if (res.status === 503 || res.status === 429) {
+          // 503: the upstream is at its connection cap. 429: the console's
+          // own per-IP stream or request limit (public mode), or an
+          // upstream rate limit. Both back off, honouring Retry-After.
           setState('at-capacity');
+          const delay = Math.min(
+            Math.max(reconnectDelay.current, 5_000, retryAfterMs(res)),
+            maxReconnectDelayMs,
+          );
           timerRef.current = setTimeout(() => {
             reconnectDelay.current = Math.min(
               Math.max(reconnectDelay.current, 5_000) * 2,
               maxReconnectDelayMs,
             );
             connect();
-          }, Math.max(reconnectDelay.current, 5_000));
+          }, delay);
           return;
         }
       } catch {
@@ -203,4 +210,10 @@ export function useSse<T>({
   }, [url, maxReconnectDelayMs, capacityProbePath]);
 
   return { connected: state === 'connected', state };
+}
+
+/** `Retry-After` in milliseconds (delta-seconds form only), or 0. */
+function retryAfterMs(res: Response): number {
+  const raw = res.headers.get('Retry-After')?.trim() ?? '';
+  return /^\d{1,6}$/.test(raw) ? Number(raw) * 1000 : 0;
 }

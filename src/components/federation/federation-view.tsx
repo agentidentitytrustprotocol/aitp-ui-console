@@ -22,6 +22,8 @@ import {
   useStopHostedAgent,
 } from '@/hooks/use-hosted-agents';
 import { MAX_ERROR_BODY_CHARS } from '@/lib/api/client';
+import { useOperatorAccess } from '@/hooks/use-console-session';
+import { OperatorOnly } from '@/components/shared/operator-only';
 import { C } from '@/lib/colors';
 import { classifyFederationError } from '@/lib/federation-errors';
 import type { HostedAgent } from '@/lib/types/playground';
@@ -511,6 +513,7 @@ function InvokePanel({ agent }: { agent: HostedAgent }) {
 
 function HostedAgentCard({ agent }: { agent: HostedAgent }) {
   const stop = useStopHostedAgent();
+  const access = useOperatorAccess();
   const [open, setOpen] = useState(false);
 
   return (
@@ -524,25 +527,27 @@ function HostedAgentCard({ agent }: { agent: HostedAgent }) {
             {agent.hosted_id}
           </div>
         </div>
-        <button
-          onClick={() => stop.mutate(agent.hosted_id)}
-          disabled={stop.isPending}
-          aria-label={`Stop ${agent.ref}`}
-          title="Stop agent"
-          style={{
-            background: 'none',
-            border: `1px solid ${C.border}`,
-            borderRadius: 6,
-            padding: '6px 8px',
-            color: stop.isPending ? C.textMuted : C.red,
-            cursor: stop.isPending ? 'wait' : 'pointer',
-            flexShrink: 0,
-            display: 'inline-flex',
-            alignItems: 'center',
-          }}
-        >
-          {stop.isPending ? <InlineSpinner color={C.textMuted} /> : <Trash2 size={13} />}
-        </button>
+        {access.canAdmin && (
+          <button
+            onClick={() => stop.mutate(agent.hosted_id)}
+            disabled={stop.isPending}
+            aria-label={`Stop ${agent.ref}`}
+            title="Stop agent"
+            style={{
+              background: 'none',
+              border: `1px solid ${C.border}`,
+              borderRadius: 6,
+              padding: '6px 8px',
+              color: stop.isPending ? C.textMuted : C.red,
+              cursor: stop.isPending ? 'wait' : 'pointer',
+              flexShrink: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+            }}
+          >
+            {stop.isPending ? <InlineSpinner color={C.textMuted} /> : <Trash2 size={13} />}
+          </button>
+        )}
       </div>
 
       <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -561,33 +566,35 @@ function HostedAgentCard({ agent }: { agent: HostedAgent }) {
         </div>
       )}
 
-      <button
-        onClick={() => setOpen((o) => !o)}
-        style={{
-          marginTop: 14,
-          background: 'none',
-          border: `1px solid ${C.border}`,
-          borderRadius: 6,
-          padding: '7px 10px',
-          color: C.textDim,
-          fontSize: 12,
-          cursor: 'pointer',
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Globe size={12} color={C.blue} /> Handshake &amp; invoke
-        </span>
-        <ChevronDown
-          size={13}
-          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}
-        />
-      </button>
+      {access.canAdmin && (
+        <button
+          onClick={() => setOpen((o) => !o)}
+          style={{
+            marginTop: 14,
+            background: 'none',
+            border: `1px solid ${C.border}`,
+            borderRadius: 6,
+            padding: '7px 10px',
+            color: C.textDim,
+            fontSize: 12,
+            cursor: 'pointer',
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Globe size={12} color={C.blue} /> Handshake &amp; invoke
+          </span>
+          <ChevronDown
+            size={13}
+            style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}
+          />
+        </button>
+      )}
 
-      {open && (
+      {open && access.canAdmin && (
         <div
           style={{
             marginTop: 12,
@@ -609,6 +616,7 @@ function HostedAgentCard({ agent }: { agent: HostedAgent }) {
 export function FederationView() {
   const { data, isLoading, error } = useHostedAgents();
   const agents = data?.hosted ?? [];
+  const access = useOperatorAccess();
 
   return (
     <div className="anim-in">
@@ -629,7 +637,13 @@ export function FederationView() {
           alignItems: 'start',
         }}
       >
-        <HostAgentForm />
+        {access.canAdmin ? (
+          <HostAgentForm />
+        ) : (
+          <Card style={{ padding: 16 }}>
+            <OperatorOnly what="Hosting an agent" />
+          </Card>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {isLoading ? (
             <Card style={{ padding: 16 }}>

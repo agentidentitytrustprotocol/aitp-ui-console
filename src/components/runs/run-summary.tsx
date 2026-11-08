@@ -4,7 +4,9 @@ import { Card } from '@/components/shared/card';
 import { CapabilityBadge } from '@/components/shared/capability-badge';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { C } from '@/lib/colors';
+import { runLlmQuota } from '@/lib/llm-quota';
 import { runOffsetMs } from '@/lib/utils';
+import { LlmQuotaBadge } from './llm-quota-badge';
 import type { RunEvent, RunResponse } from '@/lib/types/playground';
 
 export function RunSummary({
@@ -32,6 +34,8 @@ export function RunSummary({
     new Set(events.filter((e) => e.type === 'trust.established').flatMap((e) => e.grants ?? [])),
   );
 
+  const quota = runLlmQuota(run, events);
+
   return (
     <Card style={{ padding: 14 }}>
       <div
@@ -39,6 +43,11 @@ export function RunSummary({
       >
         SUMMARY
       </div>
+      {quota && (
+        <div style={{ marginBottom: 10 }}>
+          <LlmQuotaBadge quota={quota} />
+        </div>
+      )}
       <Row label="Status" value={<StatusBadge status={run.status} />} />
       <Row label="Duration" value={`${duration.toFixed(1)}s`} />
       <Row label="Handshakes" value={String(handshakes)} />

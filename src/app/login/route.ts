@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { consoleAuthConfig } from '@/lib/config';
 import { C } from '@/lib/colors';
-import { clientIp, loginLimiter } from '@/lib/auth/rate-limit';
+import { clientIp, hitLogin } from '@/lib/auth/rate-limit';
 import {
   SESSION_COOKIE,
   SESSION_TTL_SECONDS,
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
     'application/json',
   );
 
-  const limit = loginLimiter.hit(clientIp(req.headers));
+  const limit = hitLogin(clientIp(req.headers));
   if (!limit.allowed) {
     return NextResponse.json(
       { error: 'Too many login attempts', code: 'rate_limited' },

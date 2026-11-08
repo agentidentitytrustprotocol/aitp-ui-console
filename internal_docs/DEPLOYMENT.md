@@ -81,10 +81,13 @@ layer or the SSE hook. See [`TESTING.md`](./TESTING.md).
    | `CONSOLE_PASSWORD` | yes | Operator password (24+ random chars). Unset → 503 on every route. |
    | `CONSOLE_SESSION_SECRET` | yes | HMAC key for the session cookie (`openssl rand -hex 32`). Unset → 503 on every route. Rotating it signs everyone out. |
    | `PLAYGROUND_URL` | yes | Public HTTPS URL of the playground (no trailing slash). |
-   | `PLAYGROUND_API_KEY` | if upstream enforces | Bearer token forwarded to the playground. |
+   | `PLAYGROUND_API_KEY` | if upstream enforces | Sent to the playground as `x-api-key` on every call. |
    | `CP_URL` | yes | Public HTTPS URL of the control plane. |
    | `AITP_INSECURE_LOCALHOST_DANGEROUS` | no | Never set this on a deployed environment. It is for a local stack only, and a production build ignores it. |
-   | `CP_API_KEY` | if upstream enforces | Bearer token forwarded to the CP. |
+   | `CP_API_KEY` | if upstream enforces | The CP admin-equivalent key, sent as `Authorization: Bearer` on admin routes (audit, webhooks, metrics, writes) and as the read-route fallback. |
+   | `CP_READ_API_KEY` | recommended | The CP read-only key (`aitp-control-plane/prd CP_API_KEY_CONSOLE_RO`), used on read routes. Unset → with public mode off, read routes fall back to `CP_API_KEY` (logged); with it on, anonymous CP reads get 503 `cp_read_key_unavailable`. |
+   | `AITP_CONSOLE_PUBLIC_MODE` | no (default off) | `on`, `true` or `1` opens the read routes and run launches to anonymous visitors with per-IP limits; admin routes stay operator-only. Any other value is off. See `docs/ARCHITECTURE.md` § Access model. |
+   | `CONSOLE_CLIENT_IP_HEADER` | off Vercel only | The header carrying the real client IP from your reverse proxy (e.g. `x-real-ip`). Ignored on Vercel, which uses its own headers. Unset off Vercel → every caller shares one rate-limit bucket. |
    | `TRUSTED_ORIGINS` | optional | Comma-separated extra `Origin`s the mutation Origin check should allow. Only needed if the console is reachable on multiple hostnames (e.g. behind a CDN with a custom domain that differs from the Vercel one). |
 
    None of these are referenced at build time. Without the two
@@ -99,7 +102,7 @@ console's configuration and secrets:
 
 | Config | Holds |
 | --- | --- |
-| `prd` | Production: the six keys in [`deploy/doppler-keys.txt`](../deploy/doppler-keys.txt) |
+| `prd` | Production: the eight keys in [`deploy/doppler-keys.txt`](../deploy/doppler-keys.txt) |
 | `stg` | `prd`'s non-secret config only (`CP_URL`, `PLAYGROUND_URL`). There is no staging deployment. |
 | `dev` | The local `.env`'s console keys (`CP_URL`, `PLAYGROUND_URL`, both localhost) |
 | `dev_personal` | A branch of `dev`, no overrides |
@@ -110,6 +113,26 @@ from that service, never typed in:
 - `CP_API_KEY` is the control plane's `console-…` `API_KEYS` entry, and is equal
   to `aitp-control-plane/prd CP_API_KEY_CONSOLE`.
 - `PLAYGROUND_API_KEY` is equal to `aitp-playground/prd PLAYGROUND_API_KEY`.
+- `CP_READ_API_KEY` is the control plane's read-only `console-ro-…` entry, and is
+  equal to `aitp-control-plane/prd CP_API_KEY_CONSOLE_RO`.
+
+`AITP_CONSOLE_PUBLIC_MODE` is plain config, `off` in `prd`.
+
+Wave 3 rollout, in order:
+
+1. Pipe `aitp-control-plane/prd CP_API_KEY_CONSOLE_RO` into `prd` as
+   `CP_READ_API_KEY` (stdin only), and compare the two values' sha256 prefixes.
+2. Set `AITP_CONSOLE_PUBLIC_MODE=off` in `prd`.
+3. Once the merge's production deployment is READY at `main` HEAD, run the sync
+   (dry run, then `--apply`). Both keys are new, so no `--push` is needed.
+4. Delete the Preview-only `PLAYGROUND_API_KEY` entry (check its target is only
+   `preview` first; see below).
+5. Verify the signed-in console end to end: reads, a launch and its stream,
+   admin reads (audit, metrics), and no `cp read key fallback` log line.
+
+Turning public mode on later is its own step: set it to `on` in `prd`, then run
+the sync with `--apply`. Rollback for the read key: delete the Vercel
+`CP_READ_API_KEY` entry by id and redeploy; operators fall back to the admin key.
 
 When either one rotates, update the owning project first, then this one.
 
@@ -145,12 +168,18 @@ deploy/doppler-sync.sh --apply --no-redeploy # leave the rebuild to the next mer
 #### Preview has its own, smaller set
 
 Doppler owns Production. Preview deployments get only what a preview needs.
-They never get the control-plane key, the password or the session secret:
+They never get a control-plane key (admin or read-only), the playground key,
+the password or the session secret:
 
 | Preview variable | Value |
 | --- | --- |
 | `CP_URL`, `PLAYGROUND_URL` | Production's URLs (readable entries) |
-| `PLAYGROUND_API_KEY` | The playground key, so previews keep working once the playground enforces it |
+
+Preview held the production `PLAYGROUND_API_KEY` until the Wave 3 rollout
+(2026-11). It was removed because a preview build is any branch's code, and the
+production playground key lets a caller launch runs and spend the playground's
+LLM budget. A preview that needs the playground must use a separate,
+non-production key.
 
 These are separate Preview-only entries, set by hand with the Vercel API or
 `vercel env add … preview`. The sync never touches them. Without

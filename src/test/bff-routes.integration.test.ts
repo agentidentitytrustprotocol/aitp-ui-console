@@ -19,6 +19,7 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { NextRequest } from 'next/server';
+import { OPERATOR_BASIC, setConsoleAuthEnv } from './operator';
 
 interface RecordedRequest {
   method: string;
@@ -60,7 +61,10 @@ function lastRequest(): RecordedRequest {
 function makeRequest(url: string, init?: RequestInit): NextRequest {
   // Required lazily so env set in beforeAll wins.
   const { NextRequest } = require('next/server');
-  return new NextRequest(url, init);
+  // Route helpers authorize every call; run as the operator.
+  const headers = new Headers(init?.headers);
+  if (!headers.has('authorization')) headers.set('authorization', OPERATOR_BASIC);
+  return new NextRequest(url, { ...init, headers });
 }
 
 function params<T>(value: T): { params: Promise<T> } {
@@ -68,6 +72,7 @@ function params<T>(value: T): { params: Promise<T> } {
 }
 
 beforeAll(async () => {
+  setConsoleAuthEnv();
   server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (chunk) => (body += chunk));
@@ -172,7 +177,7 @@ beforeEach(() => {
 });
 
 describe('BFF route handlers against a mock upstream', () => {
-  it('GET /api/cp/health maps to /api/health and injects the CP bearer key', async () => {
+  it('GET /api/cp/health maps to /api/health and sends no CP key (keyless route)', async () => {
     const route: RouteModule = require('@/app/api/cp/health/route');
     const res = await route.GET!(makeRequest('http://localhost:3001/api/cp/health'));
 
@@ -181,7 +186,7 @@ describe('BFF route handlers against a mock upstream', () => {
 
     const seen = lastRequest();
     expect(seen.url).toBe('/api/health');
-    expect(seen.headers.authorization).toBe('Bearer test-cp-key');
+    expect(seen.headers.authorization).toBeUndefined();
   });
 
   it('forwards the query string untouched', async () => {
@@ -506,8 +511,9 @@ describe('BFF route handlers against a mock upstream', () => {
     );
 
     expect(res.status).toBe(503);
-    // Headers are still rewritten — the proxy never forwards upstream headers.
-    expect(res.headers.get('Content-Type')).toBe('text/event-stream');
+    // A non-2xx is an error, not a stream: the upstream Content-Type is
+    // relayed so the browser can read the JSON body.
+    expect(res.headers.get('Content-Type')).toBe('application/json');
   });
 });
 

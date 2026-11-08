@@ -15,6 +15,7 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { NextRequest } from 'next/server';
+import { OPERATOR_BASIC, setConsoleAuthEnv } from '@/test/operator';
 
 let server: http.Server;
 let base: string;
@@ -23,7 +24,9 @@ let upstreamStatus = 200;
 
 function makeRequest(): NextRequest {
   const { NextRequest } = require('next/server');
-  return new NextRequest('http://localhost:3001/api/cp/well-known/aitp-manifest');
+  return new NextRequest('http://localhost:3001/api/cp/well-known/aitp-manifest', {
+    headers: { authorization: OPERATOR_BASIC },
+  });
 }
 
 function setUpstream(text: string, status = 200) {
@@ -54,6 +57,7 @@ function tamperSignature(json: string): string {
 }
 
 beforeAll(async () => {
+  setConsoleAuthEnv();
   server = http.createServer((_req, res) => {
     res.writeHead(upstreamStatus, { 'Content-Type': 'application/json' });
     res.end(upstreamText);

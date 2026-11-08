@@ -12,9 +12,20 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { RunInputForm } from './run-input-form';
 import { TrustExplainer } from './trust-explainer';
 import { useScenario } from '@/hooks/use-scenarios';
-import { postJSON } from '@/lib/api/client';
+import { ApiError, postJSON } from '@/lib/api/client';
 import { C } from '@/lib/colors';
 import type { RunCreated, RunCreateInput } from '@/lib/types/playground';
+
+/** The launch error as shown above the run form. A 429 is the launch rate
+ *  limit: say so plainly, with the wait when the response gave one. */
+export function launchErrorMessage(err: unknown): string {
+  if (err instanceof ApiError && err.status === 429) {
+    return err.retryAfter !== undefined && Number.isFinite(err.retryAfter)
+      ? `Too many runs — try again in ${Math.max(1, Math.ceil(err.retryAfter))} s`
+      : 'Too many runs — try again shortly';
+  }
+  return String(err);
+}
 
 export function ScenarioDetail({ scenarioRef }: { scenarioRef: string }) {
   const router = useRouter();
@@ -146,7 +157,7 @@ export function ScenarioDetail({ scenarioRef }: { scenarioRef: string }) {
                     marginBottom: 12,
                   }}
                 >
-                  {String(trigger.error)}
+                  {launchErrorMessage(trigger.error)}
                 </div>
               )}
               <RunInputForm

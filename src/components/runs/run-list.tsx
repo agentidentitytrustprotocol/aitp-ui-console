@@ -8,6 +8,8 @@ import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { useRuns } from '@/hooks/use-runs';
 import { C } from '@/lib/colors';
+import { runLlmQuota } from '@/lib/llm-quota';
+import { LlmQuotaBadge } from './llm-quota-badge';
 import { shortId } from '@/lib/utils';
 
 function formatCreatedAt(ts: number | null): string {
@@ -95,7 +97,13 @@ export function RunList() {
                     )}
                   </td>
                   <td style={{ padding: '12px 16px' }}>
-                    <StatusBadge status={r.status} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <StatusBadge status={r.status} />
+                      {(() => {
+                        const q = runLlmQuota(r);
+                        return q && <LlmQuotaBadge quota={q} compact />;
+                      })()}
+                    </div>
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <span className="mono" style={{ fontSize: 12, color: C.textDim }}>

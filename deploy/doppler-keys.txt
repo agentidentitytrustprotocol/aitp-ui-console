@@ -18,6 +18,9 @@
 # config (read at request time, not build time)
 CP_URL sensitive
 PLAYGROUND_URL sensitive
+# Public mode (on/true/1 opens read routes to anonymous visitors; anything
+# else is off). Ships "off": docs/ARCHITECTURE.md § Access model.
+AITP_CONSOLE_PUBLIC_MODE
 
 # secret
 CONSOLE_PASSWORD sensitive
@@ -28,3 +31,6 @@ CP_API_KEY sensitive
 # The playground's shared key (equal to aitp-playground/prd PLAYGROUND_API_KEY).
 # Stored as a readable (encrypted) entry, so the sync compares it.
 PLAYGROUND_API_KEY
+# The control plane's console read-only key (piped from aitp-control-plane/prd
+# CP_API_KEY_CONSOLE_RO). Read-class CP routes use it; never on Preview.
+CP_READ_API_KEY sensitive

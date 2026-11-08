@@ -8,6 +8,7 @@ import type {
   PlaygroundCapabilities,
 } from '@/lib/types/playground';
 import type { CpReadyz } from '@/lib/types/cp';
+import { useOperatorAccess } from '@/hooks/use-console-session';
 
 export function usePlaygroundCapabilities() {
   return useQuery({
@@ -25,9 +26,12 @@ export function usePlaygroundAgents() {
   });
 }
 
+/** Admin-class (`GET /metrics`): fetched only with an operator session. */
 export function usePlaygroundMetrics() {
+  const { canAdmin } = useOperatorAccess();
   return useQuery({
     queryKey: ['playground-metrics'],
+    enabled: canAdmin,
     queryFn: async () => {
       const res = await fetch('/api/playground/metrics', { cache: 'no-store' });
       return res.text();
@@ -36,9 +40,12 @@ export function usePlaygroundMetrics() {
   });
 }
 
+/** Admin-class (`GET /api/metrics`): fetched only with an operator session. */
 export function useCpMetrics() {
+  const { canAdmin } = useOperatorAccess();
   return useQuery({
     queryKey: ['cp-metrics'],
+    enabled: canAdmin,
     queryFn: async () => {
       const res = await fetch('/api/cp/metrics', { cache: 'no-store' });
       return res.text();

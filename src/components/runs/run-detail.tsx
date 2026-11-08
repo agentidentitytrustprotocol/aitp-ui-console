@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, X } from 'lucide-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Card } from '@/components/shared/card';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
@@ -21,6 +21,7 @@ import { useRunEvents } from '@/hooks/use-run-events';
 import { useRunTimeBase } from '@/hooks/use-run-time-base';
 import { useUrlEnum } from '@/hooks/use-url-state';
 import { useToast } from '@/components/shared/toast';
+import { useAdminMutation, useOperatorAccess } from '@/hooks/use-console-session';
 import { postJSON } from '@/lib/api/client';
 import { C } from '@/lib/colors';
 import { REFETCH } from '@/lib/query-options';
@@ -72,7 +73,9 @@ export function RunDetail({ runId }: { runId: string }) {
   // persisted record can move offsets around under the reader.
   const baseTs = useRunTimeBase(events);
 
-  const cancel = useMutation({
+  const access = useOperatorAccess();
+  // Cancel is admin-class: hidden from anonymous visitors in public mode.
+  const cancel = useAdminMutation({
     mutationFn: () => postJSON(`/api/playground/runs/${encodeURIComponent(runId)}/cancel`, {}),
     onSuccess: () => toast.success('Cancel requested', runId),
     onError: (err) => toast.error('Cancel failed', String(err)),
@@ -122,7 +125,7 @@ export function RunDetail({ runId }: { runId: string }) {
             {run.data.scenario_ref}
           </span>
         )}
-        {active && (
+        {active && access.canAdmin && (
           <button
             onClick={() => cancel.mutate()}
             disabled={cancel.isPending}

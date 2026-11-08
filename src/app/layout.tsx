@@ -5,20 +5,26 @@ import { Providers } from './providers';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Topbar } from '@/components/layout/topbar';
 import { C } from '@/lib/colors';
+import { initialSession } from '@/lib/server/initial-session';
 
 export const metadata: Metadata = {
   title: 'AITP Console',
   description: 'Monitoring and control plane for the AITP ecosystem',
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const session = await initialSession();
   return (
     <html lang="en" className="dark">
       <body>
         <a href="#main" className="skip-link">
           Skip to main content
         </a>
-        <Providers>
+        <Providers initialSession={session}>
           <div
             style={{
               display: 'flex',

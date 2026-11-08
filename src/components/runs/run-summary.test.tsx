@@ -152,3 +152,58 @@ describe('RunSummary counts', () => {
     expect(screen.getByText('write.doc')).toBeInTheDocument();
   });
 });
+
+describe('RunSummary LLM quota badge', () => {
+  const RESETS = '2026-11-08T00:00:00Z';
+  /** The quota live region (the status badge is a `status` region too). */
+  const quotaStatus = () =>
+    screen
+      .queryAllByRole('status')
+      .find((el) => el.textContent?.startsWith('LLM quota reached')) ?? null;
+
+  it('renders the exact badge text with role="status" from the run fields', () => {
+    render(
+      <RunSummary
+        run={run({
+          llm_quota_exceeded: true,
+          llm_quota: {
+            reason: 'quota_exceeded',
+            quota: 'per_ip_daily',
+            limit: 20,
+            resets_at: RESETS,
+          },
+          llm_calls_on_mock: 3,
+        })}
+        events={[]}
+      />,
+    );
+    expect(quotaStatus()).toHaveTextContent(
+      `LLM quota reached: mock responses (resets ${new Date(RESETS).toLocaleString()}) · 3 calls on mock`,
+    );
+  });
+
+  it('falls back to the llm.quota_exceeded event', () => {
+    render(
+      <RunSummary
+        run={run()}
+        events={[
+          ev('llm.quota_exceeded', T0, {
+            code: 'quota_store_unavailable',
+            quota: 'global_monthly',
+            resets_at: null,
+            calls: 1,
+          }),
+        ]}
+      />,
+    );
+    expect(quotaStatus()).toHaveTextContent(
+      'LLM quota reached: mock responses (quota store unavailable) · 1 call on mock',
+    );
+  });
+
+  it('shows no badge for a run from a playground without the fields', () => {
+    render(<RunSummary run={run()} events={[ev('run.complete', T0)]} />);
+    expect(quotaStatus()).toBeNull();
+    expect(screen.queryByText(/LLM quota/)).toBeNull();
+  });
+});

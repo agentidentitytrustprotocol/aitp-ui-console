@@ -4,7 +4,7 @@
 import { NextRequest } from 'next/server';
 import { GET, POST } from './route';
 import { POST as LOGOUT } from '../logout/route';
-import { loginLimiter } from '@/lib/auth/rate-limit';
+import { loginLimiter, unknownIpLoginLimiter } from '@/lib/auth/rate-limit';
 import { SESSION_COOKIE, signSession, verifySession } from '@/lib/auth/session';
 
 const ORIGIN = 'https://console.example.com';
@@ -43,15 +43,23 @@ function sessionFrom(res: Response): string | undefined {
   return new RegExp(`${SESSION_COOKIE}=([^;]*)`).exec(set)?.[1];
 }
 
+const PRIOR_VERCEL = process.env.VERCEL;
+
 beforeEach(() => {
   process.env.CONSOLE_PASSWORD = PASSWORD;
   process.env.CONSOLE_SESSION_SECRET = SECRET;
+  // The login limiter keys on the client IP, which is trusted from
+  // `x-real-ip` only on Vercel (src/lib/server/client-ip.ts).
+  process.env.VERCEL = '1';
   loginLimiter.reset();
+  unknownIpLoginLimiter.reset();
 });
 
 afterAll(() => {
   delete process.env.CONSOLE_PASSWORD;
   delete process.env.CONSOLE_SESSION_SECRET;
+  if (PRIOR_VERCEL === undefined) delete process.env.VERCEL;
+  else process.env.VERCEL = PRIOR_VERCEL;
 });
 
 describe('POST /login', () => {
@@ -121,6 +129,16 @@ describe('POST /login', () => {
     expect(Number(res.headers.get('retry-after'))).toBeGreaterThan(0);
     // Another IP is unaffected.
     expect((await POST(jsonLogin(PASSWORD, '198.51.100.9'))).status).toBe(200);
+  });
+
+  it('off Vercel, unknown IPs share one 50/min bucket (still limited, not skipped)', async () => {
+    delete process.env.VERCEL;
+    for (let i = 0; i < 50; i++)
+      expect((await POST(jsonLogin('wrong', `203.0.113.${i}`))).status).toBe(
+        401,
+      );
+    // `x-real-ip` is not trusted off Vercel, so a fresh value doesn't help.
+    expect((await POST(jsonLogin(PASSWORD, '198.51.100.9'))).status).toBe(429);
   });
 
   it('is 503 when the console is not configured', async () => {

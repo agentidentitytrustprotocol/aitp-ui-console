@@ -13,7 +13,15 @@ playground API keys server-side and adds them to upstream requests, so
 access to the console is access to those services.
 
 - Every route except `/login` requires the operator session cookie or
-  HTTP Basic with `CONSOLE_PASSWORD` (`src/proxy.ts`).
+  HTTP Basic with `CONSOLE_PASSWORD` (`src/proxy.ts`). That is the default.
+  With `AITP_CONSOLE_PUBLIC_MODE=on`, anonymous visitors may also use the
+  allowlisted read routes and launch runs, under per-IP limits, while admin
+  routes stay operator-only. The route handlers re-check access themselves;
+  see [docs/ARCHITECTURE.md § Access model](docs/ARCHITECTURE.md#access-model).
+- Anonymous callers reach the control plane only with a read-only key
+  (`CP_READ_API_KEY`) and are never given the admin key. Operators use the
+  read key on read routes while public mode is off, and the admin key
+  otherwise.
 - If `CONSOLE_PASSWORD` or `CONSOLE_SESSION_SECRET` is unset, the console
   fails closed with 503 on every route.
 - Mutating requests must carry an `Origin` that matches the console's own

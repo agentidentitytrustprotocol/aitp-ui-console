@@ -22,5 +22,8 @@ export async function GET(req: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
     });
   }
-  return proxyGet('playground', `/scenarios/${ref}/templates`, req);
+  // Encode each segment, keeping the slashes, as `scenarios/[...ref]` does:
+  // a raw `?`, `#` or `%` in the ref would otherwise change the upstream URL.
+  const encoded = ref.split('/').map(encodeURIComponent).join('/');
+  return proxyGet('playground', `/scenarios/${encoded}/templates`, req);
 }

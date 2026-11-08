@@ -107,9 +107,10 @@ password (see
 | --- | --- |
 | `CONSOLE_PASSWORD` | Operator password, 24+ random characters. |
 | `CONSOLE_SESSION_SECRET` | Session-cookie HMAC key, e.g. `openssl rand -hex 32`. Rotating it signs every operator out. |
+| `AITP_CONSOLE_PUBLIC_MODE` | Default off. `on`, `true` or `1` opens the read routes and run launches to anonymous visitors, with per-IP limits; admin routes still need the operator. See [Access model](docs/ARCHITECTURE.md#access-model). |
 
-The upstream variables (`PLAYGROUND_URL`, `CP_URL`, `*_API_KEY`,
-`TRUSTED_ORIGINS`) are in `.env.example` and
+The upstream variables (`PLAYGROUND_URL`, `CP_URL`, `*_API_KEY` including
+`CP_READ_API_KEY`, `CONSOLE_CLIENT_IP_HEADER`, `TRUSTED_ORIGINS`) are in `.env.example` and
 [`internal_docs/DEPLOYMENT.md`](https://github.com/agentidentitytrustprotocol/aitp-ui-console/blob/main/internal_docs/DEPLOYMENT.md).
 
 The console runs on its own — if an upstream is down the topbar shows a

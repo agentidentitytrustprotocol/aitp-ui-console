@@ -5,6 +5,9 @@ import {
   basicAuthMatches,
   verifySession,
 } from './lib/auth/session';
+import { createRateLimiter } from './lib/auth/rate-limit';
+import { clientIp, rateLimitKey, UNKNOWN_IP } from './lib/server/client-ip';
+import { isPublicMode } from './lib/server/public-mode';
 
 /** Gate for every console route: pages, `/api/cp/*` and `/api/playground/*`.
  *
@@ -22,6 +25,15 @@ import {
  *
  *  Passing requests continue with `NextResponse.next()`, which neither
  *  reads nor buffers the response, so SSE routes stream as before.
+ *
+ *  Public mode (`AITP_CONSOLE_PUBLIC_MODE=on`) changes steps 1 and 2 only:
+ *  pages, `/api/cp/*`, `/api/playground/*` and `/api/auth/session` pass
+ *  without a session (and without a configured password); every other
+ *  route still needs both. The route handler then decides per upstream
+ *  route (`src/lib/server/access.ts`): this gate never classifies paths.
+ *  A wrong or garbled `Authorization` header on an open route is treated
+ *  as anonymous, and charged against a Basic-failure limiter (same policy
+ *  as `/login`) so the open routes can't be used to guess the password.
  *
  *  TRUSTED_ORIGINS (comma-separated) is for environments behind a reverse
  *  proxy whose external origin differs from the request Host. */
@@ -92,22 +104,66 @@ function crossSite(): NextResponse {
   );
 }
 
+/** Routes that, in public mode, pass this gate without a session. */
+function openInPublicMode(pathname: string): boolean {
+  if (!isApi(pathname)) return !isLogin(pathname) && pathname !== '/logout';
+  return (
+    pathname.startsWith('/api/cp/') ||
+    pathname.startsWith('/api/playground/') ||
+    pathname === '/api/auth/session'
+  );
+}
+
+/** Wrong Basic credentials on a public-mode open route. Its own instance:
+ *  the edge and `/login` are separate bundles. */
+const basicFailureLimiter = createRateLimiter(10, 60_000);
+const unknownIpBasicFailureLimiter = createRateLimiter(50, 60_000);
+
+function tooManyBasicFailures(retryAfterSeconds: number): NextResponse {
+  return NextResponse.json(
+    {
+      error: 'Too many failed sign-in attempts',
+      code: 'CONSOLE_RATE_LIMITED',
+      retryAfterSeconds,
+    },
+    { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } },
+  );
+}
+
 export async function proxy(req: NextRequest): Promise<NextResponse> {
   const auth = consoleAuthConfig();
-  if (!auth) return notConfigured(req);
+  const { pathname } = req.nextUrl;
+  const open = isPublicMode() && openInPublicMode(pathname);
 
-  if (!isLogin(req.nextUrl.pathname)) {
+  if (!auth && !open) return notConfigured(req);
+
+  if (!isLogin(pathname)) {
     const session = req.cookies.get(SESSION_COOKIE)?.value;
+    const authorization = req.headers.get('authorization');
     const ok =
-      (await verifySession(session, auth.sessionSecret)) ||
-      (await basicAuthMatches(req.headers.get('authorization'), auth.password));
-    if (!ok) return unauthenticated(req);
+      !!auth &&
+      ((await verifySession(session, auth.sessionSecret)) ||
+        (await basicAuthMatches(authorization, auth.password)));
+    if (!ok && !open) return unauthenticated(req);
+    if (!ok && authorization) {
+      const key = rateLimitKey(clientIp(req.headers));
+      const hit = (
+        key === UNKNOWN_IP ? unknownIpBasicFailureLimiter : basicFailureLimiter
+      ).hit(key);
+      if (!hit.allowed) return tooManyBasicFailures(hit.retryAfterSeconds);
+    }
   }
 
   if (MUTATION_METHODS.has(req.method) && !originAllowed(req))
     return crossSite();
 
   return NextResponse.next();
+}
+
+/** Test hook. */
+export function resetBasicFailureLimiter(): void {
+  basicFailureLimiter.reset();
+  unknownIpBasicFailureLimiter.reset();
 }
 
 export const config = {

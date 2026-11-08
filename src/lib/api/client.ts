@@ -10,19 +10,63 @@ export const MAX_ERROR_BODY_CHARS = 500;
 interface ErrorBody {
   text: string | undefined;
   truncated: boolean;
+  retryAfter?: number;
+}
+
+/** Seconds from a `Retry-After` value: delta-seconds or an HTTP-date. */
+export function parseRetryAfter(
+  raw: string | null | undefined,
+  now: number = Date.now(),
+): number | undefined {
+  if (raw == null) return undefined;
+  const v = raw.trim();
+  if (v === '') return undefined;
+  if (/^\d+(\.\d+)?$/.test(v)) return Number(v);
+  // An HTTP-date always names a weekday or month; without that check
+  // `Date.parse` reads "-5" as a year.
+  if (!/[A-Za-z]{3}/.test(v)) return undefined;
+  const at = Date.parse(v);
+  if (Number.isNaN(at)) return undefined;
+  return Math.max(0, (at - now) / 1000);
+}
+
+/** A non-negative finite number, else undefined. */
+function seconds(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0
+    ? v
+    : undefined;
+}
+
+/** Retry hint, most authoritative first: the `Retry-After` header, then the
+ *  console's own 429 body (`retryAfterSeconds`), then the playground's
+ *  launch 429 body (`retry_after`). */
+function retryAfterOf(res: Response, text: string): number | undefined {
+  const fromHeader = parseRetryAfter(res.headers?.get?.('retry-after'));
+  if (fromHeader !== undefined) return fromHeader;
+  if (!text) return undefined;
+  try {
+    const body = JSON.parse(text) as Record<string, unknown> | null;
+    if (!body || typeof body !== 'object') return undefined;
+    return seconds(body.retryAfterSeconds) ?? seconds(body.retry_after);
+  } catch {
+    return undefined;
+  }
 }
 
 async function errorDetail(res: Response): Promise<ErrorBody> {
+  let text: string;
   try {
-    const text = await res.text();
-    if (!text) return { text: undefined, truncated: false };
-    return {
-      text: text.slice(0, MAX_ERROR_BODY_CHARS),
-      truncated: text.length > MAX_ERROR_BODY_CHARS,
-    };
+    text = await res.text();
   } catch {
-    return { text: undefined, truncated: false };
+    return { text: undefined, truncated: false, retryAfter: retryAfterOf(res, '') };
   }
+  const retryAfter = retryAfterOf(res, text);
+  if (!text) return { text: undefined, truncated: false, retryAfter };
+  return {
+    text: text.slice(0, MAX_ERROR_BODY_CHARS),
+    truncated: text.length > MAX_ERROR_BODY_CHARS,
+    retryAfter,
+  };
 }
 
 /**
@@ -58,6 +102,10 @@ export class ApiError extends Error {
   readonly body: string | undefined;
   /** True when `body` is only the leading slice of a longer response. */
   readonly bodyTruncated: boolean;
+  /** Seconds to wait before retrying, when the response said: the
+   *  `Retry-After` header, else the body's `retryAfterSeconds` (console
+   *  429) or `retry_after` (playground launch 429). */
+  readonly retryAfter: number | undefined;
 
   constructor(method: string, path: string, status: number, detail: ErrorBody) {
     // Unchanged from the pre-`ApiError` message, character for character:
@@ -68,6 +116,7 @@ export class ApiError extends Error {
     this.path = path;
     this.body = detail.text;
     this.bodyTruncated = detail.truncated;
+    this.retryAfter = detail.retryAfter;
   }
 }
 

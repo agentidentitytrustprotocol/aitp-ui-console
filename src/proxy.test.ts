@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { NextRequest } from 'next/server';
 import { unstable_doesMiddlewareMatch } from 'next/experimental/testing/server';
-import { config, proxy } from './proxy';
+import { config, proxy, resetBasicFailureLimiter } from './proxy';
 import { SESSION_COOKIE, signSession } from './lib/auth/session';
 
 const ORIGIN = 'https://console.example.com';
@@ -322,5 +322,188 @@ describe('SSE', () => {
     );
     expect(passedThrough(res)).toBe(true);
     expect(res.body).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Public mode (AITP_CONSOLE_PUBLIC_MODE). The edge only decides "session
+// required or not"; the route helpers (src/lib/server/access.ts) enforce
+// the allowlist and limits, so an open route here is not an open upstream.
+// ---------------------------------------------------------------------------
+
+describe('public mode on', () => {
+  beforeEach(() => {
+    process.env.AITP_CONSOLE_PUBLIC_MODE = 'on';
+    resetBasicFailureLimiter();
+  });
+
+  afterEach(() => {
+    delete process.env.AITP_CONSOLE_PUBLIC_MODE;
+    delete process.env.VERCEL;
+  });
+
+  it.each(apiRoutes.filter((r) => r.method === 'GET'))(
+    'anonymous GET $path passes the gate',
+    async ({ path: p }) => {
+      expect(passedThrough(await proxy(req(`${ORIGIN}${p}`, 'GET')))).toBe(
+        true,
+      );
+    },
+  );
+
+  it.each(pages)('anonymous page %s loads (no redirect)', async (p) => {
+    expect(passedThrough(await proxy(req(`${ORIGIN}${p}`, 'GET')))).toBe(true);
+  });
+
+  it('/api/auth/session passes anonymously', async () => {
+    expect(
+      passedThrough(await proxy(req(`${ORIGIN}/api/auth/session`, 'GET'))),
+    ).toBe(true);
+  });
+
+  it('a same-origin anonymous launch passes the gate', async () => {
+    expect(
+      passedThrough(
+        await proxy(
+          req(`${ORIGIN}/api/playground/runs`, 'POST', { origin: ORIGIN }),
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('a cross-origin anonymous launch → 403 csrf_blocked', async () => {
+    const res = await proxy(
+      req(`${ORIGIN}/api/playground/runs`, 'POST', {
+        origin: 'https://evil.example',
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ code: 'csrf_blocked' });
+  });
+
+  it('an anonymous launch with no Origin → 403 csrf_blocked', async () => {
+    const res = await proxy(req(`${ORIGIN}/api/playground/runs`, 'POST'));
+    expect(res.status).toBe(403);
+  });
+
+  it.each(['/login', '/logout'])(
+    '%s keeps its flag-off behaviour',
+    async (p) => {
+      const res = await proxy(req(`${ORIGIN}${p}`, 'GET'));
+      if (p === '/login') expect(passedThrough(res)).toBe(true);
+      else expect(res.status).toBe(307);
+    },
+  );
+
+  it('an API path outside cp/playground/auth-session still needs a session', async () => {
+    const res = await proxy(req(`${ORIGIN}/api/other`, 'GET'));
+    expect(res.status).toBe(401);
+  });
+
+  it('password unset: open routes pass, everything else is 503', async () => {
+    delete process.env.CONSOLE_PASSWORD;
+    expect(
+      passedThrough(await proxy(req(`${ORIGIN}/api/cp/health`, 'GET'))),
+    ).toBe(true);
+    expect(passedThrough(await proxy(req(`${ORIGIN}/dashboard`, 'GET')))).toBe(
+      true,
+    );
+    const res = await proxy(req(`${ORIGIN}/api/other`, 'GET'));
+    expect(res.status).toBe(503);
+    expect((await proxy(req(`${ORIGIN}/login`, 'GET'))).status).toBe(503);
+  });
+
+  it('a garbled Authorization header is treated as anonymous', async () => {
+    expect(
+      passedThrough(
+        await proxy(
+          req(`${ORIGIN}/api/cp/health`, 'GET', { authorization: 'Basic %%%' }),
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('wrong Basic credentials are limited per IP: the 11th in a minute → 429', async () => {
+    process.env.VERCEL = '1';
+    const bad = {
+      authorization: basic('op:wrong'),
+      'x-real-ip': '203.0.113.7',
+    };
+    for (let i = 0; i < 10; i++)
+      expect(
+        passedThrough(await proxy(req(`${ORIGIN}/api/cp/health`, 'GET', bad))),
+      ).toBe(true);
+    const res = await proxy(req(`${ORIGIN}/api/cp/health`, 'GET', bad));
+    expect(res.status).toBe(429);
+    expect(res.headers.get('Retry-After')).toBeTruthy();
+    expect(await res.json()).toMatchObject({ code: 'CONSOLE_RATE_LIMITED' });
+    // Another IP, and anonymous callers with no Authorization, are unaffected.
+    expect(
+      passedThrough(
+        await proxy(
+          req(`${ORIGIN}/api/cp/health`, 'GET', {
+            ...bad,
+            'x-real-ip': '198.51.100.9',
+          }),
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      passedThrough(
+        await proxy(
+          req(`${ORIGIN}/api/cp/health`, 'GET', { 'x-real-ip': '203.0.113.7' }),
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('callers with an unknown IP share a larger Basic-failure bucket (50)', async () => {
+    const bad = { authorization: basic('op:wrong') };
+    for (let i = 0; i < 50; i++)
+      expect(
+        passedThrough(await proxy(req(`${ORIGIN}/api/cp/health`, 'GET', bad))),
+      ).toBe(true);
+    expect(
+      (await proxy(req(`${ORIGIN}/api/cp/health`, 'GET', bad))).status,
+    ).toBe(429);
+  });
+
+  it('valid credentials are never charged to the failure limiter', async () => {
+    const good = { authorization: basic(`op:${PASSWORD}`) };
+    for (let i = 0; i < 60; i++)
+      expect(
+        passedThrough(await proxy(req(`${ORIGIN}/api/cp/health`, 'GET', good))),
+      ).toBe(true);
+  });
+});
+
+describe('public mode off', () => {
+  beforeEach(resetBasicFailureLimiter);
+
+  it.each(['off', 'false', '0', 'ture'])(
+    'AITP_CONSOLE_PUBLIC_MODE=%s keeps every route closed',
+    async (v) => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      process.env.AITP_CONSOLE_PUBLIC_MODE = v;
+      try {
+        expect(
+          (await proxy(req(`${ORIGIN}/api/cp/health`, 'GET'))).status,
+        ).toBe(401);
+        expect((await proxy(req(`${ORIGIN}/dashboard`, 'GET'))).status).toBe(
+          307,
+        );
+      } finally {
+        delete process.env.AITP_CONSOLE_PUBLIC_MODE;
+        warn.mockRestore();
+      }
+    },
+  );
+
+  it('wrong Basic credentials are a plain 401, never charged to the failure limiter', async () => {
+    const bad = { authorization: basic('op:wrong') };
+    for (let i = 0; i < 60; i++)
+      expect(
+        (await proxy(req(`${ORIGIN}/api/cp/health`, 'GET', bad))).status,
+      ).toBe(401);
   });
 });

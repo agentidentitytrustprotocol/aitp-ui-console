@@ -8,6 +8,7 @@ import { LoadingSkeleton, InlineSpinner } from '@/components/shared/loading-skel
 import { TimeAgo } from '@/components/shared/time-ago';
 import { AidCell } from '@/components/shared/aid-cell';
 import { useCreatePinnedKey, useDeletePinnedKey, usePinnedKeys } from '@/hooks/use-trust';
+import { useOperatorAccess } from '@/hooks/use-console-session';
 import { useToast } from '@/components/shared/toast';
 import { C } from '@/lib/colors';
 import { shortId } from '@/lib/utils';
@@ -19,6 +20,7 @@ export function PinnedKeysView() {
   const { data, isLoading, error } = usePinnedKeys();
   const create = useCreatePinnedKey();
   const remove = useDeletePinnedKey();
+  const access = useOperatorAccess();
   const [showForm, setShowForm] = useState(false);
   const [namespace, setNamespace] = useState('');
   const [aid, setAid] = useState('');
@@ -76,26 +78,28 @@ export function PinnedKeysView() {
             {keys.length}
           </span>
         </div>
-        <button
-          onClick={() => setShowForm((s) => !s)}
-          style={{
-            background: C.teal,
-            border: 'none',
-            color: '#fff',
-            fontSize: 11,
-            padding: '5px 10px',
-            borderRadius: 5,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-          }}
-        >
-          <Plus size={12} /> {showForm ? 'Cancel' : 'Pin key'}
-        </button>
+        {access.canAdmin && (
+          <button
+            onClick={() => setShowForm((s) => !s)}
+            style={{
+              background: C.teal,
+              border: 'none',
+              color: '#fff',
+              fontSize: 11,
+              padding: '5px 10px',
+              borderRadius: 5,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <Plus size={12} /> {showForm ? 'Cancel' : 'Pin key'}
+          </button>
+        )}
       </div>
 
-      {showForm && (
+      {showForm && access.canAdmin && (
         <form
           onSubmit={submit}
           style={{
@@ -257,31 +261,33 @@ export function PinnedKeysView() {
                   <TimeAgo ts={k.createdAt} />
                 </td>
                 <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                  <button
-                    onClick={() => {
-                      if (
-                        !confirm(`Unpin ${k.aid} in namespace "${k.namespace}"?`)
-                      ) return;
-                      remove.mutate(
-                        { namespace: k.namespace, aid: k.aid },
-                        {
-                          onSuccess: () => toast.success('Key unpinned', k.aid),
-                          onError: (err) =>
-                            toast.error('Failed to unpin key', String(err)),
-                        },
-                      );
-                    }}
-                    title="Unpin"
-                    aria-label={`Unpin ${k.aid} in namespace ${k.namespace}`}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      color: C.textMuted,
-                    }}
-                  >
-                    <Trash2 size={13} />
-                  </button>
+                  {access.canAdmin && (
+                    <button
+                      onClick={() => {
+                        if (
+                          !confirm(`Unpin ${k.aid} in namespace "${k.namespace}"?`)
+                        ) return;
+                        remove.mutate(
+                          { namespace: k.namespace, aid: k.aid },
+                          {
+                            onSuccess: () => toast.success('Key unpinned', k.aid),
+                            onError: (err) =>
+                              toast.error('Failed to unpin key', String(err)),
+                          },
+                        );
+                      }}
+                      title="Unpin"
+                      aria-label={`Unpin ${k.aid} in namespace ${k.namespace}`}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: C.textMuted,
+                      }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

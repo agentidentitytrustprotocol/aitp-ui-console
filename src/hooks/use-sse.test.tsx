@@ -141,6 +141,70 @@ describe('useSse capacityProbePath', () => {
     );
   }
 
+  /** jsdom has no fetch Response: the minimal shape the probe reads. */
+  const tooMany = (retryAfter: string) => ({
+    status: 429,
+    body: null,
+    headers: {
+      get: (n: string) => (n.toLowerCase() === 'retry-after' ? retryAfter : null),
+    },
+  });
+
+  it('backs off on a 429 probe, honouring Retry-After, without opening the stream', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+    const probe = jest.fn(() =>
+      Promise.resolve(tooMany('20')),
+    );
+    global.fetch = probe as unknown as typeof fetch;
+
+    const { result } = renderHook(() =>
+      useSse<{ x: number }>({
+        url: '/api/cp/events/stream',
+        onMessage: () => undefined,
+        capacityProbePath: '/api/cp/events/capacity',
+      }),
+    );
+
+    await act(async () => {
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+    });
+    expect(probe).toHaveBeenCalledTimes(1);
+    expect(result.current.state).toBe('at-capacity');
+    expect(FakeES.instances).toHaveLength(0);
+
+    // Retry-After (20s) beats the 5s floor: no retry before it elapses.
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(19_000);
+    });
+    expect(probe).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(1_000);
+    });
+    expect(probe).toHaveBeenCalledTimes(2);
+    expect(FakeES.instances).toHaveLength(0);
+  });
+
+  it('caps a huge Retry-After at maxReconnectDelayMs', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+    const probe = jest.fn(() =>
+      Promise.resolve(tooMany('99999')),
+    );
+    global.fetch = probe as unknown as typeof fetch;
+
+    renderHook(() =>
+      useSse<{ x: number }>({
+        url: '/api/cp/events/stream',
+        onMessage: () => undefined,
+        capacityProbePath: '/api/cp/events/capacity',
+        maxReconnectDelayMs: 30_000,
+      }),
+    );
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(30_000);
+    });
+    expect(probe).toHaveBeenCalledTimes(2);
+  });
+
   it('does not permanently disable capacity probing after one probe times out', async () => {
     // Regression test: AbortController.abort() is permanent. Reusing one
     // controller across every probe attempt in a mount meant a single timed-

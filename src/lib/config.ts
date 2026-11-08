@@ -3,6 +3,9 @@ export const serverConfig = {
   playgroundApiKey: process.env.PLAYGROUND_API_KEY ?? '',
   cpUrl: process.env.CP_URL ?? 'http://localhost:4000',
   cpApiKey: process.env.CP_API_KEY ?? '',
+  /** The console's CP read-only key (`CP_API_KEY_CONSOLE_RO` on the CP).
+   *  Read-class CP routes use it; see `src/lib/api/proxy.ts`. */
+  cpReadApiKey: process.env.CP_READ_API_KEY ?? '',
 };
 
 /** Operator login. Read per request rather than captured at import so a

@@ -233,3 +233,18 @@ edit from a sibling reconcile task) without acting on either, correctly respecti
   already on the smallest runner with PR cancel-in-progress, and a docs path filter
   would save about one run a month. Estimate: before = after ≈ 155 runner-min/30 d.
 - **Status:** CONFIRMED (2026-11-07).
+
+## console-lockdown-wave3 (aitp-hardening wave 3), 2026-11-07
+
+Plan decisions D-A..D-H are recorded in full in `plans/console-lockdown-wave3.md`, § Decisions. That file is local only, so the summary is below.
+- **D-A** `AITP_CONSOLE_PUBLIC_MODE` is strict on/true/1. Any other value is off, and an unknown value warns once. Read per request, server only.
+- **D-B** CP key per route class. Keyless routes send no key. Admin routes always use `CP_API_KEY`. Read routes, flag off: `CP_READ_API_KEY`, falling back to admin when the read key is unset, on a 401, or on `403 READ_ONLY_KEY`. Flag on: operators use admin; anonymous callers use the read key only (503 `cp_read_key_unavailable`) and never admin.
+- **D-C** Enforcement lives in the shared proxy helpers, matching the upstream pathname and the real HTTP method. `src/proxy.ts` only decides whether a session is required.
+- **D-D** Anonymous allowlist: `src/lib/server/allowlist.ts`. Anything unmatched is admin.
+- **D-E** Limits apply in public mode only. Per IP: 300 reads/60 s and 5 launches/600 s. CP reads: 60/60 s per IP and 300/60 s per instance. Streams: 4 per IP and 200 per instance. The console 429 uses `code: CONSOLE_RATE_LIMITED`.
+- **D-F** Client IP: on Vercel, `x-real-ip`, then the first `x-vercel-forwarded-for`, then the rightmost XFF. Off Vercel, only `CONSOLE_CLIENT_IP_HEADER`. An unknown IP shares one bucket; login allows 50/min for it. IPv6 is bucketed by /64.
+- **D-G** Upstream headers are built from scratch: playground gets `x-api-key` + `X-AITP-Client-IP`; CP gets Bearer + IP. Client auth and IP headers are never forwarded.
+- **D-H** The console calls the CP directly. Wave 4 must keep the CP's public domain.
+- **As built (P3):** on public routes operators are charged the per-IP `read`/`launch` buckets; admin-class routes charge nothing, since only operators reach them. An anonymous CP read with no read key is refused (503) before any bucket is charged. The edge also limits wrong Basic credentials to 10/min per IP (50/min for an unknown IP). A stream slot expires 305 s after it opens; that assumes the platform ends streams at the 300 s `maxDuration`, as Vercel does.
+- **Preview** holds no playground key from the Wave 3 rollout on (removed in P6). A preview runs any branch's code, and the production key spends the playground's LLM budget.
+- **Status:** CONFIRMED (2026-11-07), Opus. Reversible.

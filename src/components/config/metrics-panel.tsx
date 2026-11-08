@@ -6,6 +6,8 @@ import { Card } from '@/components/shared/card';
 import { EmptyState } from '@/components/shared/empty-state';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { useCpMetrics, usePlaygroundMetrics } from '@/hooks/use-playground-meta';
+import { useOperatorAccess } from '@/hooks/use-console-session';
+import { OperatorOnly } from '@/components/shared/operator-only';
 import { C } from '@/lib/colors';
 
 interface Counter {
@@ -41,6 +43,7 @@ function parsePrometheus(text: string): Counter[] {
 }
 
 export function MetricsPanel({ source }: { source: 'playground' | 'cp' }) {
+  const access = useOperatorAccess();
   const playground = usePlaygroundMetrics();
   const cp = useCpMetrics();
   const query = source === 'playground' ? playground : cp;
@@ -64,7 +67,9 @@ export function MetricsPanel({ source }: { source: 'playground' | 'cp' }) {
           {counters.length}
         </span>
       </div>
-      {query.isLoading ? (
+      {access.status === 'anonymous' ? (
+        <OperatorOnly what="Metrics" />
+      ) : query.isLoading || access.status === 'loading' ? (
         <LoadingSkeleton rows={3} />
       ) : query.error || !query.data ? (
         <EmptyState

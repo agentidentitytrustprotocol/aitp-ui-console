@@ -1,9 +1,11 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { LogOut, RefreshCw } from 'lucide-react';
+import { LogIn, LogOut, RefreshCw } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { C } from '@/lib/colors';
+import { useOperatorAccess } from '@/hooks/use-console-session';
+import { useLoginHref } from '@/components/shared/operator-only';
 import { ConnectionStatus } from './connection-status';
 
 function pathLabel(pathname: string): string {
@@ -15,6 +17,8 @@ export function Topbar() {
   const pathname = usePathname();
   const router = useRouter();
   const qc = useQueryClient();
+  const access = useOperatorAccess();
+  const loginHref = useLoginHref();
 
   return (
     <header
@@ -59,25 +63,43 @@ export function Topbar() {
         >
           <RefreshCw size={14} />
         </button>
-        {/* A plain form post: same-origin, so it carries the Origin the
-            proxy requires on mutations, and the 303 lands on /login. */}
-        <form method="post" action="/logout" style={{ display: 'flex' }}>
-          <button
-            type="submit"
-            title="Sign out"
-            aria-label="Sign out"
+        {access.status === 'anonymous' ? (
+          <a
+            href={loginHref}
             style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: C.textDim,
+              color: C.tealBright,
+              fontSize: 12,
+              textDecoration: 'none',
               display: 'flex',
               alignItems: 'center',
+              gap: 5,
             }}
           >
-            <LogOut size={14} />
-          </button>
-        </form>
+            <LogIn size={14} /> Sign in
+          </a>
+        ) : (
+          <>
+            {/* A plain form post: same-origin, so it carries the Origin the
+                proxy requires on mutations, and the 303 lands on /login. */}
+            <form method="post" action="/logout" style={{ display: 'flex' }}>
+              <button
+                type="submit"
+                title="Sign out"
+                aria-label="Sign out"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: C.textDim,
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                <LogOut size={14} />
+              </button>
+            </form>
+          </>
+        )}
       </div>
     </header>
   );

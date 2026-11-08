@@ -1,8 +1,12 @@
 /** Console read limit, live: `read` is 300 per 60 s per client IP, kept in
  *  memory per Vercel instance (src/lib/server/limits.ts). Flood a public read
  *  until the console answers 429 CONSOLE_RATE_LIMITED with Retry-After. The
- *  flood is capped; instance fan-out can spread it, so the cap is 4x the
- *  limit. Runs once, first, then waits out the window for the specs after. */
+ *  flood is capped at 4x the limit and runs 4 at a time by default. At 25 at
+ *  a time Vercel fans out to several instances, each with its own buckets,
+ *  and none reached 300 (seen live: 1200 x 200). One at a time stays under
+ *  300/min (about 280/min, also no 429). At 4, the first 429 came at about
+ *  716: the limit is per instance (DECISIONS D-E). Then it waits out the
+ *  window for the specs after. */
 import { expect, test } from '@playwright/test';
 import { layerOf429, retryAfterSeconds } from './support/budget';
 import { apiContext, record, sleep } from './support/fixtures';
@@ -11,9 +15,9 @@ import { intEnv } from './support/env';
 const PATH = '/api/playground/health';
 
 test('read flood gets a console 429 with Retry-After', async () => {
-  test.setTimeout(5 * 60_000);
+  test.setTimeout(8 * 60_000);
   const cap = intEnv(process.env, 'AITP_LIVE_READ_FLOOD_CAP', 1200, 301);
-  const concurrency = 25;
+  const concurrency = intEnv(process.env, 'AITP_LIVE_READ_CONCURRENCY', 4, 1);
   const req = await apiContext(false);
   const counts: Record<string, number> = {};
   let sent = 0;

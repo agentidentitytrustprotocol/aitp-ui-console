@@ -22,3 +22,4 @@ Previous run's log: `plans/archive/console-rollout-wave4-PROGRESS.md` (local).
 - 2026-11-08 P5 docs DONE: TESTING.md § Live public-console suite; DECISIONS.md wave-7 entry; DEFERRED line (dead PATCH allowlist entry).
 - 2026-11-08 local gates: lint, tsc, jest 2159/2159, integration 61 pass / 28 skip, build OK.
 - 2026-11-08 ~19:00Z full live run started (`run-live.sh --quota-after 00:05`), evidence `e2e/live/.evidence/<stamp>`.
+- 2026-11-08 live run 20261108T185851Z: vercel, security, matrix-anon 22/22, matrix-operator 22/22, low, quota-badge, restore (hash 2bee7fda6781ed36 match), launch-limit (6th = console 429, Retry-After 599) all PASS. read-limit at concurrency 25 FAIL (instance fan-out, test design), re-run 20261108T211452Z at 4 PASS (429 at #716, Retry-After 23). 51 paid launches. Owner (via leader, 21:16Z) said skip the 00:05 wait; done.

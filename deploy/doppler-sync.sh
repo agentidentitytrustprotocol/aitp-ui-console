@@ -22,8 +22,8 @@
 # keys, types, targets, updatedAt; never values) shows whether anything
 # changed.
 #
-# Values are piped from Doppler into Vercel and are never printed or written
-# to disk. Vercel holds no Doppler token. Needs git, jq, curl and the doppler
+# Values are piped from Doppler into the Vercel API (curl stdin) and are never
+# printed or written to disk. Vercel holds no Doppler token. Needs git, jq, curl and the doppler
 # and vercel CLIs, logged in. Refuses to run on a dirty working tree, so what
 # runs is what is committed.
 set -euo pipefail
@@ -164,25 +164,35 @@ if [ -z "$todo" ]; then
 fi
 if [ "$mode" = dry-run ]; then say "dry run: $(wc -l <<<"$todo" | tr -d ' ') key(s) would change; --apply to push"; exit 0; fi
 
+# Writes go to the REST API, not `vercel env update`: the CLI resends the key
+# on update, which the API refuses for a sensitive variable ("You cannot
+# change the key of a Sensitive Environment Variable", CLI 50.37). The value
+# goes from Doppler into the request body inside jq, on curl's stdin, so it
+# is never in argv, on disk or in output.
+vercel_write() {
+  curl -fsS -o /dev/null -X "$1" "https://api.vercel.com$2" \
+    -H @<(printf 'Authorization: Bearer %s\n' "$(vercel_token)") -H 'content-type: application/json' --data-binary @-
+}
 while read -r k state; do
   class="$(awk -v k="$k" '$1 == k {print $2}' <<<"$entries")"
-  flags=()
-  [ "$class" = sensitive ] && flags+=(--sensitive)
+  type=encrypted
+  { [ "$class" = sensitive ] || [ "$state" = push-sensitive ]; } && type=sensitive
+  doppler_vars | jq -e --arg k "$k" '(.[$k] // "") != ""' >/dev/null || die "Doppler value for $k is empty; nothing written"
   case "$state" in
-    new) verb=add ;;
-    push-sensitive) verb=update; flags=(--sensitive) ;;
-    *) verb=update ;;
+    new)
+      say "setting $k (add, $type)"
+      doppler_vars | jq -c --arg k "$k" --arg t "$type" '{key: $k, value: .[$k], type: $t, target: ["production"]}' |
+        vercel_write POST "/v10/projects/$VERCEL_PROJECT_ID/env?teamId=$VERCEL_TEAM_ID" || die "adding $k failed"
+      ;;
+    *)
+      # Only a production-only entry is ever updated (plan() already refuses shared ones).
+      id="$(production_entries | jq -r --arg k "$k" '[.[] | select(.key == $k and (.shared | not))] | if length == 1 then .[0].id else empty end')"
+      [ -n "$id" ] || die "$k: expected exactly one production-only entry; nothing written"
+      say "setting $k (update, $type)"
+      doppler_vars | jq -c --arg k "$k" --arg t "$type" '{value: .[$k], type: $t}' |
+        vercel_write PATCH "/v9/projects/$VERCEL_PROJECT_ID/env/$id?teamId=$VERCEL_TEAM_ID" || die "updating $k failed"
+      ;;
   esac
-  say "setting $k ($verb${flags[*]:+ ${flags[*]}})"
-  # Read the value first (a builtin printf then feeds it, so it is never in
-  # argv or on disk): the CLI gives stdin only a short window before it falls
-  # back to a prompt. --non-interactive makes a missed read fail, not prompt.
-  value="$(doppler_vars | jq -j --arg k "$k" '.[$k]')"
-  [ -n "$value" ] || die "Doppler value for $k is empty; nothing written"
-  printf '%s' "$value" |
-    vercel_cli env "$verb" "$k" production ${flags[@]+"${flags[@]}"} --yes --non-interactive >/dev/null 2>&1 ||
-    die "vercel env $verb $k failed"
-  unset value
 done <<<"$todo"
 
 after_plan="$(plan)"

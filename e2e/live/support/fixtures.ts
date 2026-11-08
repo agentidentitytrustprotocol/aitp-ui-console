@@ -6,10 +6,14 @@ import path from 'node:path';
 import { request as pwRequest, type APIRequestContext, type BrowserContext } from '@playwright/test';
 import { LaunchGuard } from './budget';
 import { ConsoleApi, SESSION_COOKIE } from './console-api';
-import { consolePassword, consoleUrl, intEnv, leakNeedles, redact, type Needle } from './env';
+import { assertLiveAllowed, consolePassword, consoleUrl, intEnv, leakNeedles, redact, type Needle } from './env';
 import { byDesign, findLeaks, type NetworkFinding } from './leaks';
 
 export type { NetworkFinding };
+
+// Every live spec imports this module: refuse here too, so a bare
+// `npx playwright test` (without the live config) can't start paid runs.
+assertLiveAllowed();
 
 export const ORIGIN = consoleUrl();
 export const NEEDLES: Needle[] = leakNeedles();

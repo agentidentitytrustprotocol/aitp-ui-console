@@ -60,7 +60,7 @@ describe('leak needles', () => {
   });
 
   it('flags any Railway domain even without a configured needle', () => {
-    expect(findLeaks('https://aitp-playground-production.up.railway.app/runs', [])).toEqual(['railway-public-domain']);
+    expect(findLeaks('https://svc-xyz.up.railway.app/runs', [])).toEqual(['railway-public-domain']);
     expect(findLeaks('http://aitp-control-plane.railway.internal:4000', [])).toEqual(['railway-private-domain']);
   });
 

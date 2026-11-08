@@ -1,49 +1,35 @@
-# Progress: console-lockdown-wave3
+# PROGRESS — console-rollout-wave4
 
-Plan: `plans/console-lockdown-wave3.md` (aitp-hardening wave 3, console). Branch
-`feature/console-lockdown-wave3`. The previous plan's map (absorb-cp-playground-changes,
-archived) is in git history; this repo keeps one active plan's map at a time.
+Plan: `plans/console-rollout-wave4.md` (local, gitignored). Wave 4 of aitp-hardening: rollout steps 3–6.
+Previous run's log: `plans/archive/console-lockdown-wave3-PROGRESS.md` (local).
 
-## Repo map
-- `src/proxy.ts`: Next 16 edge/Node gate. Password session or Basic, fail-closed 503, Origin check on mutations.
-- `src/lib/api/proxy.ts`: every upstream call (`runProxy`, `proxySse`, `proxyGetVerified`, `fetchUpstreamText`). Headers are built in `serviceHeaders` (L16-21).
-- `src/lib/config.ts`: `serverConfig` (URLs and keys, captured at import), `consoleAuthConfig` (per request).
-- `src/lib/auth/rate-limit.ts`: sliding-window limiter, `clientIp` (leftmost XFF, to be replaced), `loginLimiter`.
-- `src/lib/auth/session.ts`: HMAC session cookie, `verifySession`, `basicAuthMatches` (Web Crypto).
-- `src/app/login/route.ts`, `src/app/logout/route.ts`: login form/JSON, cookie issue.
-- `src/app/api/{cp,playground}/**/route.ts`: 62 handlers in 50 files. Route → upstream table in `docs/PROXIES.md`.
-- `src/lib/types/playground.ts`: RunSummary (L115), RunEvent (L146), RunResponse (L226), RunStatus (L237).
-- `src/components/runs/run-summary.tsx`, `event-cards.tsx` (switch on evt.type L34), `run-list.tsx`: quota badge targets.
-- `src/components/scenarios/run-input-form.tsx`: the launch form (429 copy).
-- Admin UI callers: `hooks/use-trust.ts` (anchor/pinned writes, revocations, revocation/entries), `hooks/use-playground-meta.ts:32,43` (metrics), `components/config/webhook-list.tsx:48,171`, `components/runs/run-detail.tsx:76` (cancel), `hooks/use-webhooks.ts`, `hooks/use-enrollment.ts` + `components/registry/enrollment-modal.tsx`, `hooks/use-hosted-agents.ts`, `hooks/use-circuit-breaker.ts`. Not admin: `use-audit.ts` (events/history). 429 surfaces: `lib/api/client.ts:51-66` (ApiError), `components/scenarios/scenario-detail.tsx:23,137-149`, `hooks/use-sse.ts:125-146`.
-- `deploy/doppler-sync.sh` + `deploy/doppler-keys.txt`: Doppler aitp-ui-console/prd → Vercel Production. `--apply` redeploys; a sensitive key needs `--push`.
-- `internal_docs/DEPLOYMENT.md` L145-161: the Preview set (holds PLAYGROUND_API_KEY today; to be removed).
-- Tests: jest unit (`npm test`), integration `jest.integration.config.js` (`RUN_INTEGRATION=1`, live stack).
-- Gates: `npm run lint && npm run typecheck && npm test && npm run build`. `format:check` fails on main itself (151 files under prettier 3.9.10) and CI does not run it, so this PR formats only the files it touches; a repo-wide reformat is out of scope.
-
-## Sibling contracts (read 2026-11-08)
-- playground: `x-api-key`; `X-AITP-Client-IP` only with a valid key. 429 shapes: `{code,limit,retry_after,detail}` and `{detail}`. Event `llm.quota_exceeded`; run fields `llm_quota_exceeded`, `llm_quota{reason,quota,limit,resets_at}` and `llm_calls_on_mock`.
-- control-plane: Bearer only; read allowlist at `aitp-control-plane/src/proxy.ts:70-92` (cd8079c); 403 `{code:READ_ONLY_KEY}`, 401 `INVALID_API_KEY`; strips caller x-aitp-client-ip.
-
-PR strategy: one PR. It is a single feature behind a flag, and the phases are sequential.
-Risk tiers: P1, P2 and P3 complex (foundation, upstream boundary, trust boundary); P4 and P5 simple (batched gate); P6 runs post-merge on prod.
+## Repo map (for this plan)
+- `src/lib/api/proxy.ts`: upstream helpers; `makeError` L278 (502/504 envelope), callers L333/336/419/422/511; `upstreamFetch` L169; `__testing` L558.
+- `src/lib/server/access.ts`: per-request access decision (flag, session, allowlist class, limits).
+- `src/lib/server/allowlist.ts`: ALLOWLIST, `matchRoute`; `allowlist.test.ts` L14-160 holds the route walk + `ADMIN_EXPECTED` oracle.
+- `src/proxy.ts`: edge gate (public mode opens pages, /api/cp, /api/playground, /api/auth/session).
+- `src/lib/api/proxy.test.ts`: `loadProxy`, `KEYS`, `ENV_NAMES`, `mockFetch`, `browserReq` helpers; flag-on helper tests L1248+.
+- `src/app/api/{cp,playground}/**/route.ts`: 62 handlers.
+- `deploy/doppler-sync.sh` + `deploy/doppler-keys.txt`: Doppler aitp-ui-console/prd → Vercel Production (`--apply` redeploys).
+- Sibling: `aitp-playground/deploy/doppler-sync.sh playground [--apply]`, allowlist `deploy/doppler-keys/playground.txt` (no CP_READ_API_KEY).
+- Gates: `npm run lint && npm run typecheck && npm test && npm run build`; integration `RUN_INTEGRATION=1` (jest.integration.config.js).
 
 ## Phase log
-- 2026-11-07 P1 server primitives: PASS after 2 rounds (Opus; complex, a foundation that P2 and P3 build on).
-  - Round 1 found GAPS: G1, an unflagged repo-wide prettier reformat, reverted; G2, the login limiter did not bucket IPv6 by /64, fixed with `rateLimitKey`; G3, the coverage test could not see route-path drift, fixed by deriving each path from the route source and requiring it to match the same entry. Nits fixed: limiter dedupes repeated checks; eviction comment; the login test restores `VERCEL`.
-  - Files: `src/lib/server/{public-mode,client-ip,limits,allowlist}.ts` + tests, `src/lib/auth/rate-limit.ts` (+test), `src/app/login/route.ts` (+test). Next: P2.
-- 2026-11-07 P2 backend credentials + client IP: PASS after 2 rounds (Opus; complex, the upstream boundary and key custody).
-  - Round 1 found GAPS: G1, fetch followed redirects, so `x-api-key` could reach another host; fixed with `redirect: 'manual'`. G2, no tests for the 401 body cancel or the log-throttle re-arm; added. G3, no test for the scenario-ref encoding; added a route test. G4, `upstreamFetch` was exported and the 403 relay copied every upstream header; it is now module-private (`__testing`), and the relay uses `errorHeaders`.
-  - Formatting: three touched files (`bff-routes.integration.test.ts`, `docs/PROXIES.md`, `internal_docs/DEPLOYMENT.md`) were already not prettier-clean at HEAD and stay in their existing style. Rule: format files that are new or were clean at HEAD.
-  - Files: `src/lib/api/proxy.ts` (+test), `src/lib/config.ts`, `src/app/api/playground/scenario-templates/route.ts` (+new test), `src/test/bff-routes.integration.test.ts`, `docs/PROXIES.md`, `internal_docs/DEPLOYMENT.md`.
-  - Carry into P3: the no-direct-fetch test must also forbid importing `__testing` (or anything other than the `proxy*` helpers) from `@/lib/api/proxy` outside tests. Next: P3.
-- 2026-11-07 P3 access enforcement: PASS in 1 round (Opus; complex, a trust boundary). Five low gaps closed anyway: an anonymous CP read with no read key is now refused before any bucket is charged (+test); tests added for a mid-stream upstream error, the `proxyGetVerified` refusal, and `proxyPut`/`proxyPatch`/`proxyDelete` in public mode; the stream-slot TTL assumption and operator charging are documented; the session-route comment is fixed.
-  - Gates: lint, typecheck, `npm test` 1907, integration 61 passed / 28 skipped (no live stack), build. AC8: a build with sentinel secrets left 0 hits in `.next/static` and `.next/server`.
-  - Files: `src/proxy.ts` (+test), `src/lib/api/proxy.ts` (+test), `src/lib/server/access.ts` (+test), `src/app/api/auth/session/route.ts` (+test), `src/hooks/use-sse.ts` (+test), `src/lib/api/upstream-boundary.test.ts`, `src/test/operator.ts`, both manifest integration tests, `src/test/bff-routes.integration.test.ts`, `docs/ARCHITECTURE.md` (Access model), `docs/PROXIES.md` (Access column). Next: P4.
-- 2026-11-07 P4 UI (quota badge, operator-only gates, 429 copy): PASS after 2 rounds (Opus; simple tier, but gated alone as it grew).
-  - Round 1 GAPS: (1) flag off, a session-request error made operators look anonymous; (2) no gate tests for TrustAnchors, PinnedKeys, Federation, AgentTable/Detail, DelegationTree revoke, RunDetail cancel, IssuerGroup; (3) flag-off load flash; (4) 429 not tested rendered, "0 s" possible. Fixed: server-seeded initial session (async root layout + `connection()`, `operatorFromCredentials` shared with `isOperator`); `admin-gates.test.tsx` (16 tests); `Math.max(1, ceil)` + rendered 429 test.
-  - Gates: lint, typecheck, `npm test` 71 suites / 1989, integration 61 passed / 28 skipped, build.
-  - Files: `src/lib/{llm-quota,colors}.ts`, `src/lib/types/playground.ts`, `src/components/runs/*` (badge, summary, list, event cards, detail), `src/hooks/use-console-session.tsx`, `src/components/shared/operator-only.tsx`, admin hooks/components, `src/lib/api/client.ts`, `src/app/{layout,providers}.tsx`, `src/lib/server/{access,initial-session}.ts`, tests; `docs/FEATURES.md`, `docs/ARCHITECTURE.md`.
-- 2026-11-07 P5 deploy config + docs: PASS after 2 rounds (Opus; simple). Round 1 GAPS G1–G4 (env rows, CP_READ_API_KEY 503 case, rollout steps, read-key wording) fixed.
-  - Files: `deploy/doppler-keys.txt`, `.env.example`, `README.md`, `SECURITY.md`, `internal_docs/DEPLOYMENT.md`, `docs/PROXIES.md`, `DECISIONS.md`. Next: P5 AC1 dry run, finalization, ship, then P6.
-- 2026-11-08 Finalization: whole-feature Opus verify PASS (1 round). Four Low items, none blocking: no route-level flag-on test; the plan's throttled 429 count log is not built (divergence, only matters once public mode is on); 503 pre-check reads env while the planner reads serverConfig; IP forwarding relies on Vercel's runtime `VERCEL=1`. The first three are in DEFERRED.md; the fourth is checked in P6. P5 AC1: dry run reports AITP_CONSOLE_PUBLIC_MODE and CP_READ_API_KEY missing-in-doppler, nothing changed. ASSUMPTIONS.md has no UNCONFIRMED entries: nothing to reconcile. Next: ship.
+- 2026-11-08 P1 DONE (1 verify round, inline): `makeError` emits `target: clientTarget(url)` (path+query; configured base
+  stripped first so a base path prefix doesn't leak); log keeps full URL. proxy.test 97 pass.
+- 2026-11-08 P2 DONE: `src/test/route-inventory.ts` (shared walk) + `src/test/public-mode-routes.test.ts` (132 tests: 62
+  handlers × operator/anonymous through edge gate + handler; launch 429; foreign Origin 403; IP spoof; read-key 401→503;
+  no anonymous cp-admin). Mutation check: flipping /api/audit to public fails 2 tests.
+- 2026-11-08 Gates: lint, typecheck, 2123 unit tests, build — all green.
+- 2026-11-08 P3 DONE (ops): Doppler aitp-playground/prd AITP_PLAYGROUND_REQUIRE_API_KEY false→true (was `false\n`),
+  `doppler-sync.sh playground --apply`, Doppler = Railway hash after apply, redeploy. Keyless /agents /runs /scenarios
+  /metrics 401; /healthz 200; keyed 200; console Basic reads 200; LLM run research-and-write@1.1.0 success
+  (internal llm-quota 3×200, telemetry 36×200 via loopback); webhook-subscription success, CP→playground webhooks 2×200.
+  Pre-flip caller check: only console (sends key) + owner scripts. Vercel prod has PLAYGROUND_API_KEY; it hash-matches
+  the playground's.
+- 2026-11-08 P4 DONE (ops, read-only): CP_API_KEY_CONSOLE_RO = console CP_READ_API_KEY (hash match; prefixes in the board report). At CP: read
+  key 200 on /api/registry/agents, /api/dashboard/overview; 403 READ_ONLY_KEY on /api/audit, /api/metrics.
+- 2026-11-08 Verify round 1: GAPS (hostnames in public doc; CP https wording; clientTarget base-prefix collision;
+  key hash prefixes in PROGRESS) — all closed.
+- 2026-11-08 P5 DONE: `internal_docs/RAILWAY-DOMAINS.md` (public repo → hostnames/ports only; Railway IDs and source IPs
+  go to the board report). Recommendation: keep both domains. No domain changed.

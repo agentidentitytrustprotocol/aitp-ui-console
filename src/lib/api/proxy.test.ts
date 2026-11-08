@@ -84,12 +84,113 @@ describe('proxyGet', () => {
     const body = await res.json();
     expect(body).toEqual({
       error: 'Upstream unreachable',
-      target: 'http://localhost:4000/api/health',
+      target: '/api/health',
       upstream_status: 502,
     });
     // Raw error detail must stay server-side (logged) — never in the body.
     expect(String(body.error)).not.toMatch(/ECONNREFUSED/);
     expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it('502 body strips a base URL path prefix too', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    process.env.CP_URL = 'https://cp.internal.example/prefix';
+    jest.resetModules();
+    const proxy = require('./proxy') as typeof import('./proxy');
+    global.fetch = (async () => {
+      throw new TypeError('fetch failed');
+    }) as unknown as typeof fetch;
+    const res = await proxy.proxyGet(
+      'cp',
+      '/api/health',
+      asNextReq('http://localhost:3001/api/cp/health?x=1'),
+    );
+    delete process.env.CP_URL;
+    const text = await res.text();
+    expect(JSON.parse(text).target).toBe('/api/health?x=1');
+    expect(text).not.toContain('prefix');
+    expect(text).not.toContain('cp.internal.example');
+    errorSpy.mockRestore();
+  });
+
+  it.each([
+    ['http://localhost:4000', 'http://localhost:40001'],
+    ['https://h.example', 'https://h.example/cp'],
+    ['https://cp.example', 'https://cp.example.evil'],
+    ['http://localhost:4000/', 'http://localhost:8000/'],
+  ])(
+    '502 body has no base fragment when PLAYGROUND_URL=%s and CP_URL=%s',
+    async (pg, cp) => {
+      const errorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      process.env.PLAYGROUND_URL = pg;
+      process.env.CP_URL = cp;
+      jest.resetModules();
+      const proxy = require('./proxy') as typeof import('./proxy');
+      global.fetch = (async () => {
+        throw new TypeError('fetch failed');
+      }) as unknown as typeof fetch;
+      const res = await proxy.proxyGet(
+        'cp',
+        '/api/health',
+        asNextReq('http://localhost:3001/api/cp/health?x=1'),
+      );
+      delete process.env.PLAYGROUND_URL;
+      delete process.env.CP_URL;
+      expect(JSON.parse(await res.text()).target).toBe('/api/health?x=1');
+      errorSpy.mockRestore();
+    },
+  );
+
+  it('502/504 bodies never carry the upstream origin; the log does', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    global.fetch = (async () => {
+      throw new TypeError('fetch failed');
+    }) as unknown as typeof fetch;
+    const calls: Array<() => Promise<Response>> = [
+      () =>
+        proxyGet(
+          'playground',
+          '/runs',
+          asNextReq('http://localhost:3001/api/playground/runs?limit=5'),
+        ),
+      () =>
+        proxyPost(
+          'cp',
+          '/api/webhooks',
+          asNextReq('http://localhost:3001/api/cp/webhooks', {
+            method: 'POST',
+            body: '{}',
+          }),
+        ),
+      () =>
+        proxySse(
+          'cp',
+          '/api/events/stream',
+          asNextReq('http://localhost:3001/api/cp/events/stream'),
+        ),
+      () =>
+        proxyGetVerified(
+          'cp',
+          '/.well-known/aitp-manifest',
+          asNextReq('http://localhost:3001/api/cp/well-known/aitp-manifest'),
+          () => ({ status: 'verified' }) as unknown as Verdict,
+        ),
+    ];
+    for (const call of calls) {
+      const text = await (await call()).text();
+      expect(text).not.toMatch(/https?:\/\//);
+      expect(text).not.toContain('localhost:4000');
+      expect(text).not.toContain('localhost:8000');
+    }
+    expect(JSON.parse(await (await calls[0]()).text()).target).toBe(
+      '/runs?limit=5',
+    );
+    const logged = errorSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logged).toContain('http://localhost:8000/runs?limit=5');
+    expect(logged).toContain('http://localhost:4000/api/webhooks');
     errorSpy.mockRestore();
   });
 
@@ -230,7 +331,7 @@ describe('timeout handling', () => {
     expect(res.status).toBe(504);
     expect(await res.json()).toEqual({
       error: 'Upstream timeout',
-      target: 'http://localhost:4000/api/health',
+      target: '/api/health',
       upstream_status: 504,
     });
     expect(errorSpy).toHaveBeenCalled();
@@ -257,7 +358,7 @@ describe('timeout handling', () => {
     expect(res.status).toBe(504);
     expect(await res.json()).toEqual({
       error: 'Upstream timeout',
-      target: 'http://localhost:8000/runs',
+      target: '/runs',
       upstream_status: 504,
     });
     errorSpy.mockRestore();
@@ -300,7 +401,7 @@ describe('mutation error mapping', () => {
     const body = await res.json();
     expect(body).toEqual({
       error: 'Upstream unreachable',
-      target: 'http://localhost:8000/runs',
+      target: '/runs',
       upstream_status: 502,
     });
     expect(String(body.error)).not.toMatch(/ECONNREFUSED/);
@@ -321,7 +422,7 @@ describe('mutation error mapping', () => {
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({
       error: 'Upstream unreachable',
-      target: 'http://localhost:4000/api/webhooks/abc',
+      target: '/api/webhooks/abc',
       upstream_status: 502,
     });
     errorSpy.mockRestore();
@@ -561,7 +662,7 @@ describe('proxyGetVerified', () => {
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({
       error: 'Upstream unreachable',
-      target: 'http://localhost:4000/.well-known/aitp-manifest',
+      target: '/.well-known/aitp-manifest',
       upstream_status: 502,
     });
     errorSpy.mockRestore();
@@ -629,7 +730,7 @@ describe('proxySse', () => {
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({
       error: 'Upstream unreachable',
-      target: 'http://localhost:4000/api/events/stream',
+      target: '/api/events/stream',
       upstream_status: 502,
     });
     errorSpy.mockRestore();

@@ -28,7 +28,9 @@ follow the links to the [playground](https://agentidentitytrustprotocol.io/playg
 Status codes and bodies pass through unchanged. On connection failure the
 proxy synthesizes a **502** (`Upstream unreachable`) and on timeout a
 **504** (`Upstream timeout`), both with shape
-`{ error, target, upstream_status }`; raw error detail is logged
+`{ error, target, upstream_status }`. `target` is the upstream path and
+query only (e.g. `/api/health`): the upstream origin never reaches the
+browser. Raw error detail and the full upstream URL are logged
 server-side, never sent to the browser.
 
 ## Playground (`PLAYGROUND_URL`, default `http://localhost:8000`)

@@ -276,9 +276,42 @@ function errorHeaders(res: Response): Record<string, string> {
   return h;
 }
 
+/** The part of an upstream URL the browser may see: path and query only.
+ *  The upstream origin (Railway hostname, port) never leaves the server;
+ *  in public mode it would tell anonymous visitors where the backends are. */
+function clientTarget(target: string): string {
+  // Strip the configured base first, so a base with a path prefix
+  // (`https://host/prefix`) doesn't leak the prefix either. The longest
+  // matching base wins and must end on a path boundary, so one base being a
+  // string prefix of the other (`http://h:4000` vs `http://h:40001`) can't
+  // leave a fragment of the longer one behind.
+  let best = '';
+  for (const base of [serverConfig.playgroundUrl, serverConfig.cpUrl]) {
+    const b = base.replace(/\/+$/, '');
+    if (!b || b.length <= best.length || !target.startsWith(b)) continue;
+    const next = target.charAt(b.length);
+    if (next === '' || next === '/' || next === '?') best = b;
+  }
+  if (best) {
+    // A trailing-slash base yields `//path` upstream; show it as `/path`.
+    const rest = target.slice(best.length).replace(/^\/+/, '/');
+    return rest === '' ? '/' : rest.startsWith('?') ? `/${rest}` : rest;
+  }
+  try {
+    const u = new URL(target);
+    return `${u.pathname}${u.search}`;
+  } catch {
+    return '';
+  }
+}
+
 function makeError(status: number, message: string, target: string): Response {
   return new Response(
-    JSON.stringify({ error: message, target, upstream_status: status }),
+    JSON.stringify({
+      error: message,
+      target: clientTarget(target),
+      upstream_status: status,
+    }),
     {
       status,
       headers: { 'Content-Type': 'application/json' },
@@ -287,7 +320,7 @@ function makeError(status: number, message: string, target: string): Response {
 }
 
 /** Logged server-side so admins can debug; the client envelope intentionally
- *  carries only a fixed message + the request target. Raw error strings can
+ *  carries only a fixed message + the upstream path (never its origin). Raw error strings can
  *  include hostnames, file paths, or TLS detail we don't want to ship to the
  *  browser. */
 function logUpstreamError(method: string, target: string, err: unknown): void {

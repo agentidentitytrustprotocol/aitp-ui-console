@@ -97,8 +97,11 @@ mutations also need an `Origin` header matching the console's origin.
 
 ### Deploying
 
-Set these on every Vercel environment you deploy to (Production **and**
-Preview, or previews serve 503):
+Set these on every Vercel environment that operators sign in to. Without them,
+the environment serves 503 on every route. The hosted console sets them on
+Production only, from Doppler, so its previews serve 503 and never hold the
+password (see
+[`internal_docs/DEPLOYMENT.md`](https://github.com/agentidentitytrustprotocol/aitp-ui-console/blob/main/internal_docs/DEPLOYMENT.md)):
 
 | Variable | Notes |
 | --- | --- |

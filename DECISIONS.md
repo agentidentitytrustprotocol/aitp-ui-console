@@ -197,3 +197,39 @@ fresh-Opus analysis against the actual current code, not the plan's or an execut
 description of it; two of the six reconciling agents found and reported unrelated, out-of-scope
 observations (a pre-existing prototype-safety gap in two untouched components; a concurrent
 edit from a sibling reconcile task) without acting on either, correctly respecting scope.
+
+## 2026-11-07 — Doppler is the source of truth for the Vercel configuration (aitp-hardening wave 0)
+
+- **Doppler `aitp-ui-console`:** the project existed with only three keys in `prd`
+  (`CONSOLE_PASSWORD`, `CONSOLE_SESSION_SECRET`, `PLAYGROUND_API_KEY`). It was verified
+  and finished, not redone. `prd` now has six keys. `CP_URL`/`PLAYGROUND_URL` are the
+  Railway `aitp-runner` domains, hash-equal to the playground's own `CP_BASE_URL`/
+  `PLAYGROUND_BASE_URL`. `CP_API_KEY` was piped from
+  `aitp-control-plane/prd CP_API_KEY_CONSOLE`, which is hash-equal to the CP's
+  `console-20261106` `API_KEYS` entry. `stg` has the non-secret URLs. `dev` has the
+  `.env` localhost URLs. No value disagreed between Doppler, Vercel and Railway.
+- **The LLM keys in the local `.env` were not copied into `dev`.** The console doesn't
+  read them, and the prod LLM key belongs only to the playground (prompt Wave 2).
+- **Verified by behaviour, because Vercel Production entries are sensitive (write-only):**
+  - a sign-in with the Doppler password returned 200;
+  - the issued cookie verified with the Doppler session secret;
+  - CP and playground health through the console were byte-identical to direct calls;
+  - `/api/cp/audit` returned 200 through the console and 401 on a keyless direct call.
+- **Preview was split from Production.** Preview had copies of the production
+  password, session secret and CP key (hash-equal), and shared the sensitive `CP_URL`/
+  `PLAYGROUND_URL` entries with Production. The shared entries were narrowed to
+  Production. Preview got its own readable URL entries, and the three secrets were
+  deleted from Preview, so previews now fail closed (503). Preview keeps
+  `PLAYGROUND_API_KEY`, which is not an admin key. This matches acdp-ui-console #201
+  and its Preview follow-up.
+- **`deploy/doppler-sync.sh`** is a port of acdp-ui-console's script (#201, as it stands on that
+  repo's main). Besides the project ids, one thing changed: writes go through the Vercel
+  REST API instead of `vercel env add/update`. CLI 50.37 resends the key on update, and
+  the API refuses that for a sensitive variable, so the original `--push` path could
+  never succeed. The value still travels on stdin (jq to curl). A plain update keeps the
+  entry's type; only `--push` sends `type: sensitive`.
+- **CI-cost pass (one time):** recorded in `internal_docs/DEPLOYMENT.md` § CI cost.
+  Nothing was changed: the repo is public (net $0), it has no merge queue, the job is
+  already on the smallest runner with PR cancel-in-progress, and a docs path filter
+  would save about one run a month. Estimate: before = after ≈ 155 runner-min/30 d.
+- **Status:** CONFIRMED (2026-11-07).

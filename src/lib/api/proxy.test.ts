@@ -289,27 +289,43 @@ describe('timeout handling', () => {
     jest.useRealTimers();
   });
 
+  // Captured before any test fakes timers, so the wait below is bounded by
+  // real wall-clock time.
+  const realSetTimeout = global.setTimeout;
+  const realClearTimeout = global.clearTimeout;
+
+  type HangingFetch = jest.Mock & { started: Promise<void> };
+
   /** A fetch that never resolves on its own — it only rejects once the
-   *  proxy's timeout signal aborts, mimicking a hung upstream. */
-  function hangingFetch(): jest.Mock {
-    return jest.fn(
-      (_target: string, init: RequestInit) =>
-        new Promise((_resolve, reject) => {
-          init.signal?.addEventListener('abort', () =>
-            reject(
-              new DOMException('This operation was aborted', 'AbortError'),
-            ),
-          );
-        }),
-    );
+   *  proxy's timeout signal aborts, mimicking a hung upstream. `started`
+   *  resolves on the first call. */
+  function hangingFetch(): HangingFetch {
+    let markStarted!: () => void;
+    const started = new Promise<void>((r) => (markStarted = r));
+    const mock = jest.fn((_target: string, init: RequestInit) => {
+      markStarted();
+      return new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () =>
+          reject(new DOMException('This operation was aborted', 'AbortError')),
+        );
+      });
+    });
+    return Object.assign(mock, { started });
   }
 
-  /** The access check (Web Crypto, settled through the event loop) runs
-   *  before the timeout is armed, so advancing fake time first would fire
-   *  nothing. Yield real event-loop turns until the fetch has started. */
-  async function untilFetchStarts(fetchMock: jest.Mock): Promise<void> {
-    for (let i = 0; i < 200 && fetchMock.mock.calls.length === 0; i++)
-      await new Promise<void>((r) => setImmediate(r));
+  /** The access check runs before the timeout is armed, so advancing fake
+   *  time first would fire nothing. It hashes the Basic credentials with
+   *  `crypto.subtle.digest`, which Node runs on the libuv threadpool, so
+   *  the fetch can start any number of event-loop turns later (on a busy
+   *  CI runner, more than 200). Wait for the call itself, bounded by real
+   *  time rather than by a turn count. */
+  async function untilFetchStarts(fetchMock: HangingFetch): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<void>((r) => {
+      timer = realSetTimeout(r, 4_000);
+    });
+    await Promise.race([fetchMock.started, deadline]);
+    realClearTimeout(timer);
     expect(fetchMock).toHaveBeenCalled();
   }
 
